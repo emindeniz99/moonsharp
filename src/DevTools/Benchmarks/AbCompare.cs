@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -31,6 +31,8 @@ namespace MoonSharp.Benchmarks
 		{
 			public string Name;
 			public int Iterations;
+			// inner loop iterations per call: times and allocations are reported per inner iteration
+			public int Scale = 1;
 			public Func<Build, Action> Prepare;
 		}
 
@@ -38,14 +40,35 @@ namespace MoonSharp.Benchmarks
 		{
 			if (args.Length < 2)
 			{
-				Console.Error.WriteLine("usage: ab <A/MoonSharp.Interpreter.dll> <B/MoonSharp.Interpreter.dll> [rounds]");
+				Console.Error.WriteLine("usage: ab <A/MoonSharp.Interpreter.dll> <B/MoonSharp.Interpreter.dll> [rounds] [tables|tablemem]");
 				return 2;
 			}
 
 			int rounds = args.Length > 2 ? int.Parse(args[2]) : 15;
 			var builds = new[] { Load("A", args[0]), Load("B", args[1]) };
 
-			var workloads = new List<Workload>
+			// SPIKE: show which pairs order each build uses (master: x,1,2; a: x,1,2; b and c: 1,2,x)
+			foreach (Build b in builds)
+				Console.WriteLine("{0} pairs order probe: {1}", b.Name, b.Run("local t = { x = 1 } t[1] = 1 t[2] = 2 local r = {} for k in pairs(t) do r[#r + 1] = tostring(k) end return table.concat(r, ',')"));
+
+			if (args.Length > 3 && args[3] == "tablemem")
+				return TableWorkloads.RetainedBytes(builds.Select(b => (Func<string, object>)b.Run).ToArray(),
+					builds.Select(b => (Func<object, object[], object>)b.Invoke).ToArray());
+
+			var workloads = (args.Length > 3 && args[3] == "tables")
+				? TableWorkloads.Cases.Select(c => new Workload
+				{
+					Name = c.Name,
+					Iterations = c.Calls,
+					Scale = c.Arg * c.PerArg,
+					Prepare = b =>
+					{
+						object fn = b.Run(c.Source);
+						var callArgs = new object[] { c.Arg };
+						return () => b.Invoke(fn, callArgs);
+					}
+				}).ToList()
+				: new List<Workload>
 			{
 				new Workload { Name = "NewScript_Default", Iterations = 200, Prepare = b => () => b.NewScript() },
 				new Workload { Name = "CreateCoroutine", Iterations = 500, Prepare = b =>
@@ -70,6 +93,7 @@ namespace MoonSharp.Benchmarks
 			Console.WriteLine("B: {0}", Path.GetFullPath(args[1]));
 			Console.WriteLine("{0} interleaved rounds per workload, .NET {1}", rounds, Environment.Version);
 			Console.WriteLine();
+			Console.WriteLine("Table order (MOONSHARP_TABLE_ORDER): {0}", Environment.GetEnvironmentVariable("MOONSHARP_TABLE_ORDER") ?? "(unset)");
 			Console.WriteLine("| Workload | A median | B median | B/A (median of rounds) | B/A interquartile range | A alloc/op | B alloc/op |");
 			Console.WriteLine("|---|---:|---:|---:|---:|---:|---:|");
 
@@ -90,8 +114,8 @@ namespace MoonSharp.Benchmarks
 					{
 						int k = (r % 2 == 0) ? j : 1 - j;
 						long alloc;
-						times[k].Add(Measure(actions[k], w.Iterations, out alloc));
-						allocs[k] = alloc;
+						times[k].Add(Measure(actions[k], w.Iterations, out alloc) / w.Scale);
+						allocs[k] = alloc / w.Scale;
 					}
 				}
 
@@ -169,7 +193,7 @@ namespace MoonSharp.Benchmarks
 		{
 			if (ns >= 1e6) return (ns / 1e6).ToString("0.00") + " ms";
 			if (ns >= 1e3) return (ns / 1e3).ToString("0.00") + " µs";
-			return ns.ToString("0") + " ns";
+			return ns.ToString("0.0") + " ns";
 		}
 
 		static string FormatBytes(long bytes)

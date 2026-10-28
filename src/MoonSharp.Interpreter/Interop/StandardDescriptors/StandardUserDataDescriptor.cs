@@ -42,6 +42,46 @@ namespace MoonSharp.Interpreter.Interop
 		}
 
 		/// <summary>
+		/// Whether a more derived type declares a visible member with the same name, as C# "new"
+		/// does. Reflection returns both members; a script, like C# code using this type, sees the
+		/// derived one. Allocates only when two members share a name.
+		/// </summary>
+		private bool IsHiddenByDerivedMember(MemberInfo member, PropertyInfo[] properties, FieldInfo[] fields, EventInfo[] events)
+		{
+			return IsHiddenBy(member, properties) || IsHiddenBy(member, fields) || IsHiddenBy(member, events);
+		}
+
+		private bool IsHiddenBy(MemberInfo member, MemberInfo[] others)
+		{
+			foreach (MemberInfo other in others)
+			{
+				if (other.Name == member.Name && other.DeclaringType != member.DeclaringType
+					&& Framework.Do.IsAssignableFrom(member.DeclaringType, other.DeclaringType)
+					&& CreateIfVisible(other) != null)
+					return true;
+			}
+
+			return false;
+		}
+
+		private void AddDataMember(MemberInfo member, PropertyInfo[] properties, FieldInfo[] fields, EventInfo[] events)
+		{
+			IMemberDescriptor desc = CreateIfVisible(member);
+
+			if (desc != null && !IsHiddenByDerivedMember(member, properties, fields, events))
+				AddMember(member.Name, desc);
+		}
+
+		private IMemberDescriptor CreateIfVisible(MemberInfo member)
+		{
+			if (member is PropertyInfo)
+				return PropertyMemberDescriptor.TryCreateIfVisible((PropertyInfo)member, this.AccessMode);
+			if (member is FieldInfo)
+				return FieldMemberDescriptor.TryCreateIfVisible((FieldInfo)member, this.AccessMode);
+			return EventMemberDescriptor.TryCreateIfVisible((EventInfo)member, this.AccessMode);
+		}
+
+		/// <summary>
 		/// Fills the member list.
 		/// </summary>
 		private void FillMemberList()
@@ -102,31 +142,34 @@ namespace MoonSharp.Interpreter.Interop
 				}
 			}
 
-			// get properties
-			foreach (PropertyInfo pi in Framework.Do.GetProperties(type))
+			// properties, fields and events; reflection also returns the inherited members a derived
+			// type hides with "new"
+			PropertyInfo[] properties = Framework.Do.GetProperties(type);
+			FieldInfo[] fields = Framework.Do.GetFields(type);
+			EventInfo[] events = Framework.Do.GetEvents(type);
+
+			foreach (PropertyInfo pi in properties)
 			{
 				if (pi.IsSpecialName || pi.GetIndexParameters().Any() || membersToIgnore.Contains(pi.Name))
 					continue;
 
-				AddMember(pi.Name, PropertyMemberDescriptor.TryCreateIfVisible(pi, this.AccessMode));
+				AddDataMember(pi, properties, fields, events);
 			}
 
-			// get fields
-			foreach (FieldInfo fi in Framework.Do.GetFields(type))
+			foreach (FieldInfo fi in fields)
 			{
 				if (fi.IsSpecialName || membersToIgnore.Contains(fi.Name))
 					continue;
 
-				AddMember(fi.Name, FieldMemberDescriptor.TryCreateIfVisible(fi, this.AccessMode));
+				AddDataMember(fi, properties, fields, events);
 			}
 
-			// get events
-			foreach (EventInfo ei in Framework.Do.GetEvents(type))
+			foreach (EventInfo ei in events)
 			{
 				if (ei.IsSpecialName || membersToIgnore.Contains(ei.Name))
 					continue;
 
-				AddMember(ei.Name, EventMemberDescriptor.TryCreateIfVisible(ei, this.AccessMode));
+				AddDataMember(ei, properties, fields, events);
 			}
 
 			// get nested types and create statics

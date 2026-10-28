@@ -336,3 +336,116 @@ with NativeAOT now keeps every member of a type it registers with a
 members. A `Type` computed at run time gets a trim warning in the host's
 build, as other reflection does. Unity's linker is not known to read these
 annotations; keep using `link.xml` or `[Preserve]` there.
+
+## Extension methods from every registered class are found
+
+A userdata looked for extension methods only when an extension class had
+been registered since its previous lookup. After a script used one
+extension method of a type, the others stayed invisible ("cannot access
+field") until another extension class was registered. Every registered
+extension method is now found. Affected: hosts that register extension
+methods for one type from several static classes
+([upstream #102](https://github.com/moonsharp-devs/moonsharp/issues/102)).
+
+## Types that hide inherited members with `new` can be registered
+
+Registering a type that hides an inherited property, field or event with
+`new` (for example a command type whose `Connection` property returns a
+more derived connection) threw "Multiple members named ... are being
+added". The type now registers and scripts see the member that C# code
+sees through that type: the most derived visible one. Affected: hosts
+that worked around the exception with wrapper types
+([upstream #286](https://github.com/moonsharp-devs/moonsharp/issues/286)).
+
+## Delegates compiled at run time can be passed to scripts
+
+A delegate built with `Expression.Compile()` or a `DynamicMethod` threw
+`NullReferenceException` when converted for a script, because its method
+has no declaring type. Such delegates are now called through their
+`Invoke` method. Affected: hosts that wrapped them in a lambda to work
+around the exception
+([upstream #291](https://github.com/moonsharp-devs/moonsharp/issues/291)).
+
+## A CLR callback that returns null gives the script nil
+
+A `CallbackFunction` whose function returned `null` instead of a
+`DynValue` made the VM throw `NullReferenceException`. Scripts now
+receive `nil`. Affected: hosts that relied on the exception to detect
+such callbacks
+([upstream #307](https://github.com/moonsharp-devs/moonsharp/issues/307)).
+
+## `debug.getmetatable` returns nil for values without a metatable
+
+For a table without a metatable, or a type without a type metatable,
+`debug.getmetatable` returned a table value wrapping nothing: it was not
+`nil`, and using it threw `NullReferenceException`. It now returns `nil`,
+as `getmetatable` and Lua do. Affected: scripts that used the debug
+library to inspect metatables
+([upstream PR #173](https://github.com/moonsharp-devs/moonsharp/pull/173)).
+
+## `json.parse` reads nested arrays
+
+`json.parse` used the Lua lexer, which reads `[[` as the start of a long
+string, so JSON such as `[[1,2],[3,4]]` failed with "Unexpected token".
+It now reads `[[` as two array openings. Affected: hosts that inserted
+spaces between brackets as a workaround
+([upstream #219](https://github.com/moonsharp-devs/moonsharp/issues/219)).
+
+## `tonumber` reads Lua numerals
+
+`tonumber(s)` used .NET number parsing. It returned `nil` for
+hexadecimal numerals such as `"0x23"`, and returned numbers for strings
+that Lua rejects, such as `"1,000"` (1000) and `"(5)"` (-5). It now
+follows Lua 5.2: decimal or hexadecimal numerals (with an optional
+fraction and `p` exponent), an optional sign and surrounding whitespace.
+
+```lua
+print(tonumber("0x23"), tonumber("1,000"))   -- before: nil 1000   now: 35 nil
+```
+
+String coercion in arithmetic (`"0x10" + 1`) still uses the old parsing
+until the VM work changes it. Affected: scripts that passed formatted
+numbers to `tonumber`
+([upstream #229](https://github.com/moonsharp-devs/moonsharp/issues/229)).
+
+## Standard streams set after a script is created are used
+
+`Script.Options.Stdin`, `Stdout` and `Stderr` were read only while the
+`Script` was constructed; setting them later had no effect and `io`
+kept using the process console. The `io` module now switches to the
+stream the options name when it next uses a standard file. A file value
+a script already holds (`local out = io.stdout`) keeps its old stream.
+Affected: hosts that set these options after creating a script
+([upstream #70](https://github.com/moonsharp-devs/moonsharp/issues/70)).
+
+## `json.parse` reads JSON string escapes
+
+`json.parse` unescaped strings with Lua's rules: `é` failed with
+"'{' expected near '\u'", while Lua-only escapes such as `\x41`, `\65`
+and `\u{41}` were accepted. Strings now use JSON's escapes (`\"`, `\\`,
+`\/`, `\b`, `\f`, `\n`, `\r`, `\t`, `\uXXXX`, with surrogate pairs kept
+as two UTF-16 units), and other escapes are a parse error. Affected:
+hosts that pre-processed JSON to avoid `\u` escapes, and input that
+relied on Lua escapes.
+
+## `json.serialize` writes mixed tables as objects
+
+A table with keys 1..n was written as a JSON array even when it had other
+keys, which were dropped: `{ 10, name = "x" }` became `[10]`. Such a
+table is now an object, with integer keys written as strings
+(`{"1":10,"name":"x"}`), as the host's JSON writer already did. A table
+whose keys are exactly 1..n is still an array, and a table with only
+integer keys that are not 1..n (`{ [3] = "c" }`) is now an object
+instead of `{}`. Affected: scripts that relied on the dropped keys being
+left out.
+
+## `io.write` to the standard streams is not buffered
+
+`io.write` and `io.stdout:write` kept text in a `StreamWriter` buffer
+until `io.flush()`. Nothing flushed it when a script finished, so output
+appeared late or never (each `Script` has its own writer). The standard
+output and error files now write through. A script that writes much
+small output can ask for buffering with `io.stdout:setvbuf("full")` and
+flush itself. Affected: hosts that read the output stream and saw
+partial text before
+([upstream #161](https://github.com/moonsharp-devs/moonsharp/issues/161)).

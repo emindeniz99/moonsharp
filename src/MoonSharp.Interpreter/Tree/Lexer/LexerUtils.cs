@@ -136,6 +136,60 @@ namespace MoonSharp.Interpreter.Tree
 			return str;
 		}
 
+		/// <summary>
+		/// Unescapes the body of a JSON string: \" \\ \/ \b \f \n \r \t and \uXXXX, where
+		/// surrogate pairs come as two escapes and stay two UTF-16 units.
+		/// </summary>
+		public static string UnescapeJsonString(Token token, string str)
+		{
+			if (!Framework.Do.StringContainsChar(str, '\\'))
+				return str;
+
+			StringBuilder sb = new StringBuilder(str.Length);
+
+			for (int i = 0; i < str.Length; i++)
+			{
+				char c = str[i];
+
+				if (c != '\\')
+				{
+					sb.Append(c);
+					continue;
+				}
+
+				char e = (++i < str.Length) ? str[i] : '\0';
+
+				switch (e)
+				{
+					case '"': sb.Append('"'); break;
+					case '\\': sb.Append('\\'); break;
+					case '/': sb.Append('/'); break;
+					case 'b': sb.Append('\b'); break;
+					case 'f': sb.Append('\f'); break;
+					case 'n': sb.Append('\n'); break;
+					case 'r': sb.Append('\r'); break;
+					case 't': sb.Append('\t'); break;
+					case 'u':
+						int code = 0;
+
+						for (int k = 0; k < 4; k++)
+						{
+							if (++i >= str.Length || !CharIsHexDigit(str[i]))
+								throw new SyntaxErrorException(token, "four hexadecimal digits expected after '\\u'");
+
+							code = code * 16 + HexDigit2Value(str[i]);
+						}
+
+						sb.Append((char)code);
+						break;
+					default:
+						throw new SyntaxErrorException(token, "invalid escape sequence near '\\{0}'", e);
+				}
+			}
+
+			return sb.ToString();
+		}
+
 		public static string UnescapeLuaString(Token token, string str)
 		{
 			if (!Framework.Do.StringContainsChar(str, '\\'))

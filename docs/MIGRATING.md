@@ -704,8 +704,9 @@ host can see:
   `ScriptOptions.InterruptHandler` calls come after more script work than
   before. A numeric `for` iteration with an empty body was 5 instructions and
   is now 1; the condition `if i < n then` with locals `i` and `n` was 5 and
-  is now 1. While a debugger is attached, comparisons run unfused, so it
-  sees the same instructions and stops as before.
+  is now 1, and so is `x = x + 1`. While a debugger is attached,
+  comparisons and arithmetic run unfused, so it sees the same instructions
+  and stops as before.
 - **Debugger stops in a numeric `for`.** The `for` line is a stop when the
   loop starts; each later iteration stops on the `end` line only. Stepping
   through `for i = 1, 2 do x = x + i end` written on lines 2 to 4 went

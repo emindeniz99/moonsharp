@@ -82,6 +82,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 		// runs the replaced instruction and continues with the unfused sequence.
 		JLt, JLe, JGt, JGe, JEq, JNe,
 
+		// Fused arithmetic (see InstructionFusion), operands as for the fused compares (NumVal2; a right
+		// local of a left local is NumVal). The right operand is a number constant or a local, or with a
+		// store both operands are on the stack. NumVal3 is the local an assignment stores the result in
+		// (the StoreLcl and Pop 1 that follow, skipped), or -1. Numbers compute here; anything else runs
+		// the replaced instruction and continues with the unfused sequence.
+		AddF, SubF, MulF, DivF, ModF, PowF,
+
 		// Meta
 		Invalid,	// Crashes the executor with an unrecoverable NotImplementedException. This MUST always be the last opcode in enum
 	}

@@ -42,7 +42,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void ForLoop_EmptyIterationIsOneInstruction()
 		{
-			// Before the ForLoop opcode: JFor, StoreLcl, Debug, Clean, Incr, Jump.
+			// Before the ForLoop opcode: JFor, StoreLcl, Clean, Incr, Jump.
 			Assert.AreEqual(1, InstructionsPerIteration("return function(n) for i = 1, n do end end"));
 		}
 
@@ -193,6 +193,8 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			{ "if i == nil then c = 1 end", "2" },
 			{ "if i ~= i then c = 1 end", "2" },
 			{ "if 0 >= i then c = 1 end", "3" },
+			{ "if (i < 0) then c = 1 end", "2" },
+			{ "if not (i == i) then c = 1 end", "2" },
 			{ "if -i <= -n then c = 1 end", "6" },
 		};
 
@@ -209,8 +211,9 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void Compare_WhileConditionIsOneInstruction()
 		{
-			// Local i, Local n, LessEq, CNot, Jf and the body's 5 before; now the condition is 1.
-			Assert.AreEqual(1 + 5 + 2, (InstructionsFor("return function(n) local i = 0 while i <= n do i = i + 1 end end", 200)
+			// The condition was Local i, Local n, LessEq, CNot, Jf and the body Local, Literal, Add,
+			// StoreLcl, Pop; now each is one instruction, plus the loop's Clean and Jump.
+			Assert.AreEqual(1 + 1 + 2, (InstructionsFor("return function(n) local i = 0 while i <= n do i = i + 1 end end", 200)
 				- InstructionsFor("return function(n) local i = 0 while i <= n do i = i + 1 end end", 100)) / 100);
 		}
 
@@ -361,6 +364,144 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			// The same stops as without fusion: a debugger sees the unfused instructions.
 			Assert.AreEqual("1,2,3,4,2,3,4,2,5,6,7,8",
 				StepLines("local i = 0\nwhile i < 2 do\n  i = i + 1\nend\nif i == 2 then\n  i = 3\nend\nreturn i"));
+		}
+
+		// Instructions per loop iteration (ForLoop included). Before fusion `x = x + 1` ran Local, Literal,
+		// Add, StoreLcl, Pop.
+		static readonly string[,] ArithmeticCases =
+		{
+			{ "x = x + 1", "2" },
+			{ "x = (x * 31 + i) % 1000003", "4" },
+			{ "local y = x - i", "2" },
+			{ "x = 2 ^ i", "3" },
+			{ "x = t[1] + t[2]", "6" },
+			{ "x = x .. ''", "6" },
+		};
+
+		[Test]
+		public void Arithmetic_LocalAndConstantOperandsAreOneInstruction()
+		{
+			for (int k = 0; k < ArithmeticCases.GetLength(0); k++)
+			{
+				string body = ArithmeticCases[k, 0];
+				Assert.AreEqual(int.Parse(ArithmeticCases[k, 1]), InstructionsPerIteration("return function(n) local x, t = 1, { 1, 2 } for i = 1, n do " + body + " end end"), body);
+			}
+		}
+
+		// Every arithmetic operator on every pair of values, in every operand shape the compiler fuses,
+		// with and without a store into a local: the result (or error) must match the same operation on
+		// two call results, which is never fused.
+		const string ArithmeticDifferential = @"
+			local MT = {}
+			for _, e in ipairs({ '__add', '__sub', '__mul', '__div', '__mod', '__pow' }) do
+				MT[e] = function(x, y) return e .. ':' .. type(x) .. ',' .. type(y) end
+			end
+			local env = { o = setmetatable({}, MT), t = {}, id = function(x) return x end, pcall = pcall, tostring = tostring }
+
+			local literals = { '1', '2.5', '-3', '0', '1e308', '""10""', '""0x10""', '"" 5 ""', '""a""', 'nil', 'true' }
+			local values = { '0/0', '1/0', '-(0)', 'o', 't' }
+			for _, v in ipairs(literals) do values[#values + 1] = v end
+			local isLiteral = {}
+			for _, v in ipairs(literals) do isLiteral[v] = true end
+
+			local ops = { '+', '-', '*', '/', '%', '^' }
+
+			local function run(src)
+				local f = assert(load(src, 'arith', 't', env))
+				local ok, r = pcall(f)
+				if ok then return type(r) .. ' ' .. tostring(r) end
+				return 'error: ' .. (tostring(r):match('%): (.*)$') or tostring(r))
+			end
+
+			local mismatches, checked = {}, 0
+
+			for _, op in ipairs(ops) do
+				for _, A in ipairs(values) do
+					for _, B in ipairs(values) do
+						local reference = run('return id(' .. A .. ') ' .. op .. ' id(' .. B .. ')')
+						local forms = {
+							'local a, b = ' .. A .. ', ' .. B .. ' return a ' .. op .. ' b',
+							'local a, b = ' .. A .. ', ' .. B .. ' local r r = a ' .. op .. ' b return r',
+							'local b = ' .. B .. ' return id(' .. A .. ') ' .. op .. ' b',
+							'local b = ' .. B .. ' local r r = id(' .. A .. ') ' .. op .. ' b return r',
+							'local r r = id(' .. A .. ') ' .. op .. ' id(' .. B .. ') return r',
+						}
+						if isLiteral[B] then
+							forms[#forms + 1] = 'local a = ' .. A .. ' return a ' .. op .. ' ' .. B
+							forms[#forms + 1] = 'local a = ' .. A .. ' a = a ' .. op .. ' ' .. B .. ' return a'
+							forms[#forms + 1] = 'return id(' .. A .. ') ' .. op .. ' ' .. B
+							forms[#forms + 1] = 'local r r = id(' .. A .. ') ' .. op .. ' ' .. B .. ' return r'
+						end
+
+						for _, src in ipairs(forms) do
+							checked = checked + 1
+							local got = run(src)
+							if got ~= reference then
+								mismatches[#mismatches + 1] = src .. ': ' .. reference .. ' / ' .. got
+							end
+						end
+					end
+				end
+			end
+
+			return checked, table.concat(mismatches, '\n')";
+
+		[Test]
+		public void Arithmetic_FusedOperationsMatchUnfusedOnes()
+		{
+			DynValue r = new Script().DoString(ArithmeticDifferential);
+			Assert.Greater(r.Tuple[0].Number, 1000);
+			Assert.AreEqual("", r.Tuple[1].String);
+		}
+
+		[Test]
+		public void Arithmetic_ModuloFollowsLua52()
+		{
+			DynValue r = new Script().DoString(@"
+				local a, b, c, d = 5, -5, 5.5, -3
+				return a % -3, b % 3, c % -2, a % d, b % 3.5, -0.0 % 2");
+
+			Assert.AreEqual("-1\t1\t-0.5\t-1\t2\t0", r.ToPrintString());
+		}
+
+		[Test]
+		public void Arithmetic_MetamethodThatYieldsInsideAFusedAssignment()
+		{
+			DynValue r = new Script().DoString(@"
+				local mt = {}
+				mt.__add = function(a, b) coroutine.yield('add') return setmetatable({ v = a.v + b }, mt) end
+				local co = coroutine.wrap(function()
+					local x = setmetatable({ v = 0 }, mt)
+					for i = 1, 3 do x = x + 1 end
+					return x.v
+				end)
+				local steps = {}
+				local v = co()
+				while v == 'add' do steps[#steps + 1] = v v = co() end
+				return #steps .. '|' .. v");
+
+			Assert.AreEqual("3|3", r.String);
+		}
+
+		[Test]
+		public void Arithmetic_StoreIsSeenByClosuresAndKeepsTheLoopCount()
+		{
+			DynValue r = new Script().DoString(@"
+				local x = 0
+				local get = function() return x end
+				local n = 0
+				for i = 1, 3 do x = x + i i = i + 10 n = n + 1 end
+				return get(), n");
+
+			Assert.AreEqual("6\t3", r.ToPrintString());
+		}
+
+		[Test]
+		public void Arithmetic_ErrorsReportTheirLine()
+		{
+			var ex = Assert.Throws<ScriptRuntimeException>(() => new Script().DoString("local x = {}\nlocal y = 0\ny = x + 1", null, "arith.lua"));
+			StringAssert.StartsWith("arith.lua:(3,", ex.DecoratedMessage);
+			StringAssert.Contains("attempt to perform arithmetic on a table value", ex.Message);
 		}
 
 		[Test]

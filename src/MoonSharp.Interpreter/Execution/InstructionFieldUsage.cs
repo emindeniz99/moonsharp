@@ -99,6 +99,12 @@ namespace MoonSharp.Interpreter.Execution
 				case OpCode.JGe:
 				case OpCode.JEq:
 				case OpCode.JNe:
+				case OpCode.AddF:
+				case OpCode.SubF:
+				case OpCode.MulF:
+				case OpCode.DivF:
+				case OpCode.ModF:
+				case OpCode.PowF:
 					return InstructionFieldUsage.NumVal | InstructionFieldUsage.NumVal2 | InstructionFieldUsage.NumVal3 | InstructionFieldUsage.Symbol | InstructionFieldUsage.Value;
 				case OpCode.ForLoop:
 					return InstructionFieldUsage.NumValAsCodeAddress | InstructionFieldUsage.NumVal2 | InstructionFieldUsage.NumVal3 | InstructionFieldUsage.Symbol;

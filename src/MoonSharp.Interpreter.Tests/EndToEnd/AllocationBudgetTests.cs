@@ -143,7 +143,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void AllocationBudget_MethodCall()
 		{
-			AssertLuaBudget("method_call", "local C = {} C.__index = C\nfunction C:inc() self.v = self.v + 1 end\nlocal o = setmetatable({ v = 0 }, C)\nreturn function(n) for i = 1, n do o:inc() end return o.v end", 560);
+			AssertLuaBudget("method_call", "local C = {} C.__index = C\nfunction C:inc() self.v = self.v + 1 end\nlocal o = setmetatable({ v = 0 }, C)\nreturn function(n) for i = 1, n do o:inc() end return o.v end", 512);
 		}
 
 		[Test]
@@ -155,7 +155,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void AllocationBudget_TableHashSetGet()
 		{
-			AssertLuaBudget("table_hash_set_get", "local keys = {} for i = 1, 64 do keys[i] = 'key' .. i end\nreturn function(n) local t, s, j = {}, 0, 1 for i = 1, n do local k = keys[j] t[k] = i s = s + t[k] j = j + 1 if j > 64 then j = 1 end end return s end", 768);
+			AssertLuaBudget("table_hash_set_get", "local keys = {} for i = 1, 64 do keys[i] = 'key' .. i end\nreturn function(n) local t, s, j = {}, 0, 1 for i = 1, n do local k = keys[j] t[k] = i s = s + t[k] j = j + 1 if j > 64 then j = 1 end end return s end", 720);
 		}
 
 		[Test]
@@ -224,7 +224,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			{
 				Script script = new Script();
 				script.Globals["obj"] = new Calc();
-				AssertBudget("clr_interop_reflection", LuaLoop(script, "return function(n) local s = 0 for i = 1, n do s = s + obj:Add(i, 2) + obj.Value end return s end"), N, 1176);
+				AssertBudget("clr_interop_reflection", LuaLoop(script, "return function(n) local s = 0 for i = 1, n do s = s + obj:Add(i, 2) + obj.Value end return s end"), N, 928);
 			}
 			finally
 			{

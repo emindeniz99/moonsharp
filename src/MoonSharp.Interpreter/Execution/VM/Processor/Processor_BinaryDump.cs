@@ -11,7 +11,19 @@ namespace MoonSharp.Interpreter.Execution.VM
 	sealed partial class Processor
 	{
 		const ulong DUMP_CHUNK_MAGIC = 0x1A0D234E4F4F4D1D;
-		const int DUMP_CHUNK_VERSION = 0x151;
+		const int DUMP_CHUNK_VERSION = 0x152;
+
+		// 0x151 dumps carry no source locations; they still load, with every location at line 0.
+		const int DUMP_CHUNK_VERSION_NO_LOCATIONS = 0x151;
+
+		// Per-instruction source location markers (format 0x152 and later). A new location is
+		// DUMP_SOURCEREF_NEW plus flag bits, then: line delta from the previous new location,
+		// end line minus start line, start column, end column minus start column.
+		const byte DUMP_SOURCEREF_NONE = 0;
+		const byte DUMP_SOURCEREF_SAME = 1;
+		const byte DUMP_SOURCEREF_NEW = 2;
+		const byte DUMP_SOURCEREF_STEPSTOP = 4;
+		const byte DUMP_SOURCEREF_NOBREAKPOINT = 8;
 
 		internal static bool IsDumpStream(Stream stream)
 		{
@@ -27,7 +39,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			return false;
 		}
 
-		internal int Dump(Stream stream, int baseAddress, bool hasUpvalues)
+		internal int Dump(Stream stream, int baseAddress, bool hasUpvalues, bool includeSourceLocations = true)
 		{
 			using (BinaryWriter bw = new BinDumpBinaryWriter(stream, Encoding.UTF8))
 			{
@@ -39,7 +51,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 					throw new ArgumentException("baseAddress");
 
 				bw.Write(DUMP_CHUNK_MAGIC);
-				bw.Write(DUMP_CHUNK_VERSION);
+				bw.Write(includeSourceLocations ? DUMP_CHUNK_VERSION : DUMP_CHUNK_VERSION_NO_LOCATIONS);
 				bw.Write(hasUpvalues);
 				bw.Write(meta.NumVal);
 
@@ -82,7 +94,96 @@ namespace MoonSharp.Interpreter.Execution.VM
 				for (int i = 0; i <= meta.NumVal; i++)
 					m_RootChunk.Code[baseAddress + i].WriteBinary(bw, baseAddress, symbolMap);
 
+				if (includeSourceLocations)
+					WriteSourceRefs(bw, baseAddress, meta.NumVal);
+
 				return meta.NumVal + baseAddress + 1;
+			}
+		}
+
+		// Consecutive instructions usually share a location, so a repeat costs one byte; a new
+		// location usually costs five (BinDumpBinaryWriter writes small ints in one byte).
+		private void WriteSourceRefs(BinaryWriter bw, int baseAddress, int count)
+		{
+			SourceRef previous = null;
+			int previousLine = 0;
+
+			for (int i = 0; i <= count; i++)
+			{
+				SourceRef sref = m_RootChunk.Code[baseAddress + i].SourceCodeRef;
+
+				if (sref == null)
+				{
+					bw.Write(DUMP_SOURCEREF_NONE);
+				}
+				else if (previous != null && SameLocation(previous, sref))
+				{
+					bw.Write(DUMP_SOURCEREF_SAME);
+				}
+				else
+				{
+					byte marker = DUMP_SOURCEREF_NEW;
+
+					if (sref.IsStepStop)
+						marker |= DUMP_SOURCEREF_STEPSTOP;
+
+					if (sref.CannotBreakpoint)
+						marker |= DUMP_SOURCEREF_NOBREAKPOINT;
+
+					bw.Write(marker);
+					bw.Write(sref.FromLine - previousLine);
+					bw.Write(sref.ToLine - sref.FromLine);
+					bw.Write(sref.FromChar);
+					bw.Write(sref.ToChar - sref.FromChar);
+					previousLine = sref.FromLine;
+					previous = sref;
+				}
+			}
+		}
+
+		private static bool SameLocation(SourceRef a, SourceRef b)
+		{
+			return a.FromLine == b.FromLine && a.ToLine == b.ToLine && a.FromChar == b.FromChar && a.ToChar == b.ToChar
+				&& a.IsStepStop == b.IsStepStop && a.CannotBreakpoint == b.CannotBreakpoint;
+		}
+
+		private static void ReadSourceRefs(BinaryReader br, List<Instruction> code, int baseAddress, int count, int sourceID)
+		{
+			SourceRef previous = null;
+			int previousLine = 0;
+
+			for (int i = 0; i <= count; i++)
+			{
+				byte marker = br.ReadByte();
+
+				if (marker == DUMP_SOURCEREF_NONE)
+				{
+					code[baseAddress + i].SourceCodeRef = null;
+				}
+				else if (marker == DUMP_SOURCEREF_SAME && previous != null)
+				{
+					code[baseAddress + i].SourceCodeRef = previous;
+				}
+				else if ((marker & DUMP_SOURCEREF_NEW) != 0)
+				{
+					int fromLine = previousLine + br.ReadInt32();
+					int toLine = fromLine + br.ReadInt32();
+					int fromChar = br.ReadInt32();
+					int toChar = fromChar + br.ReadInt32();
+
+					previous = new SourceRef(sourceID, fromChar, toChar, fromLine, toLine, (marker & DUMP_SOURCEREF_STEPSTOP) != 0);
+
+					if ((marker & DUMP_SOURCEREF_NOBREAKPOINT) != 0)
+						previous.SetNoBreakPoint();
+
+					previousLine = fromLine;
+
+					code[baseAddress + i].SourceCodeRef = previous;
+				}
+				else
+				{
+					throw new ArgumentException("Invalid source location in dump");
+				}
 			}
 		}
 
@@ -106,7 +207,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 				int version = br.ReadInt32();
 
-				if (version != DUMP_CHUNK_VERSION)
+				if (version != DUMP_CHUNK_VERSION && version != DUMP_CHUNK_VERSION_NO_LOCATIONS)
 					throw new ArgumentException("Invalid version");
 
 				hasUpvalues = br.ReadBoolean();
@@ -127,6 +228,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 					Instruction I = Instruction.ReadBinary(sourceRef, br, baseAddress, envTable, allSymbs);
 					m_RootChunk.Code.Add(I);
 				}
+
+				if (version != DUMP_CHUNK_VERSION_NO_LOCATIONS)
+					ReadSourceRefs(br, m_RootChunk.Code, baseAddress, len, sourceID);
 
 				return baseAddress;
 			}

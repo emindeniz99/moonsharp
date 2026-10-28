@@ -54,6 +54,15 @@ namespace MoonSharp.Interpreter.Execution.VM
 			return m_YieldRequest;
 		}
 
+		/// <summary>
+		/// True when the top frame is a C# function's: when the coroutine is suspended, only a pending frame
+		/// can be (a running C# function cannot yield).
+		/// </summary>
+		private bool PendingFrameOnTop()
+		{
+			return m_ExecutionStack.Count > 0 && m_ExecutionStack.Peek().ClrFunction != null;
+		}
+
 		public CoroutineState State { get { return m_State; } }
 		public Coroutine AssociatedCoroutine { get; set; }
 
@@ -97,7 +106,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				{
 					retVal = Processing_Loop(PushClrToScriptStackFrame(CallStackItemFlags.ResumeEntryPoint, null, args));
 				}
-				else if (m_SavedInstructionPtr < 0)
+				else if (m_SavedInstructionPtr < 0 && !PendingFrameOnTop())
 				{
 					// A C# body that yielded (coroutine.create(coroutine.yield)) has nothing left to run:
 					// the values of this resume are its results.
@@ -110,6 +119,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 					if (previous == CoroutineState.Suspended)
 						m_ValueStack.Push(DynValue.NewTuple(args));
 
+					// A C# function that yielded with handlers (pcall(coroutine.yield), a continuation)
+					// left its frame pending: the values go through it first.
+					m_ReturnToPending = PendingFrameOnTop();
 					retVal = Processing_Loop(m_SavedInstructionPtr);
 				}
 

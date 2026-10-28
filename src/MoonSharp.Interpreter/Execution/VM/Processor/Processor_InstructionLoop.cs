@@ -11,6 +11,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 	{
 		const int YIELD_SPECIAL_TRAP = -99;
 
+		// Set when the loop must first return the value on top of the stack into the pending C# frame on
+		// top of the call stack (see ClrCallWithHandlersReturned).
+		bool m_ReturnToPending;
+
 		internal long AutoYieldCounter = 0;
 
 		private DynValue Processing_Loop(int instructionPtr)
@@ -47,6 +51,18 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			try
 			{
+				// A pending C# frame on top (after a resume, or after an error handler of the call it
+				// waited for) takes the value on top of the stack as its result first.
+				if (m_ReturnToPending)
+				{
+					m_ReturnToPending = false;
+					ReturnToPendingFrames();
+					basePointer = CurrentBasePointer();
+				}
+
+				if (instructionPtr < 0)
+					goto return_to_native_code;
+
 				while (true)
 				{
 					Instruction i;
@@ -577,22 +593,24 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 					while (m_ExecutionStack.Count > 0)
 					{
+						// Each frame takes its function and arguments with it (a pending C# frame has none
+						// left), so the value stack ends where the handling frame's result goes.
 						CallStackItem csi = PopToBasePointer();
+						m_ValueStack.RemoveLast(csi.ArgCount + 1);
 
 						if (csi.ErrorHandler != null)
 						{
 							instructionPtr = csi.ReturnAddress;
-
-							if (csi.ClrFunction == null)
-							{
-								m_ValueStack.RemoveLast(csi.ArgCount + 1);
-							}
 
 							var cbargs = new DynValue[] { DynValue.NewString(ex.DecoratedMessage) };
 
 							DynValue handled = csi.ErrorHandler.Invoke(new ScriptExecutionContext(this, csi.ErrorHandler, GetCurrentSourceRef(instructionPtr)), cbargs);
 
 							m_ValueStack.Push(handled);
+
+							// The handled frame returned into a pending C# frame: that frame returns next,
+							// inside the try block, so its own handlers see errors of its continuation.
+							m_ReturnToPending = csi.Handlers.ReturnsToPending;
 
 							goto repeat_execution;
 						}
@@ -1038,13 +1056,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 		/// Leaves the running script function: closes the upvalues of its locals and removes its frame,
 		/// locals, temporaries, arguments and the function value. Returns the return address.
 		/// </summary>
-		private int PopScriptFrame(out CallbackFunction continuation)
+		private int PopScriptFrame(out CallStackItemHandlers handlers)
 		{
 			ref CallStackItem csi = ref m_ExecutionStack.Peek();
 			int retpoint = csi.ReturnAddress;
 			int basePointer = csi.BasePointer;
 			int argCount = csi.ArgCount;
-			continuation = csi.Continuation;
+			handlers = csi.Handlers;
 			m_ExecutionStack.RemoveLast();
 
 			if (m_OpenUpvalues != null)
@@ -1196,8 +1214,15 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 
 
+		/// <summary>
+		/// Calls the function below the top <paramref name="argsCount"/> values. A Lua function gets a frame
+		/// and the returned address is its entry point; a C# function runs here. <paramref name="returnsToPending"/>
+		/// says that the frame below is a pending C# frame that takes the result (see
+		/// <see cref="ClrCallWithHandlersReturned"/>).
+		/// </summary>
 		private int Internal_ExecCall(int argsCount, int instructionPtr, CallbackFunction handler = null,
-			CallbackFunction continuation = null, bool thisCall = false, string debugText = null, DynValue unwindHandler = null)
+			CallbackFunction continuation = null, bool thisCall = false, string debugText = null, DynValue unwindHandler = null,
+			bool returnsToPending = false)
 		{
 			LuaValue fn = m_ValueStack.Peek(argsCount);
 			CallStackItemFlags flags = (thisCall ? CallStackItemFlags.MethodCall : CallStackItemFlags.None);
@@ -1232,8 +1257,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 			if (fn.Type == DataType.ClrFunction)
 			{
 				CallbackFunction callback = (CallbackFunction)fn.Object;
+				CallStackItemHandlers handlers = CallStackItemHandlers.Create(continuation, handler, unwindHandler, returnsToPending);
 
-				if (callback.BuiltinId != 0 && TryFastCall(callback.BuiltinId, argsCount))
+				if (callback.BuiltinId != 0 && handlers == null && TryFastCall(callback.BuiltinId, argsCount))
 					return instructionPtr;
 
 				DynValue[] args = (callback.ReadsArgumentsInPlace && argsCount > 0) ? null : CreateArgsListForFunctionCall(argsCount);
@@ -1247,7 +1273,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 				frame.ReturnAddress = instructionPtr;
 				frame.CallingSourceRef = sref;
 				frame.BasePointer = -1;
-				frame.Handlers = CallStackItemHandlers.Create(continuation, handler, unwindHandler);
+				frame.ArgCount = argsCount;
+				frame.Handlers = handlers;
 				frame.Flags = flags;
 
 				var ctx = new ScriptExecutionContext(this, callback, sref);
@@ -1256,6 +1283,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 					: callback.Invoke(ctx, args, isMethodCall: thisCall);
 				m_ValueStack.RemoveLast(argsCount + 1);
 				m_ValueStack.Push(ret);
+
+				if (handlers != null)
+					return ClrCallWithHandlersReturned(instructionPtr);
 
 				m_ExecutionStack.RemoveLast();
 
@@ -1272,7 +1302,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				frame.CallingSourceRef = GetCurrentSourceRef(instructionPtr - 1); // See right above in GetCurrentSourceRef(instructionPtr - 1)
 				frame.Function = closure;
 				frame.Upvalues = closure.Upvalues;
-				frame.Handlers = CallStackItemHandlers.Create(continuation, handler, unwindHandler);
+				frame.Handlers = CallStackItemHandlers.Create(continuation, handler, unwindHandler, returnsToPending);
 				frame.Flags = flags;
 				return closure.EntryPointByteCodeLocation;
 			}
@@ -1291,10 +1321,61 @@ namespace MoonSharp.Interpreter.Execution.VM
 				for (int i = argsCount; i >= 0; i--)
 					m_ValueStack.Push(tmp[i]);
 
-				return Internal_ExecCall(argsCount + 1, instructionPtr, handler, continuation);
+				return Internal_ExecCall(argsCount + 1, instructionPtr, handler, continuation, false, null, unwindHandler, returnsToPending);
 			}
 
 			throw ScriptRuntimeException.AttemptToCallNonFunc(fn.Type, debugText);
+		}
+
+		/// <summary>
+		/// A C# function called with handlers (a continuation, pcall's error handlers, or a pending frame
+		/// below) returned; its frame is on top and its result on the value
+		/// stack. A plain result goes through the handlers now. A tail call or a yield leaves the frame on
+		/// the stack as a pending frame, without its function and arguments: the call its result asks for
+		/// returns into it (<see cref="ReturnToPendingFrames"/>), and the frame's error handler catches
+		/// errors raised before that, as a Lua frame's does.
+		/// </summary>
+		private int ClrCallWithHandlersReturned(int instructionPtr)
+		{
+			DataType type = m_ValueStack.Peek().Type;
+
+			if (type == DataType.TailCallRequest || type == DataType.YieldRequest)
+			{
+				m_ExecutionStack.Peek().ArgCount = -1;
+				return Internal_CheckForTailRequests(null, instructionPtr, true);
+			}
+
+			ReturnToPendingFrames();
+			return instructionPtr;
+		}
+
+		/// <summary>
+		/// Pops the top frame, whose call has returned the value on top of the value stack, and passes that
+		/// value through its handlers; then the same for the pending frame below, while the popped frame
+		/// returns into one.
+		/// </summary>
+		private void ReturnToPendingFrames()
+		{
+			CallStackItemHandlers handlers;
+
+			do
+			{
+				CallStackItem csi = m_ExecutionStack.Pop();
+				handlers = csi.Handlers;
+				ApplyReturnHandlers(handlers, csi.CallingSourceRef);
+			}
+			while (handlers.ReturnsToPending);
+		}
+
+		/// <summary>
+		/// Passes the result on top of the value stack through the handlers of the frame that returned it:
+		/// its continuation.
+		/// </summary>
+		private void ApplyReturnHandlers(CallStackItemHandlers handlers, SourceRef sourceRef)
+		{
+			if (handlers.Continuation != null)
+				m_ValueStack.Push(handlers.Continuation.Invoke(new ScriptExecutionContext(this, handlers.Continuation, sourceRef),
+					new DynValue[1] { m_ValueStack.Pop().ToDynValue() }));
 		}
 
 		private int PerformTCO(int instructionPtr, int argsCount)
@@ -1322,18 +1403,18 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private int ExecRet(Instruction i)
 		{
-			CallbackFunction continuation;
+			CallStackItemHandlers handlers;
 			int retpoint = 0;
 
 			if (i.NumVal == 0)
 			{
-				retpoint = PopScriptFrame(out continuation);
+				retpoint = PopScriptFrame(out handlers);
 				m_ValueStack.Push(LuaValue.Void);
 			}
 			else if (i.NumVal == 1)
 			{
 				var retval = m_ValueStack.Pop();
-				retpoint = PopScriptFrame(out continuation);
+				retpoint = PopScriptFrame(out handlers);
 				m_ValueStack.Push(retval);
 				retpoint = Internal_CheckForTailRequests(i, retpoint);
 			}
@@ -1342,16 +1423,20 @@ namespace MoonSharp.Interpreter.Execution.VM
 				throw new InternalErrorException("RET supports only 0 and 1 ret val scenarios");
 			}
 
-			if (continuation != null)
-				m_ValueStack.Push(continuation.Invoke(new ScriptExecutionContext(this, continuation, i.SourceCodeRef),
-					new DynValue[1] { m_ValueStack.Pop().ToDynValue() }));
+			if (handlers != null)
+			{
+				ApplyReturnHandlers(handlers, i.SourceCodeRef);
+
+				if (handlers.ReturnsToPending)
+					ReturnToPendingFrames();
+			}
 
 			return retpoint;
 		}
 
 
 
-		private int Internal_CheckForTailRequests(Instruction i, int instructionPtr)
+		private int Internal_CheckForTailRequests(Instruction i, int instructionPtr, bool returnsToPending = false)
 		{
 			ref LuaValue tail = ref m_ValueStack.Peek(0);
 
@@ -1366,7 +1451,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 				for (int ii = 0; ii < tcd.Args.Length; ii++)
 					m_ValueStack.Push(tcd.Args[ii]);
 
-				return Internal_ExecCall(tcd.Args.Length, instructionPtr, tcd.ErrorHandler, tcd.Continuation, false, null, tcd.ErrorHandlerBeforeUnwind);
+				return Internal_ExecCall(tcd.Args.Length, instructionPtr, tcd.ErrorHandler, tcd.Continuation, false, null, tcd.ErrorHandlerBeforeUnwind,
+					returnsToPending);
 			}
 			else if (tail.Type == DataType.YieldRequest)
 			{

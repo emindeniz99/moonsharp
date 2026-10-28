@@ -1020,3 +1020,27 @@ add no value for it, and parentheses turn it into nil.
 **Affected:** hosts that test `DynValue.NewTuple()` or a call's result for
 `DataType.Nil`: test `IsNil()`, which is true for both. Scripts that counted
 the extra nil.
+
+## Tail calls from C# functions keep their continuation
+
+**Before:** a C# function can return a tail call request
+(`DynValue.NewTailCallReq`) with a continuation, a C# function that receives
+the callee's results. The VM ran it when the callee was a Lua function and
+dropped it when the callee was a C# function. Because of that `pcall`
+refused such functions: `pcall(tostring, x)` for an `x` with a `__tostring`
+metamethod failed with "the function passed to pcall cannot be called
+directly by pcall", and so did `pcall(coroutine.yield, ...)`.
+
+**After:** the continuation runs for every callee, also after a C# callee
+yields, and errors before it runs reach the caller's `pcall`. `pcall` and
+`xpcall` take any C# function: `pcall(tostring, x)` returns `true` and the
+text, and `pcall(coroutine.yield, v)` yields `v` and returns `true` and the
+resume values, as in Lua 5.2. A C# `__tostring` now goes through `tostring`'s
+check like a Lua one: a number becomes its text (Lua 5.2 accepts numbers;
+MoonSharp rejected them from Lua functions too before), a table or a boolean
+is the error "'tostring' must return a string".
+
+**Affected:** C# `__tostring` functions that return values other than
+strings, numbers and nil. `Script.Call(pcall, ...)` from C# still hands
+the host the tail call request when the called function has a continuation
+(docs/ROADMAP.md).

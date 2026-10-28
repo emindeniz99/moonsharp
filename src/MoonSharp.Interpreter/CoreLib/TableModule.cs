@@ -181,7 +181,20 @@ namespace MoonSharp.Interpreter.CoreLib
 
 			int pos = vpos.IsNil() ? len : (int)vpos.Number;
 
-			if (pos >= len + 1 || (pos < 1 && len > 0))
+			// Lua 5.2 with #t <= 0: return t[#t] and set it to nil. That key is outside 1..n, so it goes
+			// through the script's key path; Get(int)/Set(int) would use a separate entry for it.
+			if (pos == len && len < 1)
+			{
+				DynValue key = DynValue.NewNumber(pos);
+				ret = list.Get(key);
+
+				if (ret.IsNotNil())
+					list.Set(key, DynValue.Nil);
+
+				return ret;
+			}
+
+			if (pos >= len + 1 || pos < 1)
 				throw new ScriptRuntimeException("bad argument #1 to 'remove' (position out of bounds)");
 
 			for (int i = pos; i <= len; i++)

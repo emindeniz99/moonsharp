@@ -22,7 +22,10 @@ namespace MoonSharp.Benchmarks
 			public MethodInfo DoString, Call, CreateCoroutine;
 			public object Script;
 
+			public object SoftSandbox;
+
 			public object NewScript() => Activator.CreateInstance(ScriptType);
+			public object NewScript(object modules) => Activator.CreateInstance(ScriptType, modules);
 			public object Run(string code) => DoString.Invoke(Script, new object[] { code, null, null });
 			public object Invoke(object fn, object[] args) => Call.Invoke(Script, new object[] { fn, args });
 		}
@@ -48,6 +51,7 @@ namespace MoonSharp.Benchmarks
 			var workloads = new List<Workload>
 			{
 				new Workload { Name = "NewScript_Default", Iterations = 200, Prepare = b => () => b.NewScript() },
+				new Workload { Name = "NewScript_SoftSandbox", Iterations = 200, Prepare = b => () => b.NewScript(b.SoftSandbox) },
 				new Workload { Name = "CreateCoroutine", Iterations = 500, Prepare = b =>
 				{
 					object body = b.Run("return function() coroutine.yield(1) end");
@@ -139,6 +143,7 @@ namespace MoonSharp.Benchmarks
 				DoString = script.GetMethod("DoString", new[] { typeof(string), table, typeof(string) }),
 				Call = script.GetMethod("Call", new[] { dynValue, typeof(object[]) }),
 				CreateCoroutine = script.GetMethod("CreateCoroutine", new[] { dynValue }),
+				SoftSandbox = Enum.Parse(asm.GetType("MoonSharp.Interpreter.CoreModules", true), "Preset_SoftSandbox"),
 			};
 
 			b.Script = b.NewScript();

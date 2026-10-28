@@ -32,3 +32,25 @@ the internal tail-call request (`DataType.TailCallRequest`) to the host instead 
   (such as `pcall`'s) are returned as before.
 
 Affected: hosts that call `dofile` (or other tail-calling C# functions) through `Script.Call`.
+
+## `require` is a C# function
+
+`require` was a Lua function compiled into every new `Script`. It is now a C# function that compiles
+the same Lua code on its first call and then tail-calls it, so loading, caching in `package.loaded`,
+yielding while a module loads, error messages and their positions (`libfunc_require:(12,1-44): ...`),
+tracebacks below `require`, and chunk numbering (`libfunc_require` is still source 0, so the first
+chunk is still `chunk_1`) are unchanged. What differs is how `require` itself appears:
+
+| | Before | Now |
+|---|---|---|
+| `type(require)` | `function` | `function` |
+| Value type seen by the host | `DataType.Function` | `DataType.ClrFunction` |
+| `string.dump(require)` | a dump of a Lua function | an error, as for any C# function |
+| `coroutine.create(require)` | a Lua coroutine | a C# coroutine, which `coroutine.resume` cannot run (as for any C# function) |
+
+The same applies to any module member written in Lua (a `[MoonSharpModuleMethod]` string field) in a
+host's own module types. A syntax error in such a field now surfaces on the first call instead of at
+registration.
+
+Affected: hosts that inspect `require` as a Lua function. A debugger attached before the first
+`require` call receives the bytecode of `libfunc_require` when it is compiled.

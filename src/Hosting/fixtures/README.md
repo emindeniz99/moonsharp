@@ -89,10 +89,8 @@ exact mismatch the runner reports:
 }
 ```
 
-The file is `{}` when everything passes. Today only `dotnet-tr-TR.json` lists
-failures: concatenation and `string.format('%s')` format numbers with the
-process culture, so `1.5 .. ''` gives `1,5` there. Every runner
-compares its results with its file and fails on any difference:
+The file is `{}` when everything passes. Every runner compares its results
+with its file and fails on any difference:
 
 - **new**: a case fails that is not listed;
 - **changed**: a listed case fails with a different detail;

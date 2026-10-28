@@ -33,6 +33,11 @@ chat or a pull request.
 | 2026-10-28 | Mobile hosts register only the C# types they choose (no automatic registration). Script signing waits until scripts are served from a CDN or a third party. | Store review: downloaded scripts must not open up native APIs. The scripts are the team's own and arrive over HTTPS; the server re-runs the same rule to check results. |
 | 2026-10-28 | Browser budget: first load under 5 s on a mid-range phone over slow 4G (today 1.91 MB brotli, about 0.6 s start on desktop). Optimise when a measurement crosses it. | Size matters only for mobile web users; the cache serves later visits. |
 | 2026-10-28 | Tables get an array part and keep full insertion order for `pairs`; the dead-key bugs are fixed (only the first cleared key was ever removed, and `Table.Pairs` still returned keys set to nil). | Measured on `spike/table-order`: insertion order costs +0.7% time against hash order (inside noise), is 39% faster on delete and re-insert, and keeps `json.serialize` output identical across runs; hash order changes JSON key order from one process run to the next. |
+| 2026-10-28 | Empty result lists follow Lua: a call that returns nothing gives zero values, so `select('#', f())` is 0 ([#287](https://github.com/moonsharp-devs/moonsharp/issues/287), [#198](https://github.com/moonsharp-devs/moonsharp/issues/198)). Lands after the struct-value work, which owns every expansion site. | Plainly wrong today; breaking changes are allowed. |
+| 2026-10-28 | Overloads: a fractional number no longer picks an integer parameter ([#293](https://github.com/moonsharp-devs/moonsharp/issues/293)), and an exact type match beats a custom converter ([#294](https://github.com/moonsharp-devs/moonsharp/issues/294)). | `F(1.5)` called `F(int)` and dropped the fraction. |
+| 2026-10-28 | Scripts see static members of base classes, except those of framework base types such as `object`, `ValueType` and `Enum` ([#175](https://github.com/moonsharp-devs/moonsharp/issues/175)). | Matches C#; keeps member lists, Hardwire output and LuaCATS definitions free of `Equals`/`ReferenceEquals`. |
+| 2026-10-28 | Under automatic registration, lists and dictionaries convert to tables as documented, not to userdata ([#274](https://github.com/moonsharp-devs/moonsharp/issues/274)). | Documented behaviour; mobile hosts register types explicitly and are not affected. |
+| 2026-10-28 | Per-script type registries ([#181](https://github.com/moonsharp-devs/moonsharp/issues/181)) are postponed. | Large change to the static `UserData` API with no current need. |
 | standing | Safe C# only: no `unsafe`, no `System.Runtime.CompilerServices.Unsafe`. Public Unity mechanisms only: no libil2cpp patches. | Bugs must stay exceptions, not memory corruption. The `Unsafe` package also fails to load in some Unity 6 setups ([Lua-CSharp#337](https://github.com/nuskey8/Lua-CSharp/issues/337)). |
 | 2026-10-28 | Work collects on the `next` branch and lands on `master` in batches with `git merge --no-ff`, after the full unit suite and the fixtures pass locally. Pull requests are optional. CI runs on pushes to `master` (not for docs-only changes), and a red `master` is fixed forward first. | Fewer round trips and fewer CI runs. CI does not run on branches, so local checks come first. |
 | 2026-10-28 | The development toolchain is pinned in `mise.toml` (.NET SDK 10 with the .NET 8 runtime, Java 17, Maven, Node 24, CMake), following the shared stack's toolchain rules; CI installs it with `jdx/mise-action`. clang and zlib come from apt. | Local and CI builds use the same exact versions instead of whatever a machine or runner image carries. mise offers clang only through conda, whose sysroot fails the NativeAOT link (`cannot find -lz`). |
@@ -119,18 +124,15 @@ After step 4: the checkpoint in the decisions table.
 
 - Run the official Lua 5.2 test suite and track failures.
 - Name the variable in runtime errors ("attempt to call a nil value (global 'foo')").
-- Turn native stack exhaustion into a `ScriptRuntimeException` (`RuntimeHelpers.EnsureSufficientExecutionStack`).
 - A `Script` keeps every chunk it compiles, so a long-lived `Script` that compiles in a loop grows without bound.
 - `ScriptOptions(defaults)` does not copy `ColonOperatorClrCallbackBehaviour`.
 - Property getters and setters called through reflection (AOT platforms, `InteropAccessMode.Reflection`) still wrap a thrown exception in `TargetInvocationException`; methods no longer do. A setter's own `ArgumentException` is also reported as a type mismatch on the compiled path.
 - `PlatformAutoDetector` and `UnityAssetsScriptLoader` test `UNITY_5`, which Unity 2017 and later no longer define, so the package always takes the reflection path (`IsUnityNative` is false). The Unity test bed checks the default loader; replace the checks with `UNITY_5_3_OR_NEWER` if it fails or once the matrix is green.
 - Upstream bugs that reproduce in the string library, the table code, the VM core and the compiler, and `require` ignoring `package.path` and `package.preload`: each has an ignored test in `UpstreamIssueTests.cs` that fails without the `Ignore` (list in [upstream-issues.md](upstream-issues.md)). Remove the `Ignore` with the fix.
 - Found by the conformance corpus; each is a case with a `note`, so a fix updates its expectation. The owner decides which are bugs to fix (in `legacy` too) and which stay as documented differences:
-  - `%` with a negative divisor takes the dividend's sign: `7 % -3` is 1, Lua gives -2.
   - `math.huge` is `Double.MaxValue`, so `math.huge == 1/0` is false.
   - `error(t)` with a table, and `error()`, raise "bad argument #1 to 'error'"; `pcall` never sees the error object.
   - The lexer reads `1e15+0.5` as one malformed number.
-  - Arithmetic does not coerce hexadecimal strings (`'0x10' + 1`) and accepts .NET forms such as `'1,000'`: `DynValue.CastToNumber` should call `BasicModule.TryParseLuaNumber`, which `tonumber` uses (ignored test `Issue229_ArithmeticCoercesLuaNumerals`).
   - `string.format`: `%e` writes three exponent digits, `%d` of 2^63 wraps instead of failing, `%s` rejects nil.
   - `string.find(s, '', init)` with `init` past the end still matches.
   - `tostring` writes shortest round-trip digits, `NaN` and `Infinity`, where Lua 5.2 writes `%.14g`, `nan` and `inf`.
@@ -142,7 +144,7 @@ After step 4: the checkpoint in the decisions table.
 - Run the bytecode leg of the corpus on the browser and Java hosts too (they accept the base64 dump text today; only the .NET runner compiles).
 - The JSON contract for int64 results (the decision above): today a context with int64 returns them as an `output` error.
 - Publish per-host corpus results over time, as JsonLogic's compat tables do.
-- In-process JVM hosting as the default: needs the native stack guard above and an execution budget for plain calls, then a new measurement against the worker.
+- In-process JVM hosting as the default: the native stack guard and the execution budget (`ScriptOptions.InterruptHandler`) now exist; the hosting layer needs an error kind for an interrupted script, then a new measurement against the worker.
 - Browser: AOT-compiled WebAssembly against the interpreter build; Firefox and WebKit tests.
 - From upstream feature requests ([upstream-issues.md](upstream-issues.md)):
   - convert Lua functions to `Action` and `Func<...>` parameters (upstream #186), with the typed calls from C# to Lua above;

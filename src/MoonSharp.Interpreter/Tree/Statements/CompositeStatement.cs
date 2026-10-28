@@ -12,6 +12,9 @@ namespace MoonSharp.Interpreter.Tree.Statements
 		public CompositeStatement(ScriptLoadingContext lcontext)
 			: base(lcontext)
 		{
+			// Every nested block passes here.
+			lcontext.EnterSyntaxLevel();
+
 			while (true)
 			{
 				Token t = lcontext.Lexer.Current;
@@ -28,6 +31,8 @@ namespace MoonSharp.Interpreter.Tree.Statements
 			// eat away all superfluos ';'s
 			while (lcontext.Lexer.Current.Type == TokenType.SemiColon)
 				lcontext.Lexer.Next();
+
+			lcontext.SyntaxDepth--;
 		}
 
 

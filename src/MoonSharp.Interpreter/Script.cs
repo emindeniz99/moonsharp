@@ -582,10 +582,8 @@ namespace MoonSharp.Interpreter
 		{
 			this.CheckScriptOwnership(function);
 
-			if (function.Type == DataType.Function)
-				return m_MainProcessor.Coroutine_Create(function.Function);
-			else if (function.Type == DataType.ClrFunction)
-				return DynValue.NewCoroutine(new Coroutine(function.Callback));
+			if (function.Type == DataType.Function || function.Type == DataType.ClrFunction)
+				return m_MainProcessor.Coroutine_Create(function);
 			else
 				throw new ArgumentException("function is not of DataType.Function or DataType.ClrFunction");
 		}

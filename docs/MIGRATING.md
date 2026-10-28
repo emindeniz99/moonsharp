@@ -403,9 +403,10 @@ fraction and `p` exponent), an optional sign and surrounding whitespace.
 print(tonumber("0x23"), tonumber("1,000"))   -- before: nil 1000   now: 35 nil
 ```
 
-String coercion in arithmetic (`"0x10" + 1`) still uses the old parsing
-until the VM work changes it. Affected: scripts that passed formatted
-numbers to `tonumber`
+Strings that arithmetic and the library functions turn into numbers
+(`DynValue.CastToNumber`) follow the same rules: `"0x10" + 1` is 17,
+and `"1,000" + 1` is an error where it was 1001. Affected: scripts that
+passed formatted numbers to `tonumber` or used them in arithmetic
 ([upstream #229](https://github.com/moonsharp-devs/moonsharp/issues/229)).
 
 ## Standard streams set after a script is created are used
@@ -456,6 +457,143 @@ On NativeAOT and IL2CPP an expression-tree delegate is interpreted, and reading 
 Passing such a delegate to a script used to fail there; it is now called through its `Invoke` method.
 Passing a delegate whose type is not `Func<ScriptExecutionContext, CallbackArguments, DynValue>` but has
 the same signature used to throw `InvalidCastException`; it is now converted like any other delegate.
+
+## `>` and `>=` follow Lua 5.2
+
+**Before:** `a > b` ran as `not (a <= b)` and `a >= b` as `not (a < b)`.
+
+**After:** `a > b` runs as `b < a` and `a >= b` as `b <= a`, as the Lua 5.2 manual defines them
+([3.4.3](https://www.lua.org/manual/5.2/manual.html#3.4.3)). Operands are still evaluated left to right.
+
+| Expression | Before | After (and Lua 5.2) |
+|---|---|---|
+| `(0/0) > 1`, `(0/0) >= 1`, `1 > (0/0)` | `true` | `false` |
+| `x > y` with `__lt` and `__le` | `not __le(x, y)` | `__lt(y, x)` |
+| `x >= y` with `__le` | `not __lt(x, y)` (an error without `__lt`) | `__le(y, x)` |
+| `x > y` with only `__le` | `not __le(x, y)` | error: attempt to compare two table values |
+
+`x >= y` with only `__lt` gives the same result as before (`not __lt(x, y)`). Errors for comparisons
+of unrelated types name the operands of the comparison that runs, as Lua 5.2 does: `1 > 'x'` now
+reports "attempt to compare string with number" (it said "number with string").
+
+**Affected:** scripts that compare NaN with `>`/`>=`, and types whose `__le` is not the complement of
+`__lt` (for example partial orders). Code compiled by an older version and loaded with `load` from a
+`string.dump` keeps the old behaviour until it is recompiled.
+
+## Comparison and `not` results are read-only
+
+**Before:** `==`, `<`, `<=`, `>`, `>=` and `not` produced a new writable boolean each time.
+
+**After:** they produce the shared read-only `DynValue.True` and `DynValue.False`, as the literals
+`true` and `false` already did. This removes an allocation per comparison.
+
+**Affected:** hosts that call `DynValue.Assign` on a boolean they received from a script. That now
+throws `ScriptRuntimeException` ("Assigning on r-value") instead of changing the value; create a new
+value with `DynValue.NewBoolean` instead. `DynValue.NewBoolean` still returns a writable value.
+
+## `%` follows Lua 5.2 for negative divisors
+
+**Before:** `a % b` was `IEEERemainder(a, b)`, plus `b` when that was negative. That is right for a
+positive divisor and wrong for a negative one.
+
+**After:** `a % b` is `a - math.floor(a/b)*b`, the Lua 5.2 definition
+([3.4.1](https://www.lua.org/manual/5.2/manual.html#3.4.1)), in scripts and in dynamic expressions.
+The result has the sign of the divisor.
+
+| Expression | Before | After (and Lua 5.2) |
+|---|---|---|
+| `5 % -3` | `-4` | `-1` |
+| `-5 % -3` | `1` | `-2` |
+| `5.5 % -2` | `-2.5` | `-0.5` |
+| `5 % (1/0)` | `5` | `nan` |
+| `-5 % (1/0)` | `inf` | `nan` |
+
+Positive divisors give the same results as before, except where the two formulas round differently
+in the last bit for fractional operands.
+
+**Affected:** scripts that use `%` with a negative or infinite divisor.
+
+## Native recursion is limited to 200 levels and fails with an error
+
+**Before:** recursion that runs through C# (a Lua function passed to `string.gsub` or `table.sort`
+that calls them again, a C# callback that calls back into Lua, `coroutine.wrap` inside a coroutine),
+source nested tens of thousands of levels deep, and deeply nested or cyclic data in `json.parse` and
+`json.serialize` overflowed the native stack. The runtime then ended the whole process; no `catch` or
+`pcall` could stop it.
+
+**After:** the same limit as Lua 5.2 (`LUAI_MAXCCALLS`, 200) applies everywhere, as a count, so every
+host stops at the same depth:
+
+| What | Error |
+|---|---|
+| More than 200 nested entries into the VM from C# on one thread (`Script.Call`, callbacks, `coroutine.resume`) | `ScriptRuntimeException` "C stack overflow" (Lua 5.2's text); `pcall` catches it |
+| Source with more than 200 nested expressions and blocks (`load`, `Script.LoadString`) | `SyntaxErrorException` "chunk has too many syntax levels" |
+| `json.parse` input or `json.serialize` tables more than 200 levels deep, or cyclic tables | `json nesting exceeds 200 levels` (a `ScriptRuntimeException` from Lua) |
+
+Chains of any length, such as a generated `1+1+...+1` with a million terms or `a.b.b.b...`, now
+compile without recursion, as in Lua; they used to overflow the stack too. A stack probe
+(`RuntimeHelpers.EnsureSufficientExecutionStack`) stays behind the VM count for threads with a small
+stack.
+
+**Affected:** code nested deeper than Lua 5.2 allows, which MoonSharp used to accept as long as the
+stack held. The stack probe does not work on Mono here (a test on Mono 6 overflowed inside it) and is
+unverified on IL2CPP; the counts work everywhere.
+
+## `xpcall` message handlers only see errors that reach them
+
+**Before:** an error raised below an `xpcall` ran its message handler even when an inner `pcall`
+caught the error first, and an error crossing several C# callbacks could run a handler once per
+callback level.
+
+**After:** the handler runs once, for errors that reach its `xpcall`, as in Lua.
+
+**Affected:** scripts whose message handlers have side effects (logging, counters).
+
+## `InterpreterException.CallStack` keeps the innermost frames
+
+**Before:** when an error crossed C# callbacks (for example a Lua function called from `string.gsub`),
+each level overwrote `CallStack`, and the host saw only the outermost frames.
+
+**After:** `CallStack` is filled once, where the error is first caught, and lists every frame from
+the error outwards.
+
+**Affected:** hosts that print `CallStack`; the list is longer and starts where the error happened.
+
+## `pcall` catches compile errors raised while a script runs
+
+**Before:** a `SyntaxErrorException` raised from running code, for example `require` of a module
+with a syntax error or a C# function that loads source, went past `pcall` and `xpcall` to the host.
+
+**After:** `pcall` and `xpcall` catch it like any other error and return `false` and the message, as
+in Lua. Without a `pcall` the host still receives the `SyntaxErrorException`.
+
+**Affected:** scripts that call `require` or loader functions inside `pcall`.
+
+## Coroutines can run C# functions
+
+**Before:** `coroutine.create(f)` with a C# function `f` (`select`, `string.upper`, `pcall`, a host
+callback) produced a coroutine that `coroutine.resume` and `Coroutine.Resume(args)` refused with an
+`InvalidOperationException`; only `Coroutine.Resume(context, args)` ran it, and only once.
+
+**After:** it is an ordinary coroutine, as in Lua: resuming it calls the function; a tail call it
+returns (as `pcall` does) runs inside the coroutine and may yield; `coroutine.create(coroutine.yield)`
+yields its arguments and returns the next resume's arguments. `Coroutine.Type` is `Coroutine` for it;
+`CoroutineType.ClrCallback` and `ClrCallbackDead` are no longer produced.
+
+**Affected:** hosts that checked `Coroutine.Type == CoroutineType.ClrCallback`.
+
+## Variables given no value hold nil
+
+**Before:** `local x` with no value could pick up a value left on the stack (inside a `for ... in`
+loop it read the iterator's state), and `local v = f()` where `f` returns nothing stored "no value",
+so `type(v)` failed with "bad argument #1 to 'type' (value expected)".
+
+**After:** both hold `nil`, as in Lua. A call with no results passed straight as an argument,
+`type(f())`, still passes no value, as Lua does
+([upstream #263](https://github.com/moonsharp-devs/moonsharp/issues/263),
+[#258](https://github.com/moonsharp-devs/moonsharp/issues/258)).
+
+**Affected:** scripts that read a variable declared without a value and got the leftover value.
 
 ## Keys set to nil are gone for hosts, and every one of them is forgotten
 

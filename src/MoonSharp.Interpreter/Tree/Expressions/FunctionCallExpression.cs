@@ -66,10 +66,19 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 			}
 		}
 
+		internal override Expression SuffixBase
+		{
+			get { return m_Function; }
+		}
+
 		public override void Compile(Execution.VM.ByteCode bc)
 		{
-			m_Function.Compile(bc);
+			CompileSuffixBase(bc, m_Function);
+			CompileSuffix(bc);
+		}
 
+		internal override void CompileSuffix(Execution.VM.ByteCode bc)
+		{
 			int argslen = m_Arguments.Count;
 
 			if (!string.IsNullOrEmpty(m_Name))

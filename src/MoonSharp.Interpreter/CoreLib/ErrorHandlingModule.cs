@@ -75,6 +75,13 @@ namespace MoonSharp.Interpreter.CoreLib
 					executionContext.PerformMessageDecorationBeforeUnwind(handlerBeforeUnwind, ex);
 					return DynValue.NewTupleNested(DynValue.False, DynValue.NewString(ex.DecoratedMessage));
 				}
+				catch (SyntaxErrorException ex)
+				{
+					// A compile error raised while running (require of a broken module) is an error like any other.
+					var rex = new ScriptRuntimeException(ex.DecoratedMessage ?? ex.Message);
+					executionContext.PerformMessageDecorationBeforeUnwind(handlerBeforeUnwind, rex);
+					return DynValue.NewTupleNested(DynValue.False, DynValue.NewString(rex.DecoratedMessage));
+				}
 			}
 			else if (v.Type != DataType.Function)
 			{

@@ -211,7 +211,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		// Arithmetic coerces strings with the same rules as tonumber; DynValue.CastToNumber still
 		// uses .NET parsing and should call BasicModule.TryParseLuaNumber.
 		[Test]
-		[Ignore("waits for VM core work (DynValue.CastToNumber): https://github.com/moonsharp-devs/moonsharp/issues/229")]
 		public void Issue229_ArithmeticCoercesLuaNumerals()
 		{
 			Script s = new Script();
@@ -443,7 +442,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		// https://github.com/moonsharp-devs/moonsharp/issues/263: "local x" without a value could
 		// take a leftover value from the stack instead of nil.
 		[Test]
-		[Ignore("waits for compiler work: https://github.com/moonsharp-devs/moonsharp/issues/263")]
 		public void Issue263_LocalWithoutValueIsNil()
 		{
 			Script s = new Script();
@@ -454,7 +452,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		// https://github.com/moonsharp-devs/moonsharp/issues/258: a local assigned from a function
 		// that returns nothing held "no value", so type(x) failed with "value expected".
 		[Test]
-		[Ignore("waits for compiler work: https://github.com/moonsharp-devs/moonsharp/issues/258")]
 		public void Issue258_LocalFromVoidCallIsNil()
 		{
 			Script s = new Script();

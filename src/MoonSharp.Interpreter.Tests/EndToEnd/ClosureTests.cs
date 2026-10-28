@@ -321,6 +321,86 @@ return g(|x,y|f(x,y,1), 2)
 			Assert.AreEqual("helloXX", res.String);
 		}
 
+		[Test]
+		public void ClosuresInLoopCaptureFreshUpvalues()
+		{
+			// Each iteration's closure keeps its own i, and its own copy of a block local.
+			DynValue res = new Script().DoString(@"
+				local fs = {}
+				for i = 1, 3 do
+					local j = i * 10
+					fs[i] = function() j = j + 1 return i, j end
+				end
+				local a1, b1 = fs[1]()
+				local a2, b2 = fs[2]()
+				local a3, b3 = fs[1]()
+				return a1 .. ',' .. b1 .. ',' .. a2 .. ',' .. b2 .. ',' .. a3 .. ',' .. b3");
+
+			Assert.AreEqual("1,11,2,21,1,12", res.String);
+		}
+
+		[Test]
+		public void ClosuresShareAnUpvalue()
+		{
+			DynValue res = new Script().DoString(@"
+				local function counter()
+					local n = 0
+					return function() n = n + 1 return n end, function() return n end
+				end
+				local inc1, get1 = counter()
+				local inc2, get2 = counter()
+				inc1() inc1() inc2()
+				return get1() .. ',' .. get2()");
+
+			Assert.AreEqual("2,1", res.String);
+		}
+
+		[Test]
+		public void ClosureUpvalueNamesAndOrder()
+		{
+			// Names and order as debug.getupvalue reports them, and the same through the host API.
+			Script s = new Script(CoreModules.Preset_Complete);
+			DynValue res = s.DoString(@"
+				local a, b, c = 1, 'two', true
+				local function f() return c, a, b, print end
+				local names = {}
+				local i = 1
+				while true do
+					local name, value = debug.getupvalue(f, i)
+					if name == nil then break end
+					names[#names + 1] = name .. '=' .. (type(value) == 'table' and 'table' or tostring(value))
+					i = i + 1
+				end
+				return table.concat(names, ' '), f");
+
+			// _ENV comes first: the function body loads it before anything else.
+			Assert.AreEqual("_ENV=table c=true a=1 b=two", res.Tuple[0].String);
+
+			Closure f = res.Tuple[1].Function;
+			Assert.AreEqual(4, f.GetUpvaluesCount());
+			Assert.AreEqual(WellKnownSymbols.ENV, f.GetUpvalueName(0));
+			Assert.AreEqual("c", f.GetUpvalueName(1));
+			Assert.AreEqual("a", f.GetUpvalueName(2));
+			Assert.AreEqual("b", f.GetUpvalueName(3));
+			Assert.AreEqual(Closure.UpvaluesType.Closure, f.GetUpvaluesType());
+		}
+
+		[Test]
+		public void ClosureWithOnlyEnvSurvivesDump()
+		{
+			Script s = new Script();
+			DynValue f = s.DoString("x = 5 return function(y) return x + y end");
+
+			Assert.AreEqual(Closure.UpvaluesType.Environment, f.Function.GetUpvaluesType());
+
+			var ms = new System.IO.MemoryStream();
+			s.Dump(f, ms);
+			ms.Position = 0;
+
+			DynValue g = s.LoadStream(ms);
+			Assert.AreEqual(7, s.Call(g, 2).Number);
+		}
+
 
 	}
 }

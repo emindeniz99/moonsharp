@@ -259,9 +259,7 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 
 		private static bool ShouldInvertBoolean(Operator op)
 		{
-			return (op == Operator.NotEqual)
-				|| (op == Operator.GreaterOrEqual)
-				|| (op == Operator.Greater);
+			return (op == Operator.NotEqual);
 		}
 
 		private static OpCode OperatorToOpCode(Operator op)
@@ -269,10 +267,8 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 			switch (op)
 			{
 				case Operator.Less:
-				case Operator.GreaterOrEqual:
 					return OpCode.Less;
 				case Operator.LessOrEqual:
-				case Operator.Greater:
 					return OpCode.LessEq;
 				case Operator.Equal:
 				case Operator.NotEqual:
@@ -297,30 +293,73 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 		}
 
 
+		// An operator chain such as 1+1+...+1 or a..b..c parses in a loop into a tree as deep as the chain.
+		// Compile and Eval walk such trees with this explicit stack instead of recursing, so a chain of
+		// any length needs no native stack.
+		struct Pending
+		{
+			public BinaryOperatorExpression Node;
+			public bool LeftDone;
+			public Instruction Jump;
+			public DynValue Left;
+		}
+
 		public override void Compile(Execution.VM.ByteCode bc)
 		{
-			m_Exp1.Compile(bc);
+			var pending = new System.Collections.Generic.Stack<Pending>();
+			Expression e = this;
 
-			if (m_Operator == Operator.Or)
+			while (true)
 			{
-				Instruction i = bc.Emit_Jump(OpCode.JtOrPop, -1);
-				m_Exp2.Compile(bc);
-				i.NumVal = bc.GetJumpPointForNextInstruction();
+				for (var b = e as BinaryOperatorExpression; b != null; b = e as BinaryOperatorExpression)
+				{
+					pending.Push(new Pending { Node = b });
+					e = b.m_Exp1;
+				}
+
+				e.Compile(bc);
+
+				while (true)
+				{
+					if (pending.Count == 0)
+						return;
+
+					Pending p = pending.Pop();
+
+					if (!p.LeftDone)
+					{
+						if (p.Node.m_Operator == Operator.Or)
+							p.Jump = bc.Emit_Jump(OpCode.JtOrPop, -1);
+						else if (p.Node.m_Operator == Operator.And)
+							p.Jump = bc.Emit_Jump(OpCode.JfOrPop, -1);
+
+						p.LeftDone = true;
+						pending.Push(p);
+						e = p.Node.m_Exp2;
+						break;
+					}
+
+					p.Node.EmitOperator(bc, p.Jump);
+				}
+			}
+		}
+
+		private void EmitOperator(Execution.VM.ByteCode bc, Instruction jump)
+		{
+			if (jump != null)
+			{
+				jump.NumVal = bc.GetJumpPointForNextInstruction();
 				return;
 			}
 
-			if (m_Operator == Operator.And)
+			// Lua 5.2 3.4.3: a > b is b < a and a >= b is b <= a. "not (a <= b)" would differ for NaN and
+			// for metamethods (it calls __le(a, b) where Lua calls __lt(b, a)). Errors then name the
+			// operands as Lua does: 1 > 'x' is "attempt to compare string with number".
+			if (m_Operator == Operator.Greater || m_Operator == Operator.GreaterOrEqual)
 			{
-				Instruction i = bc.Emit_Jump(OpCode.JfOrPop, -1);
-				m_Exp2.Compile(bc);
-				i.NumVal = bc.GetJumpPointForNextInstruction();
+				bc.Emit_Swap(0, 1);
+				bc.Emit_Operator(m_Operator == Operator.Greater ? OpCode.Less : OpCode.LessEq);
 				return;
-			}
-
-
-			if (m_Exp2 != null)
-			{
-				m_Exp2.Compile(bc);
 			}
 
 			bc.Emit_Operator(OperatorToOpCode(m_Operator));
@@ -331,27 +370,51 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 
 		public override DynValue Eval(ScriptExecutionContext context)
 		{
-			DynValue v1 = m_Exp1.Eval(context).ToScalar();
+			var pending = new System.Collections.Generic.Stack<Pending>();
+			Expression e = this;
 
-			if (m_Operator == Operator.Or)
+			while (true)
 			{
-				if (v1.CastToBool())
-					return v1;
-				else
-					return m_Exp2.Eval(context).ToScalar();
-			}
+				for (var b = e as BinaryOperatorExpression; b != null; b = e as BinaryOperatorExpression)
+				{
+					pending.Push(new Pending { Node = b });
+					e = b.m_Exp1;
+				}
 
-			if (m_Operator == Operator.And)
+				DynValue v = e.Eval(context).ToScalar();
+
+				while (true)
+				{
+					if (pending.Count == 0)
+						return v;
+
+					Pending p = pending.Pop();
+
+					if (!p.LeftDone)
+					{
+						// or and and return their left operand without evaluating the right one.
+						if ((p.Node.m_Operator == Operator.Or && v.CastToBool()) || (p.Node.m_Operator == Operator.And && !v.CastToBool()))
+							continue;
+
+						p.LeftDone = true;
+						p.Left = v;
+						pending.Push(p);
+						e = p.Node.m_Exp2;
+						break;
+					}
+
+					v = p.Node.Apply(p.Left, v);
+				}
+			}
+		}
+
+		private DynValue Apply(DynValue v1, DynValue v2)
+		{
+			if (m_Operator == Operator.Or || m_Operator == Operator.And)
 			{
-				if (!v1.CastToBool())
-					return v1;
-				else
-					return m_Exp2.Eval(context).ToScalar();
+				return v2;
 			}
-
-			DynValue v2 = m_Exp2.Eval(context).ToScalar();
-
-			if ((m_Operator & COMPARES) != 0)
+			else if ((m_Operator & COMPARES) != 0)
 			{
 				return DynValue.NewBoolean(EvalComparison(v1, v2, m_Operator));
 			}
@@ -393,11 +456,7 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 				case Operator.Div:
 					return d1 / d2;
 				case Operator.Mod:
-					{
-						double mod = Math.IEEERemainder(d1, d2);
-						if (mod < 0) mod += d2;
-						return mod;
-					}
+					return Execution.VM.Processor.Modulo(d1, d2);
 				default:
 					throw new DynamicExpressionException("Unsupported operator {0}", m_Operator);
 			}
@@ -451,9 +510,9 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 						return r.Equals(l);
 					}
 				case Operator.Greater:
-					return !EvalComparison(l, r, Operator.LessOrEqual);
+					return EvalComparison(r, l, Operator.Less);
 				case Operator.GreaterOrEqual:
-					return !EvalComparison(l, r, Operator.Less);
+					return EvalComparison(r, l, Operator.LessOrEqual);
 				case Operator.NotEqual:
 					return !EvalComparison(l, r, Operator.Equal);
 				default:

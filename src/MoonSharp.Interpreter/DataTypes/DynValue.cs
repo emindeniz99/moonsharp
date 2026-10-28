@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -102,6 +101,15 @@ namespace MoonSharp.Interpreter
 				m_Number = v ? 1 : 0,
 				m_Type = DataType.Boolean,
 			};
+		}
+
+		/// <summary>
+		/// Returns the shared read-only <see cref="True"/> or <see cref="False"/> instance, without allocating.
+		/// For values the VM produces; <see cref="NewBoolean"/> stays writable for hosts.
+		/// </summary>
+		internal static DynValue FromBoolean(bool v)
+		{
+			return v ? True : False;
 		}
 
 		/// <summary>
@@ -720,8 +728,9 @@ namespace MoonSharp.Interpreter
 			}
 			else if (rv.Type == DataType.String)
 			{
+				// Lua numerals only, as tonumber reads them: "0x10" is 16, "1,000" and "$5" are not numbers.
 				double num;
-				if (double.TryParse(rv.String, NumberStyles.Any, CultureInfo.InvariantCulture, out num))
+				if (CoreLib.BasicModule.TryParseLuaNumber(rv.String, out num))
 					return num;
 			}
 			return null;

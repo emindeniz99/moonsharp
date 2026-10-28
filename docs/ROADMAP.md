@@ -46,6 +46,7 @@ chat or a pull request.
 | Browser (.NET 10 WebAssembly) | Chromium tested in CI with Playwright. Firefox and WebKit not tested. |
 | Java 17+ (worker process) | Tested in CI, with a Spring Boot 4 sample. |
 | Java in-process (hostfxr or NativeAOT) | Experimental, Linux x64: fixtures pass with CoreCLR and NativeAOT on branch `feat/jvm-in-process`. The worker stays the default ([hosting.md](hosting.md)). |
+| NativeAOT (.NET 8), as a stand-in for IL2CPP | The unit suite runs in CI (`nativeaot-unit` in `ci.yml`): all tests pass, none on the known-failures list. How well it predicts IL2CPP is unmeasured ([hosting.md](hosting.md), "The unit suite under NativeAOT"). |
 | Unity 2021.3 / 2022.3 / 6 LTS, Mono and IL2CPP | **Not run yet.** `.github/workflows/unity.yml` runs the suite in the editor and in a Linux IL2CPP player on 2021.3.45f2, 2022.3.62f3 and 6000.0.85f1 once the licence secrets exist. Without Unity: the test bed compiles with each line's own compiler and references, and its assemblies pass the suite on .NET. |
 
 What Unity 2021.3 support means for the code:
@@ -69,6 +70,7 @@ What Unity 2021.3 support means for the code:
 | [#7](https://github.com/emindeniz99/moonsharp/pull/7) | Baseline measurements, upstream tracking, comparison with native Lua. |
 | [#8](https://github.com/emindeniz99/moonsharp/pull/8) | The `io` module works on browser WebAssembly; trimmed apps keep the standard library. |
 | [#9](https://github.com/emindeniz99/moonsharp/pull/9) | This roadmap. |
+| branch `fix/aot-interop` | The unit suite runs as a NativeAOT executable in CI, against a known-failures file in both directions. Its first run failed 58 of 761 tests; fixed: NativeAOT detected as AOT, enum values without `Enum.GetValues`, `List`/`Dictionary` constructors and registered types' members kept for trimmed apps (`[DynamicDependency]`, `[DynamicallyAccessedMembers]`), generic extension overloads that cannot be instantiated skipped, property accessors rethrow their own exception in reflection mode, a repeated `RegisterType` builds no descriptor (`new Script()` 166 to 69 KB on NativeAOT, 92 to 70 KB under JIT). |
 | branch `ci/unity-matrix` | Unity CI matrix (`.github/workflows/unity.yml`): 2021.3, 2022.3 and 6000.0, editor (Mono) and Linux IL2CPP player, each compared test by test with the .NET run. The test sources compile without NUnit (`src/TestRunners/EmbeddedTestRunner`, run on every push) and the fixtures are found by reflection, so no list can miss one. Exceptions from reflection calls keep their type. The UPM package requires 2021.3. |
 | branch `feat/conformance-corpus` | Cross-host conformance corpus: 225 cases in 8 suites (numbers, strings, patterns, tables, errors, JSON, int64, logic) run by the .NET CLI (also from precompiled bytecode and under a decimal-comma culture), Chromium and the three Java transports, each checked against its own known-failures file in both directions. `moonsharp-host compile` writes bytecode with source locations; every transport can create int64 contexts. See [src/Hosting/fixtures/README.md](../src/Hosting/fixtures/README.md). |
 | branch `feat/exact-int64` | Exact 64-bit integers: opt-in `int64`/`uint64` values (`CoreModules.Int64`), CLR `long`/`ulong` in both directions (`ScriptOptions.ExactInt64Interop` for CLR to Lua), exact JSON on request. See [int64.md](int64.md). |
@@ -106,6 +108,12 @@ After step 4: the checkpoint in the decisions table.
 - Hash userdata by identity so userdata keys do not all collide.
 - Call Lua from C# with typed arguments and no boxing.
 - A Roslyn source generator that emits the descriptors Hardwire produces today, at compile time. IL2CPP needs no run-time code generation, and members are found with a `switch`.
+
+- Found with the NativeAOT suite, not fixed:
+  - `CallbackFunction.FromDelegate` caches descriptors in a `ConditionalWeakTable` keyed by `Delegate.Method`. NativeAOT returns a new `MethodInfo` on every read (measured: `ReferenceEquals(d.Method, d.Method)` is false), so the cache never hits there and each conversion builds a descriptor. Key it by equality. IL2CPP not measured.
+  - A table converted to `List<T>` or `Dictionary<K,V>` of a value type the app never instantiates, and a generic extension method over one, have no native code on NativeAOT, nor on IL2CPP without full generic sharing (before Unity 2022.1). The source generator in this list removes both.
+  - 23 trim and AOT analysis warnings remain in the interpreter, listed in [hosting.md](hosting.md). Most are inherent to reflection over host types.
+  - The trimming attributes are declared inside the interpreter for netstandard2.0. If a Unity class library declares them publicly, Unity's compiler warns CS0436; check in the Unity matrix, and whether UnityLinker reads the annotations at higher stripping levels.
 
 ## Next: correctness and diagnostics
 

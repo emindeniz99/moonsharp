@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using MoonSharp.Interpreter.Compatibility;
 using MoonSharp.Interpreter.Interop.BasicDescriptors;
+using MoonSharp.Interpreter.Interop.UserDataRegistries;
 
 namespace MoonSharp.Interpreter.Interop
 {
@@ -138,7 +139,9 @@ namespace MoonSharp.Interpreter.Interop
 				{
 					if (Framework.Do.IsNestedPublic(nestedType) || Framework.Do.GetCustomAttributes(nestedType, typeof(MoonSharpUserDataAttribute), true).Length > 0)
 					{
-						var descr = UserData.RegisterType(nestedType, this.AccessMode);
+						// Not UserData.RegisterType: its trimming annotation is for the host's calls, and
+						// the annotation on this type's registration already kept the nested types.
+						var descr = TypeDescriptorRegistry.RegisterType_Impl(nestedType, this.AccessMode, null, null);
 
 						if (descr != null)
 							AddDynValue(nestedType.Name, UserData.CreateStatic(nestedType));

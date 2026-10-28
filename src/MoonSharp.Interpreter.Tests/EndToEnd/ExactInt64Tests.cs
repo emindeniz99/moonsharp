@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using NUnit.Framework;
 
 namespace MoonSharp.Interpreter.Tests.EndToEnd
@@ -438,11 +438,13 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 			DynValue r = s.DoString("return big - 1");
 			Assert.AreEqual(long.MaxValue - 1, r.ToObject<LuaInt64>().Value);
-			Assert.AreEqual(new LuaInt64(long.MaxValue - 1), r.ToObject());
+			// Equals, not Assert.AreEqual: NUnit compares IEquatable values through Type.GetInterfaceMap,
+			// which NativeAOT does not support, and the suite also runs there.
+			Assert.IsTrue(new LuaInt64(long.MaxValue - 1).Equals(r.ToObject()));
 
 			// The CLR-side types are values too.
-			Assert.AreEqual(new LuaInt64(3), new LuaInt64(3));
-			Assert.AreNotEqual(new LuaInt64(3), new LuaUInt64(3));
+			Assert.IsTrue(new LuaInt64(3).Equals((object)new LuaInt64(3)));
+			Assert.IsFalse(new LuaInt64(3).Equals((object)new LuaUInt64(3)));
 			Assert.AreEqual("-3", new LuaInt64(-3).ToString());
 			var set = new HashSet<LuaInt64> { new LuaInt64(1), new LuaInt64(1) };
 			Assert.AreEqual(1, set.Count);

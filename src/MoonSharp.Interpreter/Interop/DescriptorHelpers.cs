@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using MoonSharp.Interpreter.Compatibility;
 
@@ -12,6 +13,24 @@ namespace MoonSharp.Interpreter.Interop
 	/// </summary>
 	public static class DescriptorHelpers
 	{
+		/// <summary>
+		/// Calls a method or constructor by reflection and rethrows what it threw, with its stack trace,
+		/// instead of the TargetInvocationException that wraps it, as the compiled access modes do.
+		/// </summary>
+		internal static object InvokeUnwrapped(this MethodBase method, object obj, object[] args)
+		{
+			try
+			{
+				ConstructorInfo ctor = method as ConstructorInfo;
+				return ctor != null ? ctor.Invoke(args) : method.Invoke(obj, args);
+			}
+			catch (TargetInvocationException ex)
+			{
+				ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+				throw;
+			}
+		}
+
 		/// <summary>
 		/// Determines whether a
 		/// <see cref="MoonSharpVisibleAttribute" /> or a <see cref="MoonSharpHiddenAttribute" />  is changing visibility of a member

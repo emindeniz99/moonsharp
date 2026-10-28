@@ -118,5 +118,20 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 			Assert.AreEqual(42.0, s.DoString("return twice(21)").Number);
 		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/307: a CLR callback that returns null
+		// (an easy mistake when a C# method has nothing to return) crashed the VM with
+		// NullReferenceException instead of giving the script nil.
+		[Test]
+		public void Issue307_CallbackReturningNullGivesNil()
+		{
+			Script s = new Script();
+			s.Globals["lookup"] = new CallbackFunction((ctx, args) => null);
+
+			DynValue r = s.DoString("local v = lookup('missing') return v == nil, (lookup('missing'))");
+
+			Assert.AreEqual(true, r.Tuple[0].Boolean);
+			Assert.IsTrue(r.Tuple[1].IsNil());
+		}
 	}
 }

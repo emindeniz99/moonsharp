@@ -159,3 +159,11 @@ has no declaring type. Such delegates are now called through their
 `Invoke` method. Affected: hosts that wrapped them in a lambda to work
 around the exception
 ([upstream #291](https://github.com/moonsharp-devs/moonsharp/issues/291)).
+
+## A CLR callback that returns null gives the script nil
+
+A `CallbackFunction` whose function returned `null` instead of a
+`DynValue` made the VM throw `NullReferenceException`. Scripts now
+receive `nil`. Affected: hosts that relied on the exception to detect
+such callbacks
+([upstream #307](https://github.com/moonsharp-devs/moonsharp/issues/307)).

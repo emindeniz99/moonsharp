@@ -23,12 +23,21 @@ namespace MoonSharp.Interpreter.Interop
 		static readonly Dictionary<Type, Func<Closure, Delegate>> s_Factories = new Dictionary<Type, Func<Closure, Delegate>>();
 		static readonly Dictionary<Type, string> s_Errors = new Dictionary<Type, string>();
 
+		/// <summary>
+		/// Changes when a factory is registered for a type that could not be built: Lua functions now
+		/// convert to it.
+		/// </summary>
+		internal static int Version;
+
 		internal static void Register(Type delegateType, Func<Closure, Delegate> factory)
 		{
 			lock (s_Lock)
 			{
 				s_Factories[delegateType] = factory;
-				s_Errors.Remove(delegateType);
+
+				// Only a type that could not be built before changes how overloads weigh a function.
+				if (s_Errors.Remove(delegateType))
+					Version++;
 			}
 		}
 

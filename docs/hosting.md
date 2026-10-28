@@ -110,10 +110,12 @@ because the check runs between VM instructions. `string.rep('a', 2e7):gsub('a',
 after it returns. Memory is not limited either.
 
 Which limit to choose: an instruction limit is deterministic, so a script
-that passes in tests passes in production on any machine. A numeric `for`
-loop costs 10 instructions per iteration, and 1,000,000 instructions of such a
-loop take 6 ms on the machine in "Status" (warm worker, median of 30); library
-calls cost more time per instruction. A time limit bounds latency whatever the
+that passes in tests passes in production on any machine, but the count per
+statement changes when the compiler does: a numeric `for` loop that adds to a
+local costs 2 instructions per iteration since the fused loop opcode (10
+before). 1,000,000 instructions of that loop take 7.5 ms on the machine in
+"Status" (warm worker, median of 30); library calls cost more time per
+instruction. A time limit bounds latency whatever the
 script does between checks, and a context can set both.
 
 The stack guard needs no option: recursion that passes through C# code (a

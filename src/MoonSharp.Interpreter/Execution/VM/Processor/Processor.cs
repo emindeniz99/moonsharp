@@ -128,11 +128,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 			for (int i = 0; i < args.Length; i++)
 				m_ValueStack.Push(args[i]);
 
-			m_ValueStack.Push(DynValue.NewNumber(args.Length));  // func args count
-
 			m_ExecutionStack.Push(new CallStackItem()
 			{
 				BasePointer = m_ValueStack.Count,
+				ArgCount = args.Length,
 				Debug_EntryPoint = function.Function.EntryPointByteCodeLocation,
 				ReturnAddress = -1,
 				ClosureScope = function.Function.ClosureContext,

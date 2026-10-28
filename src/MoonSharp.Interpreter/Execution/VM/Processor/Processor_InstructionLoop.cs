@@ -285,8 +285,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 						if (csi.ClrFunction == null)
 						{
-							var argscnt = (int)(m_ValueStack.Pop().Number);
-							m_ValueStack.RemoveLast(argscnt + 1);
+							m_ValueStack.RemoveLast(csi.ArgCount + 1);
 						}
 
 						var cbargs = new DynValue[] { DynValue.NewString(ex.DecoratedMessage) };
@@ -615,9 +614,11 @@ namespace MoonSharp.Interpreter.Execution.VM
 			return xs.ReturnAddress;
 		}
 
+		static readonly DynValue[] s_NoArgs = new DynValue[0];
+
 		private IList<DynValue> CreateArgsListForFunctionCall(int numargs, int offsFromTop)
 		{
-			if (numargs == 0) return new DynValue[0];
+			if (numargs == 0) return s_NoArgs;
 
 			DynValue lastParam = m_ValueStack.Peek(offsFromTop);
 
@@ -642,10 +643,38 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private void ExecArgs(Instruction I)
 		{
-			int numargs = (int)m_ValueStack.Peek(0).Number;
+			// The arguments sit right below the frame's base pointer; the count is in the frame.
+			CallStackItem frame = m_ExecutionStack.Peek();
+			int numargs = frame.ArgCount;
+			int argsBase = frame.BasePointer - numargs;
+			SymbolRef[] symbols = I.SymbolList;
+
+			bool lastArgExpands = numargs > 0 && m_ValueStack[argsBase + numargs - 1].Type == DataType.Tuple
+				&& m_ValueStack[argsBase + numargs - 1].Tuple.Length > 1;
+			bool hasVarArgs = symbols.Length > 0 && symbols[symbols.Length - 1].i_Name == WellKnownSymbols.VARARGS;
+
+			if (!lastArgExpands && !hasVarArgs)
+			{
+				// Common case: read the arguments in place and keep the writable copy as the parameter's
+				// cell, instead of a Slice, a new nil cell and a second copy into it.
+				DynValue[] scope = frame.LocalScope;
+
+				for (int i = 0; i < symbols.Length; i++)
+				{
+					int index = symbols[i].i_Index;
+					DynValue value = (i < numargs) ? m_ValueStack[argsBase + i].ToScalar().CloneAsWritable() : DynValue.NewNil();
+
+					if (scope[index] == null)
+						scope[index] = value;
+					else
+						scope[index].Assign(value);
+				}
+
+				return;
+			}
 
 			// unpacks last tuple arguments to simplify a lot of code down under
-			var argsList = CreateArgsListForFunctionCall(numargs, 1);
+			var argsList = CreateArgsListForFunctionCall(numargs, m_ValueStack.Count - frame.BasePointer);
 
 			for (int i = 0; i < I.SymbolList.Length; i++)
 			{
@@ -749,10 +778,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 			else if (fn.Type == DataType.Function)
 			{
-				m_ValueStack.Push(DynValue.NewNumber(argsCount));
 				m_ExecutionStack.Push(new CallStackItem()
 				{
 					BasePointer = m_ValueStack.Count,
+					ArgCount = argsCount,
 					ReturnAddress = instructionPtr,
 					Debug_EntryPoint = fn.Function.EntryPointByteCodeLocation,
 					CallingSourceRef = GetCurrentSourceRef(instructionPtr - 1), // See right above in GetCurrentSourceRef(instructionPtr - 1)
@@ -796,8 +825,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			// perform a fake RET
 			CallStackItem csi = PopToBasePointer();
 			int retpoint = csi.ReturnAddress;
-			var argscnt = (int)(m_ValueStack.Pop().Number);
-			m_ValueStack.RemoveLast(argscnt + 1);
+			m_ValueStack.RemoveLast(csi.ArgCount + 1);
 
 			// Re-push all cur args and func ptr
 			for (int i = argsCount; i >= 0; i--)
@@ -818,8 +846,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			{
 				csi = PopToBasePointer();
 				retpoint = csi.ReturnAddress;
-				var argscnt = (int)(m_ValueStack.Pop().Number);
-				m_ValueStack.RemoveLast(argscnt + 1);
+				m_ValueStack.RemoveLast(csi.ArgCount + 1);
 				m_ValueStack.Push(DynValue.Void);
 			}
 			else if (i.NumVal == 1)
@@ -827,8 +854,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				var retval = m_ValueStack.Pop();
 				csi = PopToBasePointer();
 				retpoint = csi.ReturnAddress;
-				var argscnt = (int)(m_ValueStack.Pop().Number);
-				m_ValueStack.RemoveLast(argscnt + 1);
+				m_ValueStack.RemoveLast(csi.ArgCount + 1);
 				m_ValueStack.Push(retval);
 				retpoint = Internal_CheckForTailRequests(i, retpoint);
 			}

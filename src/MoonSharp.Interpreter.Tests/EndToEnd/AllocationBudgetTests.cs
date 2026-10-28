@@ -137,13 +137,13 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void AllocationBudget_FunctionCall()
 		{
-			AssertLuaBudget("function_call", "local function f(a) return a + 1 end\nreturn function(n) local x = 0 for i = 1, n do x = f(x) end return x end", 552);
+			AssertLuaBudget("function_call", "local function f(a) return a + 1 end\nreturn function(n) local x = 0 for i = 1, n do x = f(x) end return x end", 416);
 		}
 
 		[Test]
 		public void AllocationBudget_MethodCall()
 		{
-			AssertLuaBudget("method_call", "local C = {} C.__index = C\nfunction C:inc() self.v = self.v + 1 end\nlocal o = setmetatable({ v = 0 }, C)\nreturn function(n) for i = 1, n do o:inc() end return o.v end", 696);
+			AssertLuaBudget("method_call", "local C = {} C.__index = C\nfunction C:inc() self.v = self.v + 1 end\nlocal o = setmetatable({ v = 0 }, C)\nreturn function(n) for i = 1, n do o:inc() end return o.v end", 560);
 		}
 
 		[Test]
@@ -173,20 +173,20 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void AllocationBudget_ClosureCreateCall()
 		{
-			AssertLuaBudget("closure_create_call", "return function(n) local s = 0 for i = 1, n do local f = function() return i end s = s + f() end return s end", 632);
+			AssertLuaBudget("closure_create_call", "return function(n) local s = 0 for i = 1, n do local f = function() return i end s = s + f() end return s end", 584);
 		}
 
 		[Test]
 		public void AllocationBudget_FibRecursive()
 		{
 			// One iteration is fib(12): 465 Lua calls.
-			AssertLuaBudget("fib_recursive", "local function fib(n) if n < 2 then return n end return fib(n - 1) + fib(n - 2) end\nreturn function(n) local s = 0 for i = 1, n do s = s + fib(12) end return s end", 256728, 40);
+			AssertLuaBudget("fib_recursive", "local function fib(n) if n < 2 then return n end return fib(n - 1) + fib(n - 2) end\nreturn function(n) local s = 0 for i = 1, n do s = s + fib(12) end return s end", 193488, 40);
 		}
 
 		[Test]
 		public void AllocationBudget_CoroutineSwitch()
 		{
-			AssertLuaBudget("coroutine_switch", "return function(n) local co = coroutine.wrap(function() local i = 0 while true do i = i + 1 coroutine.yield(i) end end)\nlocal s = 0 for i = 1, n do s = s + co() end return s end", 1080);
+			AssertLuaBudget("coroutine_switch", "return function(n) local co = coroutine.wrap(function() local i = 0 while true do i = i + 1 coroutine.yield(i) end end)\nlocal s = 0 for i = 1, n do s = s + co() end return s end", 1056);
 		}
 
 		[Test]
@@ -210,7 +210,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			{
 				for (long i = 0; i < n; i++)
 					script.Call(fn, DynValue.NewNumber(i), two, three);
-			}, N, 952);
+			}, N, 720);
 		}
 
 		[Test]

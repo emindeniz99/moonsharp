@@ -11,8 +11,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 	{
 		// Maximum stack depths. The stacks start small and grow on demand, so an idle Script or
 		// coroutine does not hold two arrays of this size.
+		// Slots are 24-byte structs (values) and frames are structs too, so the initial arrays stay small:
+		// 64 values and 8 frames are 1.5 KB and about 0.6 KB, as much as 256 and 64 references were.
 		const int STACK_SIZE = 131072;
-		const int INITIAL_VALUE_STACK_SIZE = 256;
+		const int INITIAL_VALUE_STACK_SIZE = 64;
 		const int INITIAL_EXECUTION_STACK_SIZE = 8;
 
 		ByteCode m_RootChunk;

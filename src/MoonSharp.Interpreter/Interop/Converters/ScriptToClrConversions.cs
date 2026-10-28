@@ -172,6 +172,10 @@ namespace MoonSharp.Interpreter.Interop.Converters
 						if (udDesc.IsTypeCompatible(desiredType, udObj))
 							return udObj;
 
+						object exact;
+						if (TryConvertExactInteger(udObj, desiredType, out exact))
+							return exact;
+
 						if (stringSubType != StringConversions.StringSubtype.None)
 							str = udDesc.AsString(udObj);
 					}
@@ -290,6 +294,10 @@ namespace MoonSharp.Interpreter.Interop.Converters
 						if (udDesc.IsTypeCompatible(desiredType, udObj))
 							return WEIGHT_EXACT_MATCH;
 
+						int exactWeight = GetExactIntegerWeight(udObj, desiredType);
+						if (exactWeight != WEIGHT_NO_MATCH)
+							return exactWeight;
+
 						if (stringSubType != StringConversions.StringSubtype.None)
 							return WEIGHT_USERDATA_TO_STRING;
 					}
@@ -313,6 +321,82 @@ namespace MoonSharp.Interpreter.Interop.Converters
 				return WEIGHT_EXACT_MATCH;
 			else
 				return WEIGHT_NUMBER_DOWNCAST;
+		}
+
+		/// <summary>
+		/// int64 goes to long and uint64 to ulong as exact matches. Either goes to any other
+		/// integral type or decimal with a range check, weighted like a number downcast. They
+		/// never go to double or float: that would bring back the rounding they exist to avoid.
+		/// </summary>
+		private static int GetExactIntegerWeight(object udObj, Type desiredType)
+		{
+			if (udObj is LuaInt64)
+				return desiredType == typeof(long) ? WEIGHT_EXACT_MATCH
+					: IsIntegralOrDecimal(desiredType) ? WEIGHT_NUMBER_DOWNCAST : WEIGHT_NO_MATCH;
+
+			if (udObj is LuaUInt64)
+				return desiredType == typeof(ulong) ? WEIGHT_EXACT_MATCH
+					: IsIntegralOrDecimal(desiredType) ? WEIGHT_NUMBER_DOWNCAST : WEIGHT_NO_MATCH;
+
+			return WEIGHT_NO_MATCH;
+		}
+
+		private static bool IsIntegralOrDecimal(Type t)
+		{
+			return t == typeof(long) || t == typeof(ulong) || t == typeof(int) || t == typeof(uint)
+				|| t == typeof(short) || t == typeof(ushort) || t == typeof(sbyte) || t == typeof(byte)
+				|| t == typeof(decimal);
+		}
+
+		/// <summary>
+		/// Converts an int64 or uint64 to an integral CLR type or decimal. A value that does not
+		/// fit raises a script error instead of wrapping.
+		/// </summary>
+		private static bool TryConvertExactInteger(object udObj, Type desiredType, out object result)
+		{
+			result = null;
+
+			LuaInt64 i = udObj as LuaInt64;
+			LuaUInt64 u = udObj as LuaUInt64;
+
+			if ((i == null && u == null) || !IsIntegralOrDecimal(desiredType))
+				return false;
+
+			if (i != null && desiredType == typeof(long))
+			{
+				result = i.Value;
+				return true;
+			}
+
+			if (u != null && desiredType == typeof(ulong))
+			{
+				result = u.Value;
+				return true;
+			}
+
+			// decimal holds every 64-bit integer exactly, and its explicit conversions throw
+			// OverflowException whatever the checked context.
+			decimal d = (i != null) ? (decimal)i.Value : (decimal)u.Value;
+
+			try
+			{
+				if (desiredType == typeof(long)) result = (long)d;
+				else if (desiredType == typeof(ulong)) result = (ulong)d;
+				else if (desiredType == typeof(int)) result = (int)d;
+				else if (desiredType == typeof(uint)) result = (uint)d;
+				else if (desiredType == typeof(short)) result = (short)d;
+				else if (desiredType == typeof(ushort)) result = (ushort)d;
+				else if (desiredType == typeof(sbyte)) result = (sbyte)d;
+				else if (desiredType == typeof(byte)) result = (byte)d;
+				else result = d;
+			}
+			catch (OverflowException)
+			{
+				throw new ScriptRuntimeException("{0} value {1} is out of range for {2}",
+					(i != null) ? "int64" : "uint64", udObj, desiredType.Name);
+			}
+
+			return true;
 		}
 
 

@@ -27,6 +27,7 @@ namespace MoonSharp.Interpreter
 			this.ScriptLoader = defaults.ScriptLoader;
 
 			this.CheckThreadAccess = defaults.CheckThreadAccess;
+			this.ExactInt64Interop = defaults.ExactInt64Interop;
 		}
 
 		/// <summary>
@@ -95,6 +96,16 @@ namespace MoonSharp.Interpreter
 		/// you are not calling MoonSharp execution concurrently as it is not supported.
 		/// </summary>
 		public bool CheckThreadAccess { get; set; }
+
+		/// <summary>
+		/// Gets or sets a value indicating whether CLR <c>long</c> and <c>ulong</c> values reach scripts
+		/// as exact <c>int64</c> and <c>uint64</c> userdata (see <see cref="LuaInt64"/>) instead of
+		/// numbers, which round above 2^53-1. It applies to every CLR-to-Lua conversion done for this
+		/// script: method results and out parameters, properties, fields, arguments of Script.Call and
+		/// values stored through Table indexers. Defaults to false, which keeps the number behaviour.
+		/// Passing int64 and uint64 values to CLR parameters works either way.
+		/// </summary>
+		public bool ExactInt64Interop { get; set; }
 
 	}
 }

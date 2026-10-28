@@ -71,7 +71,17 @@ namespace MoonSharp.Interpreter.Interop.Converters
 				return DynValue.NewClosure((Closure)obj);
 
 			if (NumericConversions.NumericTypes.Contains(t))
+			{
+				if (script != null && script.Options.ExactInt64Interop)
+				{
+					if (t == typeof(long))
+						return LuaInt64.NewDynValue((long)obj);
+					if (t == typeof(ulong))
+						return LuaUInt64.NewDynValue((ulong)obj);
+				}
+
 				return DynValue.NewNumber(NumericConversions.TypeToDouble(t, obj));
+			}
 
 			if (obj is Table)
 				return DynValue.NewTable((Table)obj);

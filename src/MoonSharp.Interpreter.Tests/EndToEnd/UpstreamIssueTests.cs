@@ -319,5 +319,20 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 			Assert.AreEqual(true, r.Boolean);
 		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/187 (upstream PR #184): patterns compared
+		// only the low byte of each UTF-16 unit, so '\n' (0x0A) also matched U+4E0A and the reverse.
+		[Test]
+		[Ignore("waits for string library work: https://github.com/moonsharp-devs/moonsharp/issues/187")]
+		public void Issue187_PatternsCompareWholeCharacters()
+		{
+			Script s = new Script();
+			s.Globals["text"] = "a\n上b";
+
+			DynValue r = s.DoString("return (text:gsub('\\n', 'N')), (text:gsub('上', '@'))");
+
+			Assert.AreEqual("aN上b", r.Tuple[0].String);
+			Assert.AreEqual("a\n@b", r.Tuple[1].String);
+		}
 	}
 }

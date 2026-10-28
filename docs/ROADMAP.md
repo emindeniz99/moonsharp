@@ -70,6 +70,7 @@ What Unity 2021.3 support means for the code:
 | [#9](https://github.com/emindeniz99/moonsharp/pull/9) | This roadmap. |
 | branch `feat/conformance-corpus` | Cross-host conformance corpus: 225 cases in 8 suites (numbers, strings, patterns, tables, errors, JSON, int64, logic) run by the .NET CLI (also from precompiled bytecode and under a decimal-comma culture), Chromium and the three Java transports, each checked against its own known-failures file in both directions. `moonsharp-host compile` writes bytecode with source locations; every transport can create int64 contexts. See [src/Hosting/fixtures/README.md](../src/Hosting/fixtures/README.md). |
 | branch `feat/exact-int64` | Exact 64-bit integers: opt-in `int64`/`uint64` values (`CoreModules.Int64`), CLR `long`/`ulong` in both directions (`ScriptOptions.ExactInt64Interop` for CLR to Lua), exact JSON on request. See [int64.md](int64.md). |
+| branch `feat/luacats-generator` | LuaCATS definitions generated from the registry and globals of a configured `Script` (`src/Tools/MoonSharp.LuaCats`, `moonsharp-luacats` CLI with `--check`), checked with lua-language-server 3.19.1 in a new workflow. Explicit registration for mobile hosts documented and tested; no runtime change was needed. See [luacats.md](luacats.md) and [registration.md](registration.md). |
 
 ## In progress
 
@@ -132,7 +133,13 @@ After step 4: the checkpoint in the decisions table.
 - Publish per-host corpus results over time, as JsonLogic's compat tables do.
 - In-process JVM hosting as the default: needs the native stack guard above and an execution budget for plain calls, then a new measurement against the worker.
 - Browser: AOT-compiled WebAssembly against the interpreter build; Firefox and WebKit tests.
-- LuaCATS type definitions generated from registered C# types, for editor completion.
+- LuaCATS follow-ups:
+  - a Unity Editor menu item that runs the generator. The UPM packages have no Editor part yet (`tools/upm` stages `Runtime` only), so it needs an Editor folder, an asmdef and the generator sources in the package;
+  - typed host global functions: a global set from a delegate is declared `fun(...): any`, because a `CallbackFunction` keeps no signature;
+  - `T?` for C# nullable reference annotations (only `Nullable<T>` is read today);
+  - move the lua-language-server pin to 3.19.2 once its release digests have been read.
+- Convert script functions to delegate parameters (`Action<T>`, `Func<T>`). Today only `Closure` and `ScriptFunctionDelegate` parameters take a function, unless the host adds a custom converter; the LuaCATS generator reports such parameters.
+- The Teal vs TypeScriptToLua trial from the decisions table.
 - A Debug Adapter Protocol server, so any editor can debug scripts.
 - Save and restore a `Script`'s state.
 - A built-in integer subtype, if the struct-value step makes it cheap (see decisions).

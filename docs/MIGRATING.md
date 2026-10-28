@@ -257,3 +257,12 @@ on a new failure, a changed failure, a listed failure that passes and a
 listed case that does not exist, and prints one line per case (`pass`,
 `known`, `FAIL`, `CHANGED`, `FIXED`, `STALE`) and a count line. Before,
 it exited 1 on any failure and printed `pass` or `FAIL`.
+
+## Custom converter lookups accept every DataType
+
+`CustomConvertersCollection.GetScriptToClrCustomConversion` threw
+`IndexOutOfRangeException` for `DataType.TailCallRequest` and
+`DataType.YieldRequest`; it now returns null, as for any type without a
+converter. `SetScriptToClrCustomConversion` throws `ArgumentException` for
+them instead of `IndexOutOfRangeException`. Affected: code that looped over
+every `DataType`.

@@ -258,5 +258,16 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual(expected, !res.IsNil());
 		}
 
+		// In Turkish, "i".ToUpper() is "İ" and "I".ToLower() is "ı". A script must not change
+		// behaviour with the device's regional settings.
+		[Test]
+		public void String_UpperLower_IgnoreCulture()
+		{
+			DynValue res = Utils.WithCulture("tr-TR", () =>
+				new Script(CoreModules.String).DoString("return string.upper('quit'), string.lower('QUIT')"));
+
+			Assert.AreEqual("QUIT", res.Tuple[0].String);
+			Assert.AreEqual("quit", res.Tuple[1].String);
+		}
 	}
 }

@@ -1,6 +1,9 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Threading;
+using MoonSharp.Interpreter.Loaders;
 using System.Linq.Expressions;
 using NUnit.Framework;
 
@@ -297,6 +300,24 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			s.DoString("io.write('progress ', 50, '%')");
 
 			Assert.AreEqual("progress 50%", Encoding.UTF8.GetString(output.ToArray()));
+		}
+
+		// ---------------------------------------------------------------------------------------
+		// Bugs that reproduce in code owned by work running in parallel. Each test fails today and
+		// is ignored until that work picks it up; remove the Ignore with the fix.
+		// ---------------------------------------------------------------------------------------
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/318: trimming a string longer than a
+		// few dozen characters with the common '^%s*(.-)%s*$' idiom failed with "pattern too complex".
+		[Test]
+		[Ignore("waits for string library work: https://github.com/moonsharp-devs/moonsharp/issues/318")]
+		public void Issue318_TrimIdiomWorksOnLongStrings()
+		{
+			Script s = new Script();
+
+			DynValue r = s.DoString("local body = string.rep('ab ', 100) return (('  ' .. body .. '  '):gsub('^%s*(.-)%s*$', '%1')) == body:sub(1, -2)");
+
+			Assert.AreEqual(true, r.Boolean);
 		}
 	}
 }

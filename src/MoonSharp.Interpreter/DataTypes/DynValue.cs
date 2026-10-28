@@ -600,6 +600,17 @@ namespace MoonSharp.Interpreter
 					m_HashCode = baseValue ^ Tuple.GetHashCode();
 					break;
 				case DataType.UserData:
+					{
+						// int64 and uint64 values are immutable and equal by value, so they can hash
+						// by value too. Other userdata keep the constant: their Equals may depend on
+						// mutable state, and this hash is cached.
+						object o = UserData.Object;
+						if (o is LuaInt64 || o is LuaUInt64)
+							m_HashCode = baseValue ^ o.GetHashCode();
+						else
+							m_HashCode = 999;
+					}
+					break;
 				case DataType.Thread:
 				default:
 					m_HashCode = 999;

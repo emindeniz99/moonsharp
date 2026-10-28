@@ -16,11 +16,32 @@ namespace MoonSharp.Interpreter.CoreLib
 			{
 				DynValue vs = args.AsType(0, "parse", DataType.String, false);
 				DynValue parseEmptyArrays = args.AsType(1, "parse", DataType.Boolean, false);
-				return JsonTableConverter.ParseString(vs.String, executionContext.GetScript(), parseEmptyArrays.Boolean);
+				DynValue bigIntegers = args.AsType(2, "parse", DataType.String, true);
+				return JsonTableConverter.ParseString(vs.String, executionContext.GetScript(), parseEmptyArrays.Boolean,
+					ParseBigIntegerMode(bigIntegers));
 			}
 			catch (SyntaxErrorException ex)
 			{
 				throw new ScriptRuntimeException(ex);
+			}
+		}
+
+		/// <summary>
+		/// Reads json.parse's third argument: nil or "number" (default), "int64" or "string".
+		/// </summary>
+		private static JsonBigIntegerMode ParseBigIntegerMode(DynValue v)
+		{
+			if (v.IsNil())
+				return JsonBigIntegerMode.Number;
+
+			switch (v.String)
+			{
+				case "number": return JsonBigIntegerMode.Number;
+				case "int64": return JsonBigIntegerMode.Int64;
+				case "string": return JsonBigIntegerMode.String;
+				default:
+					throw ScriptRuntimeException.BadArgument(2, "parse",
+						string.Format("invalid option '{0}' (expected 'number', 'int64' or 'string')", v.String));
 			}
 		}
 

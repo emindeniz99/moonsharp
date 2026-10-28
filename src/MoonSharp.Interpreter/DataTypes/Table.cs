@@ -84,6 +84,10 @@ namespace MoonSharp.Interpreter
 		int m_Shift;
 		// The first border: the smallest n >= 0 with t[n + 1] == nil (master's Length semantics).
 		int m_Length;
+		// Insertion/ArrayFirst: keys that died since the last insert. master's CollectDeadKeys removes dead
+		// keys on the next insert, so a key set again after that goes to the end; this list reproduces it.
+		// An entry index (>= 0), or ~key for an array key (Insertion only).
+		List<int> m_Pending;
 
 		readonly Script m_Owner;
 
@@ -132,6 +136,7 @@ namespace MoonSharp.Interpreter
 			m_LastFree = 0;
 			m_Prefix = 0;
 			m_Length = 0;
+			m_Pending = null;
 		}
 
 		/// <summary>
@@ -376,9 +381,14 @@ namespace MoonSharp.Interpreter
 		void AddKey(DynValue key, int hash, DynValue value)
 		{
 			if (Order == TableOrder.Unordered)
+			{
 				AddNode(key, hash, value);
+			}
 			else
+			{
 				AddEntry(key, hash, value);
+				AfterInsert();
+			}
 		}
 
 		// Compact dict: append in insertion order.
@@ -402,6 +412,9 @@ namespace MoonSharp.Interpreter
 		// more than half the capacity is live.
 		void Rebuild(int extra)
 		{
+			if (m_Pending != null && m_Pending.Count > 0)
+				Purge();
+
 			Entry[] old = m_Entries;
 			int oldCount = m_Count;
 			int live = 0;
@@ -533,15 +546,191 @@ namespace MoonSharp.Interpreter
 
 					if (intKey > 0 && intKey <= m_Length)
 						m_Length = intKey - 1;
+
+					if (Order != TableOrder.Unordered)
+						AddPending(i);
 				}
 			}
 			else
 			{
 				m_Entries[i].Value = value;
 
-				if (old == null && intKey > 0 && intKey == m_Length + 1)
-					ExtendLength();
+				if (old == null)
+				{
+					if (intKey > 0 && intKey == m_Length + 1)
+						ExtendLength();
+
+					AfterInsert();
+				}
 			}
+		}
+
+		#endregion
+
+		#region master's dead-key collection (Insertion/ArrayFirst)
+
+		void AddPending(int code)
+		{
+			if (m_Pending == null)
+				m_Pending = new List<int>();
+
+			m_Pending.Add(code);
+		}
+
+		void AfterInsert()
+		{
+			if (Order != TableOrder.Unordered && m_Pending != null && m_Pending.Count > 0)
+				Purge();
+		}
+
+		void Unlink(int i)
+		{
+			int b = Bucket(m_Entries[i].Hash);
+			int j = m_Buckets[b] - 1;
+
+			if (j == i)
+			{
+				m_Buckets[b] = m_Entries[i].Next + 1;
+			}
+			else
+			{
+				while (m_Entries[j].Next != i)
+					j = m_Entries[j].Next;
+
+				m_Entries[j].Next = m_Entries[i].Next;
+			}
+
+			// a removed entry: no key, no value; skipped by lookups and iteration, dropped by Rebuild
+			m_Entries[i].Key = null;
+			m_Entries[i].Value = null;
+		}
+
+		// Removes the keys that are still dead, so a later insert of the same key goes to the end.
+		void Purge()
+		{
+			List<int> pending = m_Pending;
+			int explodeAt = int.MaxValue;
+
+			for (int n = 0; n < pending.Count; n++)
+			{
+				int code = pending[n];
+
+				if (code >= 0)
+				{
+					if (code >= m_Count)
+						continue;
+
+					DynValue v = m_Entries[code].Value;
+
+					if (v == null && m_Entries[code].Key != null)
+					{
+						Unlink(code);
+					}
+					else if (object.ReferenceEquals(v, s_ArraySlot))
+					{
+						// a dead hash key that migrated into the array part
+						int k = m_Entries[code].Hash;
+						DynValue a = m_Array[k - 1];
+
+						if (a == null || a.Type == DataType.Nil)
+						{
+							Unlink(code);
+							m_Array[k - 1] = null;
+						}
+					}
+				}
+				else
+				{
+					int k = ~code;
+					DynValue a = m_Array[k - 1];
+
+					if (a == null || a.Type != DataType.Nil)
+						continue;
+
+					if (k <= m_Prefix)
+					{
+						explodeAt = Math.Min(explodeAt, k);
+					}
+					else
+					{
+						int p = FindPointer(k);
+
+						if (p >= 0)
+							Unlink(p);
+
+						m_Array[k - 1] = null;
+					}
+				}
+			}
+
+			pending.Clear();
+
+			if (explodeAt <= m_Prefix)
+				ExplodePrefix(explodeAt);
+		}
+
+		// A key inside the implicit prefix died and was collected: the prefix ends before it, and the live
+		// keys after it become pointer entries placed before every other entry.
+		void ExplodePrefix(int k)
+		{
+			int oldPrefix = m_Prefix;
+			List<int> moved = null;
+
+			for (int j = k; j <= oldPrefix; j++)
+			{
+				DynValue a = m_Array[j - 1];
+
+				if (a != null && a.Type != DataType.Nil)
+				{
+					if (moved == null) moved = new List<int>();
+					moved.Add(j);
+				}
+				else
+				{
+					m_Array[j - 1] = null;
+				}
+			}
+
+			m_Prefix = k - 1;
+
+			if (moved == null)
+				return;
+
+			Entry[] old = m_Entries;
+			int oldCount = m_Count;
+			int live = moved.Count;
+
+			for (int i = 0; i < oldCount; i++)
+				if (IsLive(ref old[i]))
+					live++;
+
+			int capacity = MinCapacity;
+			while (capacity < 2 * (live + 1))
+				capacity *= 2;
+
+			Allocate(capacity);
+
+			foreach (int j in moved)
+				AppendRaw(null, j, s_ArraySlot);
+
+			for (int i = 0; i < oldCount; i++)
+			{
+				if (IsLive(ref old[i]))
+					AppendRaw(old[i].Key, old[i].Hash, old[i].Value);
+				else if (object.ReferenceEquals(old[i].Value, s_ArraySlot))
+					m_Array[old[i].Hash - 1] = null;
+			}
+		}
+
+		void AppendRaw(DynValue key, int hash, DynValue value)
+		{
+			int i = m_Count++;
+			int b = Bucket(hash);
+			m_Entries[i].Key = key;
+			m_Entries[i].Value = value;
+			m_Entries[i].Hash = hash;
+			m_Entries[i].Next = m_Buckets[b] - 1;
+			m_Buckets[b] = i + 1;
 		}
 
 		#endregion
@@ -611,6 +800,9 @@ namespace MoonSharp.Interpreter
 
 					if (key <= m_Length)
 						m_Length = key - 1;
+
+					if (Order == TableOrder.Insertion)
+						AddPending(~key);
 				}
 
 				return;
@@ -627,8 +819,13 @@ namespace MoonSharp.Interpreter
 
 			m_Array[key - 1] = value;
 
-			if (!wasLive && key == m_Length + 1)
-				ExtendLength();
+			if (!wasLive)
+			{
+				if (key == m_Length + 1)
+					ExtendLength();
+
+				AfterInsert();
+			}
 		}
 
 		void ExtendLength()
@@ -1061,7 +1258,7 @@ namespace MoonSharp.Interpreter
 			if (Order == TableOrder.Unordered)
 				Rehash(0);
 			else
-				Rebuild(0);
+				Rebuild(0); // purges pending dead keys first
 		}
 
 		#region Iteration

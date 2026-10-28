@@ -26,23 +26,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+      # Installs the .NET SDK and runtime, Java, Maven, Node and CMake pinned in
+      # mise.toml, and puts them on PATH (with DOTNET_ROOT and JAVA_HOME) for
+      # the steps below.
+      - name: Setup tools from mise.toml
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
         with:
-          dotnet-version: |
-            8.0.x
-            10.0.x
-
-      - name: Setup Java
-        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: "22"
+          # A mise release older than seven days.
+          version: 2026.10.11
 
       - name: Build host CLI
         run: dotnet build -c Release src/Hosting/MoonSharp.Hosting.Cli

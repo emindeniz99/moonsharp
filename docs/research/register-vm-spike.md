@@ -367,6 +367,59 @@ remaining `nbody` gap on either VM.
 - Compile time: register compilation runs after the stack compiler and throws an exception for each fallback.
   Not measured [U].
 
+## How to measure on IL2CPP
+
+Added 2026-10-28 for the owner's decision (ROADMAP, 2026-10-29: measure a real Unity IL2CPP player, for
+speed and size). Not run yet: it needs the Unity secrets. Steps to start it are in
+[ROADMAP.md](../ROADMAP.md#needs-the-owner).
+
+- **What runs.** `.github/workflows/unity.yml`, started by hand with `bench` and `bench_baseline`. The Unity
+  test bed's Linux IL2CPP player (editor default player settings, IL2CPP backend) takes `-moonsharpBench FILE`
+  and runs the seven workloads above through `src/DevTools/Benchmarks/WorkloadTsv.cs`: one warm-up and five
+  timed runs each, one row per workload with the median ns per iteration and the check value. `sync.sh`
+  copies `LuaWorkloads.cs`, `LuaCSharpScripts.cs` and `WorkloadTsv.cs` into the test bed, so the player runs
+  the same source as `dotnet run -- workloads-tsv`. Iteration counts are those of `workloads` (fib_recursive
+  20,000, numeric_loop 500 and nbody 100 executions, against 4,000, 200 and 40 in the harness above); the
+  numbers are per iteration, so they compare.
+- **Same runner.** With `bench_baseline` the job also builds the baseline's test bed and size probe and runs
+  seven rounds, each starting the spike player, the baseline player and the spike player again (the A/A
+  row), in an order that rotates per round. Ratios are medians of per-round ratios. One run instead of a run
+  per branch, because hosted runners differ in speed from run to run. The editor (Mono) gets one process per
+  build, with `-releaseCodeOptimization`. Each of the three Unity versions reports separately.
+- **Size.** The size step builds `src/Unity/SizeProbe` with the baseline's package too; the table's last
+  column is what the spike adds over the baseline in `GameAssembly.so` (as built, stripped, gzip -9),
+  `global-metadata.dat` and the whole player.
+- **Branches.** `spike/register-vm-unity` is this branch with `ci/unity-il2cpp-bench` merged in: the spike's
+  `unity.yml` already matched `next`, so only the benchmark commits were missing. One more change was needed
+  there: `RegisterVmSpikeTests` called `Assert.GreaterOrEqual` and the formatting overloads of `Assert.Fail`
+  and `Assert.Greater`, which the NUnit subset Unity compiles against (`EmbeddableNUnitWrapper.cs`) does not
+  have. The test bed and `EmbeddedTestRunner`, the workflow's first step, failed to compile; the job would
+  have stopped before Unity started. The baseline, `ci/unity-il2cpp-bench`, is `next` with the same benchmark
+  commits, so the two players differ only by the prototype.
+- **Checked without Unity** [C]: the test bed with the spike and with the baseline compiles with Unity 2021.3's
+  and 6000.0's own compiler and reference assemblies (editor and player defines, the source generator as an
+  analyzer); 2022.3 was not available locally. `EmbeddedTestRunner` on the spike: 1,070 OK, 1 failed (the
+  debugger gap above), 4 skipped. Five interleaved rounds of the same pipeline on this machine
+  (`workloads-tsv` per process, `bench-summary.sh` over the files), spike / baseline, median with range:
+
+  | Workload | .NET 8 | A/A | Unity Mono 6.13 | A/A |
+  |---|---:|---:|---:|---:|
+  | empty_loop | 0.618 (0.593-0.632) | 1.000 | 0.664 (0.643-0.938) | 0.967 |
+  | int_math | 0.475 (0.451-0.496) | 0.992 | 0.540 (0.498-0.569) | 0.976 |
+  | float_math | 0.390 (0.366-0.422) | 1.016 | 0.529 (0.508-0.556) | 1.036 |
+  | function_call | 0.608 (0.512-0.652) | 0.998 | 0.432 (0.428-0.467) | 1.020 |
+  | fib_recursive | 0.676 (0.615-0.702) | 0.989 | 0.475 (0.457-0.486) | 1.005 |
+  | numeric_loop | 0.462 (0.440-0.512) | 0.993 | 0.604 (0.543-0.656) | 0.970 |
+  | nbody | 0.611 (0.544-0.668) | 0.984 | 0.460 (0.435-0.468) | 0.985 |
+
+  These agree with the measurements above (0.39-0.66 on .NET, 0.44-0.64 on Unity Mono), so the pipeline
+  reproduces them; every check value matched on both runtimes.
+- **What only the Unity run shows** [U]: IL2CPP's own code for the dispatch loop (the prototype's gain on
+  NativeAOT is the stand-in so far), the Unity editor's Mono, the size on each Unity version's IL2CPP and
+  linker, and whether the player runs the register code at all after stripping (the check values say the
+  results are right, not which VM produced them; the speed difference does). Not covered: Android ARM64 and
+  iOS players, which use another compiler and CPU.
+
 ## Reproducing
 
 ```sh

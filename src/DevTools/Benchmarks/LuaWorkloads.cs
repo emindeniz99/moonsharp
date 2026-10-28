@@ -49,6 +49,29 @@ namespace MoonSharp.Benchmarks
 			};
 		}
 
+		// A whole chunk, loaded once and executed n times, as Lua-CSharp's suite runs it: one iteration is one execution.
+		static Case Chunk(string name, long iterations, string source, string check, string note)
+		{
+			return new Case
+			{
+				Name = name,
+				Iterations = iterations,
+				Check = check,
+				Note = note,
+				Prepare = script =>
+				{
+					DynValue chunk = script.LoadString(source);
+					return n =>
+					{
+						DynValue result = DynValue.Void;
+						for (long i = 0; i < n; i++)
+							result = script.Call(chunk);
+						return result.ToPrintString();
+					};
+				},
+			};
+		}
+
 		static Case Host(string name, long iterations, string check, string note, Func<Script, Func<long, string>> prepare)
 		{
 			return new Case { Name = name, Iterations = iterations, Check = check, Note = note, Prepare = prepare };
@@ -81,6 +104,10 @@ namespace MoonSharp.Benchmarks
 			// MoonSharp-only cases (not in flag_bench.c): table operations that were quadratic in the table size.
 			Lua("table_insert_len_10k", 10, "return function(n) local s = 0 for r = 1, n do local t = {} for i = 1, 10000 do table.insert(t, i) end s = s + #t end return s end", "100000", "MoonSharp-only; one iteration = 10k table.insert then #t"),
 			Lua("table_remove_readd_10k", 5 * K, "local t, keys = {}, {} for i = 1, 10000 do t[i] = i end for i = 1, 64 do keys[i] = 'k' .. i t[keys[i]] = i end\nreturn function(n) local s, j = 0, 1 for i = 1, n do local v = table.remove(t) t[#t + 1] = v local k = keys[j] t[k] = nil t[k] = i j = j % 64 + 1 s = s + #t end return s end", "50000000", "MoonSharp-only; delete/reinsert churn on a 10k-entry table"),
+
+			// Two cases of Lua-CSharp's own suite (LuaCSharpScripts.cs), as its ComparisonWorkloads.cs runs them.
+			Chunk("numeric_loop", 500, LuaCSharpScripts.NumericLoop, "200010000", "Lua-CSharp suite; one iteration = one chunk execution"),
+			Chunk("nbody", 100, LuaCSharpScripts.NBody.Replace("or 1000", "or 100") + "\nreturn energy(bodies,nbody)", "-0.1690507623824094", "Lua-CSharp suite, 100 steps; one iteration = one chunk execution"),
 
 			// ---- host boundary and interop (not in flag_bench) ----
 

@@ -73,10 +73,32 @@ Name cases after the run count to run only those:
 dotnet run -c Release --project src/DevTools/Benchmarks -- workloads 7 function_call fib_recursive
 ```
 
+`numeric_loop` and `nbody` are two cases of Lua-CSharp's own suite, its Lua
+scripts copied with attribution in `LuaCSharpScripts.cs` and run as its
+`ComparisonWorkloads.cs` runs them: the chunk is loaded once and one iteration
+is one execution of it.
+
 Every case reports the exact bytes allocated per iteration next to the time.
 Bytes do not depend on machine load, so they are the better evidence for a
 change that removes allocations. The unit tests pin them: see
 `src/MoonSharp.Interpreter.Tests/EndToEnd/AllocationBudgetTests.cs`.
+
+**The register VM workloads as a results file**, the code the Unity test bed
+runs in the editor and the IL2CPP player (`.github/workflows/unity.yml`, input
+`bench`):
+
+```sh
+dotnet run -c Release --project src/DevTools/Benchmarks -- workloads-tsv out.tsv 5
+```
+
+One tab-separated row per case: name, iterations, median, minimum and maximum
+ns per iteration over the timed runs (5 here, after one warm-up), the check
+value and `OK` or `FAIL`. Without case names it runs `empty_loop`, `int_math`,
+`float_math`, `function_call`, `fib_recursive`, `numeric_loop` and `nbody`.
+`src/Unity/UnityTestBed/sync.sh` copies `LuaWorkloads.cs`,
+`LuaCSharpScripts.cs` and `WorkloadTsv.cs` into the test bed, and
+`src/Unity/UnityTestBed/bench-summary.sh` turns several such files into the
+table the workflow reports.
 
 **Allocations by type** for one or more cases (sampled from the runtime's
 allocation events, about one sample per 100 KB):

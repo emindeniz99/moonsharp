@@ -92,3 +92,18 @@ script already did, instead of a new userdata each time. Equality,
 `Assign` on such a value (it is read-only, like `DynValue.Nil`), or that
 attach a `UserValue` (`debug.setuservalue`) to one enum value and expect
 other pushes of the same value not to see it.
+
+## Flags functions return enum values
+
+`flagsAnd`, `flagsOr`, `flagsXor` and `flagsNot` on a registered `[Flags]`
+enum returned a userdata wrapping the bare underlying number (a boxed
+`int`, `ushort`, ...), not a value of the enum type. So it printed as a
+number and never compared equal to the enum's members:
+
+```lua
+print(MyFlags.flagsOr(MyFlags.A, MyFlags.B))                  -- before: 3      now: A, B
+print(MyFlags.flagsOr(MyFlags.A, MyFlags.B) == MyFlags.AB)    -- before: false  now: true
+```
+
+They now return values of the enum type. Affected: scripts that printed or
+compared these results, and hosts that received them as `object`.

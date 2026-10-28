@@ -28,9 +28,7 @@ namespace MoonSharp.Interpreter.Interop
 		readonly Dictionary<object, DynValue> m_NamedValues = new Dictionary<object, DynValue>();
 
 		Func<object, ulong> m_EnumToULong = null;
-		Func<ulong, object> m_ULongToEnum = null;
 		Func<object, long> m_EnumToLong = null;
-		Func<long, object> m_LongToEnum = null;
 
 		/// <summary>
 		/// Initializes a new instance of the <see cref="StandardEnumUserDataDescriptor"/> class.
@@ -152,8 +150,7 @@ namespace MoonSharp.Interpreter.Interop
 		/// </summary>
 		private DynValue CreateValueSigned(long value)
 		{
-			CreateSignedConversionFunctions();
-			return UserData.Create(m_LongToEnum(value), this);
+			return CreateValue(Enum.ToObject(Type, value));
 		}
 
 		/// <summary>
@@ -161,8 +158,13 @@ namespace MoonSharp.Interpreter.Interop
 		/// </summary>
 		private DynValue CreateValueUnsigned(ulong value)
 		{
-			CreateUnsignedConversionFunctions();
-			return UserData.Create(m_ULongToEnum(value), this);
+			return CreateValue(Enum.ToObject(Type, value));
+		}
+
+		// Results are values of the enum type, so they print, compare and convert like the members.
+		private DynValue CreateValue(object enumValue)
+		{
+			return FindNamedValue(enumValue) ?? UserData.Create(enumValue, this);
 		}
 
 		/// <summary>
@@ -170,27 +172,23 @@ namespace MoonSharp.Interpreter.Interop
 		/// </summary>
 		private void CreateSignedConversionFunctions()
 		{
-			if (m_EnumToLong == null || m_LongToEnum == null)
+			if (m_EnumToLong == null)
 			{
 				if (UnderlyingType == typeof(sbyte))
 				{
 					m_EnumToLong = o => (long)((sbyte)o);
-					m_LongToEnum = o => (sbyte)(o);
 				}
 				else if (UnderlyingType == typeof(short))
 				{
 					m_EnumToLong = o => (long)((short)o);
-					m_LongToEnum = o => (short)(o);
 				}
 				else if (UnderlyingType == typeof(int))
 				{
 					m_EnumToLong = o => (long)((int)o);
-					m_LongToEnum = o => (int)(o);
 				}
 				else if (UnderlyingType == typeof(long))
 				{
 					m_EnumToLong = o => (long)(o);
-					m_LongToEnum = o => (long)(o);
 				}
 				else throw new ScriptRuntimeException("Unexpected enum underlying type : {0}", UnderlyingType.FullName);
 			}
@@ -201,27 +199,23 @@ namespace MoonSharp.Interpreter.Interop
 		/// </summary>
 		private void CreateUnsignedConversionFunctions()
 		{
-			if (m_EnumToULong == null || m_ULongToEnum == null)
+			if (m_EnumToULong == null)
 			{
 				if (UnderlyingType == typeof(byte))
 				{
 					m_EnumToULong = o => (ulong)((byte)o);
-					m_ULongToEnum = o => (byte)(o);
 				}
 				else if (UnderlyingType == typeof(ushort))
 				{
 					m_EnumToULong = o => (ulong)((ushort)o);
-					m_ULongToEnum = o => (ushort)(o);
 				}
 				else if (UnderlyingType == typeof(uint))
 				{
 					m_EnumToULong = o => (ulong)((uint)o);
-					m_ULongToEnum = o => (uint)(o);
 				}
 				else if (UnderlyingType == typeof(ulong))
 				{
 					m_EnumToULong = o => (ulong)(o);
-					m_ULongToEnum = o => (ulong)(o);
 				}
 				else throw new ScriptRuntimeException("Unexpected enum underlying type : {0}", UnderlyingType.FullName);
 			}

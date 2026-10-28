@@ -16,8 +16,11 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		{
 			new object[] { 9007199254740992.0, "9007199254740992" },
 			new object[] { 0.1 + 0.2, "0.30000000000000004" },
-			new object[] { 1e15, "1E+15" },
-			new object[] { 1e16, "1E+16" },
+			new object[] { 1e15, "1000000000000000" },
+			new object[] { 1e16, "10000000000000000" },
+			new object[] { 1e17, "1E+17" },
+			new object[] { 75987868744874290.0, "75987868744874290" },
+			new object[] { 1e-4, "0.0001" },
 			new object[] { 1e-5, "1E-05" },
 			new object[] { -0.0, "-0" },
 			new object[] { 123456789012345680.0, "1.2345678901234568E+17" },
@@ -78,22 +81,8 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 					continue;
 
 				s.Globals["x"] = d;
-				string ours = s.DoString("return tostring(x)").String;
-				string bits = BitConverter.DoubleToInt64Bits(d).ToString("X16");
-
-				// Same value back, and no more significant digits than .NET Core's shortest output. The
-				// layout may differ: .NET Core prints some 16-digit values of 1E+16 and above without an
-				// exponent, while every runtime here uses "G" for that digit count.
-				Assert.AreEqual(d, double.Parse(ours, CultureInfo.InvariantCulture), "round trip, bits {0}", bits);
-				Assert.AreEqual(SignificantDigits(d.ToString("R", CultureInfo.InvariantCulture)), SignificantDigits(ours), "digits of {0}, bits {1}", ours, bits);
+				Assert.AreEqual(d.ToString("R", CultureInfo.InvariantCulture), s.DoString("return tostring(x)").String, "bits {0:X16}", BitConverter.DoubleToInt64Bits(d));
 			}
-		}
-
-		static string SignificantDigits(string s)
-		{
-			int e = s.IndexOfAny(new[] { 'E', 'e' });
-			string mantissa = (e < 0 ? s : s.Substring(0, e)).Replace("-", "").Replace(".", "");
-			return mantissa.Trim('0');
 		}
 	}
 }

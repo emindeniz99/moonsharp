@@ -6,17 +6,24 @@ using System.Collections.Generic;
 namespace MoonSharp.Interpreter.DataStructs
 {
 	/// <summary>
-	/// A preallocated, non-resizable, stack
+	/// An array-backed stack that starts small and doubles its storage on demand, up to a fixed maximum.
 	/// </summary>
 	/// <typeparam name="T"></typeparam>
 	internal class FastStack<T> : IList<T>
 	{
 		T[] m_Storage;
 		int m_HeadIdx = 0;
+		readonly int m_MaxCapacity;
 
 		public FastStack(int maxCapacity)
+			: this(maxCapacity, maxCapacity)
 		{
-			m_Storage = new T[maxCapacity];
+		}
+
+		public FastStack(int initialCapacity, int maxCapacity)
+		{
+			m_Storage = new T[initialCapacity];
+			m_MaxCapacity = maxCapacity;
 		}
 
 		public T this[int index]
@@ -27,18 +34,39 @@ namespace MoonSharp.Interpreter.DataStructs
 
 		public T Push(T item)
 		{
-			m_Storage[m_HeadIdx++] = item;
+			T[] storage = m_Storage;
+			int head = m_HeadIdx;
+
+			if ((uint)head >= (uint)storage.Length)
+				storage = Grow(head + 1);
+
+			storage[head] = item;
+			m_HeadIdx = head + 1;
 			return item;
 		}
 
 		public void Expand(int size)
 		{
+			if (size > m_Storage.Length - m_HeadIdx)
+				Grow(m_HeadIdx + size);
+
 			m_HeadIdx += size;
 		}
 
+		private T[] Grow(int requiredCapacity)
+		{
+			if (requiredCapacity > m_MaxCapacity)
+				throw new ScriptRuntimeException("stack overflow");
+
+			int newCapacity = Math.Max(requiredCapacity, Math.Min(m_Storage.Length * 2, m_MaxCapacity));
+			Array.Resize(ref m_Storage, newCapacity);
+			return m_Storage;
+		}
+
+		// Clears the range [from, to), so a full stack can be cleared without indexing past its end.
 		private void Zero(int from, int to)
 		{
-			Array.Clear(m_Storage, from, to - from + 1);
+			Array.Clear(m_Storage, from, to - from);
 		}
 
 		private void Zero(int index)
@@ -59,7 +87,8 @@ namespace MoonSharp.Interpreter.DataStructs
 
 		public void CropAtCount(int p)
 		{
-			RemoveLast(Count - p);
+			if (Count > p)
+				RemoveLast(Count - p);
 		}
 
 		public void RemoveLast( int cnt = 1)

@@ -47,8 +47,11 @@ final class NativeBridge {
     /** Returns null on success, or an error message. */
     static native String openAot(String library);
 
-    /** Returns a context id, or 0 on failure. */
-    static native long contextCreate();
+    /** Option bit for {@link #contextCreate}: the int64 and uint64 modules. */
+    static final int CONTEXT_INT64 = 1;
+
+    /** Returns a context id, or 0 on failure. options is 0 or {@link #CONTEXT_INT64}. */
+    static native long contextCreate(int options);
 
     static native boolean contextDispose(long context);
 

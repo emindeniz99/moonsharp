@@ -80,11 +80,12 @@ JNIEXPORT jstring JNICALL Java_org_moonsharp_hosting_NativeBridge_openAot(JNIEnv
     return open_result(env, error);
 }
 
-JNIEXPORT jlong JNICALL Java_org_moonsharp_hosting_NativeBridge_contextCreate(JNIEnv *env, jclass cls)
+JNIEXPORT jlong JNICALL Java_org_moonsharp_hosting_NativeBridge_contextCreate(JNIEnv *env, jclass cls,
+                                                                              jint options)
 {
     (void)env;
     (void)cls;
-    return moonsharp_context_create();
+    return moonsharp_context_create(options);
 }
 
 JNIEXPORT jboolean JNICALL Java_org_moonsharp_hosting_NativeBridge_contextDispose(JNIEnv *env, jclass cls,

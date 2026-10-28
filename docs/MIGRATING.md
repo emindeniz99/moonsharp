@@ -605,3 +605,29 @@ held "no value", so `type(a)` in `g` failed with "bad argument #1 to 'type' (val
 **After:** the parameter holds nil, and `...` holds no values (`select('#', ...)` is 0), as in Lua.
 
 **Affected:** scripts that relied on `select('#', ...)` being 1 for an empty `...`, or on the error.
+
+## Values from the VM are read-only copies
+
+The VM keeps values as internal structs on its stack, in locals and in upvalues, and creates a
+`DynValue` only where a value leaves it: arguments of C# functions, values a script stores in a
+table, results of `Script.Call`, debugger views.
+
+**Before:** a C# function could receive the very `DynValue` a script local held (usually a read-only
+clone), arithmetic results were writable, and `Closure.GetUpvalue(i)` returned the upvalue's own
+cell, documented as the way to change it (`GetUpvalue(i).Assign(v)`). Every `DynValue` took a
+`ReferenceID` from a counter when created.
+
+**After:**
+
+- Every `DynValue` the VM creates is read-only; `Assign` on one throws `ScriptRuntimeException`
+  ("Assigning on r-value"). Values the host creates with `DynValue.New*` stay writable.
+- Nil, booleans and the integers -256..4095 come from shared instances, so two results can be the
+  same object (`ReferenceEquals`); compare with `Equals` or by value.
+- `Closure.GetUpvalue(i)` returns a read-only copy of the value. Use the new
+  `Closure.SetUpvalue(i, value)` to change the variable; every closure that shares it sees the change,
+  as with `debug.setupvalue`.
+- `ReferenceID` is assigned when first read, so the numbers are sparse; they are still unique per
+  thread. `DynValue` no longer caches its hash code.
+
+**Affected:** hosts that call `Assign` on values received from scripts, that change upvalues through
+`GetUpvalue(i).Assign`, or that compare values by reference.

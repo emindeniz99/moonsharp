@@ -130,3 +130,14 @@ thread, which ends the process. The work item now walks copies of the
 lists and ignores a failure: members it did not optimize keep running
 through reflection, as they do before it finishes. Affected: hosts using
 `BackgroundOptimized` with overloaded methods.
+
+## Exceptions from C# methods called through reflection
+
+A C# method that threw, called from Lua through reflection, reached the
+host as a `TargetInvocationException` wrapping the real exception; through
+the compiled path it reached the host as itself. Reflection is what
+`InteropAccessMode.Reflection` uses, what every call uses on AOT platforms
+(IL2CPP, iOS), and what a `BackgroundOptimized` method uses until it is
+compiled. The original exception is now rethrown on every path, with its
+stack trace. Affected: hosts on IL2CPP or iOS, or using `Reflection`, that
+caught `TargetInvocationException` and read `InnerException`.

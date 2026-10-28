@@ -19,6 +19,13 @@ namespace MoonSharp.Interpreter.Interop.UserDataRegistries
 		private static Dictionary<Type, IUserDataDescriptor> s_TypeRegistry = new Dictionary<Type, IUserDataDescriptor>();
 		private static Dictionary<Type, IUserDataDescriptor> s_TypeRegistryHistory = new Dictionary<Type, IUserDataDescriptor>();
 		private static InteropAccessMode s_DefaultAccessMode;
+		private static IRegistrationPolicy s_RegistrationPolicy;
+
+		// Descriptors resolved through base types or interfaces for types that are not registered
+		// themselves, including negative (null) results, keyed by searchInterfaces. Cleared whenever a
+		// registration or the policy changes; read and written under s_Lock like the registry.
+		private static Dictionary<Type, IUserDataDescriptor> s_ResolvedWithInterfaces = new Dictionary<Type, IUserDataDescriptor>();
+		private static Dictionary<Type, IUserDataDescriptor> s_ResolvedWithoutInterfaces = new Dictionary<Type, IUserDataDescriptor>();
 
 		/// <summary>
 		/// Registers all types marked with a MoonSharpUserDataAttribute that ar contained in an assembly.
@@ -189,6 +196,8 @@ namespace MoonSharp.Interpreter.Interop.UserDataRegistries
 
 			if (result != oldDescriptor)
 			{
+				ClearResolvedCache();
+
 				if (result == null)
 				{
 					s_TypeRegistry.Remove(type);
@@ -242,8 +251,8 @@ namespace MoonSharp.Interpreter.Interop.UserDataRegistries
 				IUserDataDescriptor typeDescriptor = null;
 
 				// if the type has been explicitly registered, return its descriptor as it's complete
-				if (s_TypeRegistry.ContainsKey(type))
-					return s_TypeRegistry[type];
+				if (s_TypeRegistry.TryGetValue(type, out typeDescriptor))
+					return typeDescriptor;
 
 				if (RegistrationPolicy.AllowTypeAutoRegistration(type))
 				{
@@ -254,80 +263,110 @@ namespace MoonSharp.Interpreter.Interop.UserDataRegistries
 					}
 				}
 
-				// search for the base object descriptors
-				for (Type t = type; t != null; t = Framework.Do.GetBaseType(t))
-				{
-					IUserDataDescriptor u;
+				Dictionary<Type, IUserDataDescriptor> resolved = searchInterfaces ? s_ResolvedWithInterfaces : s_ResolvedWithoutInterfaces;
 
-					if (s_TypeRegistry.TryGetValue(t, out u))
+				if (resolved.TryGetValue(type, out typeDescriptor))
+					return typeDescriptor;
+
+				bool usedGenerator;
+				typeDescriptor = ResolveDescriptorForUnregisteredType(type, searchInterfaces, out usedGenerator);
+
+				// A generator may register types or answer differently over time, so its results are not kept.
+				if (!usedGenerator)
+					resolved[type] = typeDescriptor;
+
+				return typeDescriptor;
+			}
+		}
+
+		private static void ClearResolvedCache()
+		{
+			s_ResolvedWithInterfaces.Clear();
+			s_ResolvedWithoutInterfaces.Clear();
+		}
+
+		private static IUserDataDescriptor ResolveDescriptorForUnregisteredType(Type type, bool searchInterfaces, out bool usedGenerator)
+		{
+			IUserDataDescriptor typeDescriptor = null;
+			usedGenerator = false;
+
+			// search for the base object descriptors
+			for (Type t = type; t != null; t = Framework.Do.GetBaseType(t))
+			{
+				IUserDataDescriptor u;
+
+				if (s_TypeRegistry.TryGetValue(t, out u))
+				{
+					typeDescriptor = u;
+					break;
+				}
+				else if (Framework.Do.IsGenericType(t))
+				{
+					if (s_TypeRegistry.TryGetValue(t.GetGenericTypeDefinition(), out u))
 					{
 						typeDescriptor = u;
 						break;
 					}
-					else if (Framework.Do.IsGenericType(t))
-					{
-						if (s_TypeRegistry.TryGetValue(t.GetGenericTypeDefinition(), out u))
-						{
-							typeDescriptor = u;
-							break;
-						}
-					}
 				}
+			}
 
-				if (typeDescriptor is IGeneratorUserDataDescriptor)
-					typeDescriptor = ((IGeneratorUserDataDescriptor)typeDescriptor).Generate(type);
-
-
-				// we should not search interfaces (for example, it's just for statics..), no need to look further
-				if (!searchInterfaces)
-					return typeDescriptor;
-
-				List<IUserDataDescriptor> descriptors = new List<IUserDataDescriptor>();
-
-				if (typeDescriptor != null)
-					descriptors.Add(typeDescriptor);
+			if (typeDescriptor is IGeneratorUserDataDescriptor)
+			{
+				usedGenerator = true;
+				typeDescriptor = ((IGeneratorUserDataDescriptor)typeDescriptor).Generate(type);
+			}
 
 
-				if (searchInterfaces)
+			// we should not search interfaces (for example, it's just for statics..), no need to look further
+			if (!searchInterfaces)
+				return typeDescriptor;
+
+			List<IUserDataDescriptor> descriptors = new List<IUserDataDescriptor>();
+
+			if (typeDescriptor != null)
+				descriptors.Add(typeDescriptor);
+
+
+			if (searchInterfaces)
+			{
+				foreach (Type interfaceType in Framework.Do.GetInterfaces(type))
 				{
-					foreach (Type interfaceType in Framework.Do.GetInterfaces(type))
-					{
-						IUserDataDescriptor interfaceDescriptor;
+					IUserDataDescriptor interfaceDescriptor;
 
-						if (s_TypeRegistry.TryGetValue(interfaceType, out interfaceDescriptor))
+					if (s_TypeRegistry.TryGetValue(interfaceType, out interfaceDescriptor))
+					{
+						if (interfaceDescriptor is IGeneratorUserDataDescriptor)
+						{
+							usedGenerator = true;
+							interfaceDescriptor = ((IGeneratorUserDataDescriptor)interfaceDescriptor).Generate(type);
+						}
+
+						if (interfaceDescriptor != null)
+							descriptors.Add(interfaceDescriptor);
+					}
+					else if (Framework.Do.IsGenericType(interfaceType))
+					{
+						if (s_TypeRegistry.TryGetValue(interfaceType.GetGenericTypeDefinition(), out interfaceDescriptor))
 						{
 							if (interfaceDescriptor is IGeneratorUserDataDescriptor)
+							{
+								usedGenerator = true;
 								interfaceDescriptor = ((IGeneratorUserDataDescriptor)interfaceDescriptor).Generate(type);
+							}
 
 							if (interfaceDescriptor != null)
 								descriptors.Add(interfaceDescriptor);
 						}
-						else if (Framework.Do.IsGenericType(interfaceType))
-						{
-							if (s_TypeRegistry.TryGetValue(interfaceType.GetGenericTypeDefinition(), out interfaceDescriptor))
-							{
-								if (interfaceDescriptor is IGeneratorUserDataDescriptor)
-									interfaceDescriptor = ((IGeneratorUserDataDescriptor)interfaceDescriptor).Generate(type);
-
-								if (interfaceDescriptor != null)
-									descriptors.Add(interfaceDescriptor);
-							}
-						}
 					}
 				}
-
-				if (descriptors.Count == 1)
-					return descriptors[0];
-				else if (descriptors.Count == 0)
-					return null;
-				else
-					return new CompositeUserDataDescriptor(descriptors, type);
 			}
-		}
 
-		private static bool FrameworkIsAssignableFrom(Type type)
-		{
-			throw new NotImplementedException();
+			if (descriptors.Count == 1)
+				return descriptors[0];
+			else if (descriptors.Count == 0)
+				return null;
+			else
+				return new CompositeUserDataDescriptor(descriptors, type);
 		}
 
 
@@ -373,7 +412,18 @@ namespace MoonSharp.Interpreter.Interop.UserDataRegistries
 		/// <summary>
 		/// Gets or sets the registration policy.
 		/// </summary>
-		internal static IRegistrationPolicy RegistrationPolicy { get; set; }
+		internal static IRegistrationPolicy RegistrationPolicy
+		{
+			get { return s_RegistrationPolicy; }
+			set
+			{
+				lock (s_Lock)
+				{
+					s_RegistrationPolicy = value;
+					ClearResolvedCache();
+				}
+			}
+		}
 
 
 	}

@@ -142,7 +142,7 @@ namespace MoonSharp.Interpreter.Interop
 			for (int i = 0; i < pars.Length; i++)
 			{
 				// keep track of out and ref params
-				if (parameters[i].Type.IsByRef)
+				if (parameters[i].IsByRefType)
 				{
 					if (outParams == null) outParams = new List<int>();
 					outParams.Add(i);
@@ -219,7 +219,7 @@ namespace MoonSharp.Interpreter.Interop
 				else
 				{
 					var arg = args.RawGet(j, false) ?? DynValue.Void;
-					pars[i] = ScriptToClrConversions.DynValueToObjectOfType(arg, parameters[i].Type,
+					pars[i] = ScriptToClrConversions.DynValueToObjectOfNonByRefType(arg, parameters[i].NonByRefType,
 						parameters[i].DefaultValue, parameters[i].HasDefaultValue);
 					j += 1;
 				}

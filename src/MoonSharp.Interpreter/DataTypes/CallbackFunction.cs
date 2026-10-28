@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using MoonSharp.Interpreter.Interop;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace MoonSharp.Interpreter
 {
@@ -11,6 +12,14 @@ namespace MoonSharp.Interpreter
 	public sealed class CallbackFunction : RefIdObject
 	{
 		private static InteropAccessMode m_DefaultAccessMode = InteropAccessMode.LazyOptimized;
+
+		// One descriptor per method and access mode, so converting the same delegate again reuses its
+		// parameter analysis and compiled adapter. Weak keys: a cached method does not keep its
+		// assembly loaded.
+		private static readonly ConditionalWeakTable<MethodInfo, MethodMemberDescriptor[]> s_DescriptorsByMethod =
+			new ConditionalWeakTable<MethodInfo, MethodMemberDescriptor[]>();
+		private static readonly ConditionalWeakTable<MethodInfo, MethodMemberDescriptor[]>.CreateValueCallback s_NewDescriptorSlots =
+			mi => new MethodMemberDescriptor[(int)InteropAccessMode.Default + 1];
 
 		/// <summary>
 		/// Gets the name of the function
@@ -89,8 +98,28 @@ namespace MoonSharp.Interpreter
 			if (accessMode == InteropAccessMode.Default)
 				accessMode = m_DefaultAccessMode;
 
-			MethodMemberDescriptor descr = new MethodMemberDescriptor(del.Method, accessMode);
+			MethodMemberDescriptor descr = GetMethodDescriptor(del.Method, accessMode);
 			return descr.GetCallbackFunction(script, del.Target);
+		}
+
+		private static MethodMemberDescriptor GetMethodDescriptor(MethodInfo mi, InteropAccessMode accessMode)
+		{
+			MethodMemberDescriptor[] slots = s_DescriptorsByMethod.GetValue(mi, s_NewDescriptorSlots);
+			int slot = (int)accessMode;
+
+			if (slot < 0 || slot >= slots.Length)
+				return new MethodMemberDescriptor(mi, accessMode);
+
+			// A race only builds a duplicate descriptor; both are equivalent.
+			MethodMemberDescriptor descr = slots[slot];
+
+			if (descr == null)
+			{
+				descr = new MethodMemberDescriptor(mi, accessMode);
+				slots[slot] = descr;
+			}
+
+			return descr;
 		}
 
 
@@ -108,7 +137,7 @@ namespace MoonSharp.Interpreter
 			if (accessMode == InteropAccessMode.Default)
 				accessMode = m_DefaultAccessMode;
 
-			MethodMemberDescriptor descr = new MethodMemberDescriptor(mi, accessMode);
+			MethodMemberDescriptor descr = GetMethodDescriptor(mi, accessMode);
 			return descr.GetCallbackFunction(script, obj);
 		}
 

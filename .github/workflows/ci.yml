@@ -14,6 +14,9 @@ on:
       - "docs/**"
       - "**/*.md"
 
+permissions:
+  contents: read
+
 jobs:
   docker-ci:
     runs-on: ubuntu-latest
@@ -33,11 +36,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          persist-credentials: false
+
+      # Node and the .NET SDK and runtime pinned in mise.toml; Java, Maven and
+      # CMake are not needed here.
+      - name: Setup tools from mise.toml
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
+        with:
+          # A mise release older than seven days.
+          version: 2026.10.11
+          install_args: node dotnet
 
       - name: Stage UPM package
         run: tools/upm/stage-local-package.sh 0.0.0-ci.${{ github.run_number }}
@@ -84,11 +93,6 @@ jobs:
         with:
           name: vscode-dap-vsix
           path: src/moonsharp-vscode-debug/*.vsix
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
 
       - name: Build MoonSharp CLI (net8.0)
         run: dotnet build src/MoonSharp/MoonSharp.csproj -c Release -f net8.0 -v minimal
@@ -429,16 +433,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
+      # Mono is not in the mise registry.
       - name: Install Mono runtime
         run: |
           sudo apt-get update
           sudo apt-get install -y mono-runtime
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      # The .NET SDK and runtime pinned in mise.toml.
+      - name: Setup tools from mise.toml
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
         with:
-          dotnet-version: "8.0.x"
+          # A mise release older than seven days.
+          version: 2026.10.11
+          install_args: dotnet
 
       - name: Build DevTools Playground
         run: dotnet build src/DevTools/Playground/Playground.csproj -c Release -v minimal

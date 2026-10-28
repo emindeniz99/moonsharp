@@ -48,22 +48,20 @@ Bring upstream in with a merge commit; never rebase or force-push `master`.
 | JSON numbers, string case and string order independent of culture | [#4](https://github.com/emindeniz99/moonsharp/pull/4) | merged | yes (the order change needs a maintainer decision) | none yet |
 | Hosting: JSON host, browser, Java worker, fixtures | [#5](https://github.com/emindeniz99/moonsharp/pull/5) | open | no (fork-only) | |
 | Keep source locations in binary dumps | [#6](https://github.com/emindeniz99/moonsharp/pull/6) | merged | yes | [#348](https://github.com/moonsharp-devs/moonsharp/issues/348) |
+| Baseline, upstream tracking, comparison with native Lua | [#7](https://github.com/emindeniz99/moonsharp/pull/7) | merged | no (fork docs) | |
+| `io` on browser WebAssembly, trim descriptor, `io.read("*n")` culture, remove unused `ExecutionState` | [#8](https://github.com/emindeniz99/moonsharp/pull/8) | merged | yes | none yet |
+
+Planned work and open decisions: [ROADMAP.md](ROADMAP.md).
 
 ## Upstream issues found here, not yet fixed
 
 - A `Script` keeps every chunk it compiles. Compiling repeatedly into one
   long-lived `Script` grows memory without bound.
-- Creating the `io` module calls `Console.OpenStandardInput`, which throws
-  `PlatformNotSupportedException` on browser WebAssembly, so
-  `new Script(CoreModules.Preset_Complete)` fails there.
-- MoonSharp registers its standard library through reflection. A trimmed
-  .NET publish (browser, NativeAOT) removes it unless the interpreter
-  assembly is a trimmer root. Unity IL2CPP stripping may behave the same;
-  not verified.
-- `io.read("*n")` parses numbers with the current culture
-  (`FileUserDataBase.cs:175`).
-- `Execution/VM/ExecutionState.cs` is unused and would allocate two more
-  131,072-slot stacks if anything created it.
+
+Fixed in the fork by [#8](https://github.com/emindeniz99/moonsharp/pull/8),
+not yet reported upstream: the `io` module failing on browser WebAssembly,
+the standard library disappearing from trimmed apps, culture-dependent
+`io.read("*n")`, and the unused `ExecutionState`.
 
 ## Related upstream work
 

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using MoonSharp.Interpreter.Compatibility;
 using MoonSharp.Interpreter.Interop.Converters;
 
@@ -17,6 +18,22 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 		private int m_ExtMethodsVersion = 0;
 		private Dictionary<string, IMemberDescriptor> m_MetaMembers = new Dictionary<string, IMemberDescriptor>();
 		private Dictionary<string, IMemberDescriptor> m_Members = new Dictionary<string, IMemberDescriptor>();
+
+		// Bumped on every change to the member lists; memoized lookups are valid for one version.
+		private int m_MembersVersion = 0;
+
+		// Whether a subclass overrides neither the get (PLAIN_INDEX) nor the set (PLAIN_SET_INDEX) side of
+		// the name lookup, so the lookups below may be memoized without bypassing an override. Found on
+		// first use: descriptors are also built only to be discarded by a repeated registration.
+		private const int PLAIN_KNOWN = 1, PLAIN_INDEX = 2, PLAIN_SET_INDEX = 4;
+		private int m_Plain;
+
+		// Fuzzy lookups: requested name -> member name it resolves to, or null for no match.
+		private const int MAX_FUZZY_NAMES = 1024;
+		private readonly object m_FuzzyNamesLock = new object();
+		private Dictionary<string, string> m_FuzzyNames;
+		private int m_FuzzyNamesVersion;
+		private FuzzySymbolMatchingBehavior m_FuzzyNamesFlags;
 
 		/// <summary>
 		/// The special name used by CLR for indexer getters
@@ -60,6 +77,35 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 			Type = type;
 			Name = type.FullName;
 			FriendlyName = friendlyName ?? type.Name;
+		}
+
+		private bool IsPlain(int flag)
+		{
+			int plain = m_Plain;
+
+			if (plain == 0)
+			{
+				Type self = GetType();
+				plain = PLAIN_KNOWN;
+
+				if (IsDeclaredHere(self, "Index", BindingFlags.Public, typeof(Script), typeof(object), typeof(DynValue), typeof(bool))
+					&& IsDeclaredHere(self, "TryIndex", BindingFlags.NonPublic, typeof(Script), typeof(object), typeof(string)))
+					plain |= PLAIN_INDEX;
+
+				if (IsDeclaredHere(self, "SetIndex", BindingFlags.Public, typeof(Script), typeof(object), typeof(DynValue), typeof(DynValue), typeof(bool))
+					&& IsDeclaredHere(self, "TrySetIndex", BindingFlags.NonPublic, typeof(Script), typeof(object), typeof(string), typeof(DynValue)))
+					plain |= PLAIN_SET_INDEX;
+
+				m_Plain = plain;
+			}
+
+			return (plain & flag) != 0;
+		}
+
+		private static bool IsDeclaredHere(Type self, string name, BindingFlags visibility, params Type[] parameters)
+		{
+			MethodInfo mi = self.GetMethod(name, BindingFlags.Instance | visibility, null, parameters, null);
+			return mi != null && mi.DeclaringType == typeof(DispatchingUserDataDescriptor);
 		}
 
 		/// <summary>
@@ -135,6 +181,7 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 		public void RemoveMember(string memberName)
 		{
 			m_Members.Remove(memberName);
+			m_MembersVersion++;
 		}
 
 		/// <summary>
@@ -169,6 +216,7 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 		public void RemoveMetaMember(string memberName)
 		{
 			m_MetaMembers.Remove(memberName);
+			m_MembersVersion++;
 		}
 
 
@@ -176,6 +224,8 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 
 		private void AddMemberTo(Dictionary<string, IMemberDescriptor> members, string name, IMemberDescriptor desc)
 		{
+			m_MembersVersion++;
+
 			IOverloadableMemberDescriptor odesc = desc as IOverloadableMemberDescriptor;
 
 			if (odesc != null)
@@ -233,9 +283,7 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 				return null;
 
 			DynValue v = TryIndex(script, obj, index.String);
-			if (v == null && (Script.GlobalOptions.FuzzySymbolMatching & FuzzySymbolMatchingBehavior.UpperFirstLetter) == FuzzySymbolMatchingBehavior.UpperFirstLetter) v = TryIndex(script, obj, UpperFirstLetter(index.String));
-			if (v == null && (Script.GlobalOptions.FuzzySymbolMatching & FuzzySymbolMatchingBehavior.Camelify) == FuzzySymbolMatchingBehavior.Camelify) v = TryIndex(script, obj, Camelify(index.String));
-			if (v == null && (Script.GlobalOptions.FuzzySymbolMatching & FuzzySymbolMatchingBehavior.PascalCase) == FuzzySymbolMatchingBehavior.PascalCase)	v = TryIndex(script, obj, UpperFirstLetter(Camelify(index.String)));
+			if (v == null) v = TryIndexFuzzy(script, obj, index.String);
 
 			if (v == null && m_ExtMethodsVersion < UserData.GetExtensionMethodsChangeVersion())
 			{
@@ -250,6 +298,119 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 			return v;
 		}
 
+
+		private DynValue TryIndexFuzzy(Script script, object obj, string indexName)
+		{
+			FuzzySymbolMatchingBehavior flags = Script.GlobalOptions.FuzzySymbolMatching;
+
+			if (flags == FuzzySymbolMatchingBehavior.None)
+				return null;
+
+			if (IsPlain(PLAIN_INDEX))
+			{
+				// TryIndex finds exactly the members, so the first variant that is a member is the answer.
+				string resolved = ResolveFuzzyName(indexName, flags);
+				return (resolved != null) ? TryIndex(script, obj, resolved) : null;
+			}
+
+			DynValue v = null;
+			if (v == null && (flags & FuzzySymbolMatchingBehavior.UpperFirstLetter) == FuzzySymbolMatchingBehavior.UpperFirstLetter) v = TryIndex(script, obj, UpperFirstLetter(indexName));
+			if (v == null && (flags & FuzzySymbolMatchingBehavior.Camelify) == FuzzySymbolMatchingBehavior.Camelify) v = TryIndex(script, obj, Camelify(indexName));
+			if (v == null && (flags & FuzzySymbolMatchingBehavior.PascalCase) == FuzzySymbolMatchingBehavior.PascalCase) v = TryIndex(script, obj, UpperFirstLetter(Camelify(indexName)));
+			return v;
+		}
+
+		/// <summary>
+		/// The member a fuzzy lookup of a name resolves to: the first of the name with its first letter
+		/// upper-cased, camelified and pascal-cased (as enabled by the flags) that is a member, or null.
+		/// Memoized per name until the members or the flags change, so repeated lookups of a missing or
+		/// differently-cased name do not build the variant strings again.
+		/// </summary>
+		private string ResolveFuzzyName(string name, FuzzySymbolMatchingBehavior flags)
+		{
+			int version = m_MembersVersion;
+			string resolved;
+
+			lock (m_FuzzyNamesLock)
+			{
+				if (m_FuzzyNames == null || m_FuzzyNamesVersion != version || m_FuzzyNamesFlags != flags)
+				{
+					m_FuzzyNames = new Dictionary<string, string>();
+					m_FuzzyNamesVersion = version;
+					m_FuzzyNamesFlags = flags;
+				}
+				else if (m_FuzzyNames.TryGetValue(name, out resolved))
+				{
+					return resolved;
+				}
+			}
+
+			resolved = null;
+			string candidate;
+
+			if ((flags & FuzzySymbolMatchingBehavior.UpperFirstLetter) == FuzzySymbolMatchingBehavior.UpperFirstLetter
+				&& m_Members.ContainsKey(candidate = UpperFirstLetter(name)))
+				resolved = candidate;
+			else if ((flags & FuzzySymbolMatchingBehavior.Camelify) == FuzzySymbolMatchingBehavior.Camelify
+				&& m_Members.ContainsKey(candidate = Camelify(name)))
+				resolved = candidate;
+			else if ((flags & FuzzySymbolMatchingBehavior.PascalCase) == FuzzySymbolMatchingBehavior.PascalCase
+				&& m_Members.ContainsKey(candidate = UpperFirstLetter(Camelify(name))))
+				resolved = candidate;
+
+			lock (m_FuzzyNamesLock)
+			{
+				// Names built at run time could grow the memo without bound; past the cap, stop adding.
+				if (m_FuzzyNamesVersion == version && m_FuzzyNamesFlags == flags && m_FuzzyNames.Count < MAX_FUZZY_NAMES)
+					m_FuzzyNames[name] = resolved;
+			}
+
+			return resolved;
+		}
+
+		/// <summary>
+		/// Indexes a userdata by name. A method member read again from the same userdata, as every
+		/// <c>obj:Method()</c> does, returns the bound callback kept on the userdata instead of a new one.
+		/// </summary>
+		internal DynValue IndexUserData(Script script, UserData ud, DynValue index, bool isDirectIndexing)
+		{
+			if (!isDirectIndexing || index.Type != DataType.String || !IsPlain(PLAIN_INDEX))
+				return Index(script, ud.Object, index, isDirectIndexing);
+
+			string name = index.String;
+			int version = m_MembersVersion;
+			DynValue v = ud.FindBoundMember(script, name, version);
+
+			if (v != null)
+				return v;
+
+			IMemberDescriptor desc;
+
+			if (!m_Members.TryGetValue(name, out desc))
+			{
+				FuzzySymbolMatchingBehavior flags = Script.GlobalOptions.FuzzySymbolMatching;
+				string resolved = (flags != FuzzySymbolMatchingBehavior.None) ? ResolveFuzzyName(name, flags) : null;
+
+				if (resolved == null || !m_Members.TryGetValue(resolved, out desc))
+					desc = null;
+			}
+
+			// Not a member under any spelling: the slow path also looks for extension methods.
+			if (desc == null)
+				return Index(script, ud.Object, index, isDirectIndexing);
+
+			v = desc.GetValue(script, ud.Object);
+
+			// Binding an overload set to an object has no side effect and gives an equivalent callable
+			// every time; overloads and extension methods are resolved when it is called.
+			if (v != null && desc.GetType() == typeof(OverloadedMethodMemberDescriptor))
+			{
+				v = v.AsReadOnly();
+				ud.StoreBoundMember(script, name, version, v);
+			}
+
+			return v ?? Index(script, ud.Object, index, isDirectIndexing);
+		}
 
 		/// <summary>
 		/// Tries to perform an indexing operation by checking newly added extension methods for the given indexName.
@@ -268,6 +429,7 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 				var ext = new OverloadedMethodMemberDescriptor(indexName, this.Type);
 				ext.SetExtensionMethodsSnapshot(UserData.GetExtensionMethodsChangeVersion(), methods);
 				m_Members.Add(indexName, ext);
+				m_MembersVersion++;
 				return DynValue.NewCallback(ext.GetCallback(script, obj));
 			}
 
@@ -344,10 +506,29 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 				return false;
 
 			bool v = TrySetIndex(script, obj, index.String, value);
-			if (!v && (Script.GlobalOptions.FuzzySymbolMatching & FuzzySymbolMatchingBehavior.UpperFirstLetter) == FuzzySymbolMatchingBehavior.UpperFirstLetter) v = TrySetIndex(script, obj, UpperFirstLetter(index.String), value);
-			if (!v && (Script.GlobalOptions.FuzzySymbolMatching & FuzzySymbolMatchingBehavior.Camelify) == FuzzySymbolMatchingBehavior.Camelify) v = TrySetIndex(script, obj, Camelify(index.String), value);
-			if (!v && (Script.GlobalOptions.FuzzySymbolMatching & FuzzySymbolMatchingBehavior.PascalCase) == FuzzySymbolMatchingBehavior.PascalCase) v = TrySetIndex(script, obj, UpperFirstLetter(Camelify(index.String)), value);
+			if (!v) v = TrySetIndexFuzzy(script, obj, index.String, value);
 
+			return v;
+		}
+
+		private bool TrySetIndexFuzzy(Script script, object obj, string indexName, DynValue value)
+		{
+			FuzzySymbolMatchingBehavior flags = Script.GlobalOptions.FuzzySymbolMatching;
+
+			if (flags == FuzzySymbolMatchingBehavior.None)
+				return false;
+
+			if (IsPlain(PLAIN_SET_INDEX))
+			{
+				// TrySetIndex succeeds exactly when the name is a member, which is what the memo records.
+				string resolved = ResolveFuzzyName(indexName, flags);
+				return resolved != null && TrySetIndex(script, obj, resolved, value);
+			}
+
+			bool v = false;
+			if (!v && (flags & FuzzySymbolMatchingBehavior.UpperFirstLetter) == FuzzySymbolMatchingBehavior.UpperFirstLetter) v = TrySetIndex(script, obj, UpperFirstLetter(indexName), value);
+			if (!v && (flags & FuzzySymbolMatchingBehavior.Camelify) == FuzzySymbolMatchingBehavior.Camelify) v = TrySetIndex(script, obj, Camelify(indexName), value);
+			if (!v && (flags & FuzzySymbolMatchingBehavior.PascalCase) == FuzzySymbolMatchingBehavior.PascalCase) v = TrySetIndex(script, obj, UpperFirstLetter(Camelify(indexName)), value);
 			return v;
 		}
 
@@ -376,10 +557,11 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 
 		void IOptimizableDescriptor.Optimize()
 		{
-			foreach (var m in this.m_MetaMembers.Values.OfType<IOptimizableDescriptor>())
+			// Copies: this can run on a background thread while scripts add members (extension methods).
+			foreach (var m in this.m_MetaMembers.Values.ToArray().OfType<IOptimizableDescriptor>())
 				m.Optimize();
 
-			foreach (var m in this.m_Members.Values.OfType<IOptimizableDescriptor>())
+			foreach (var m in this.m_Members.Values.ToArray().OfType<IOptimizableDescriptor>())
 				m.Optimize();
 		}
 

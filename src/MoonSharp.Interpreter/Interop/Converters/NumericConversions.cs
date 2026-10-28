@@ -24,13 +24,19 @@ namespace MoonSharp.Interpreter.Interop.Converters
 				typeof(ushort),
 				typeof(byte),
 			};
-			NumericTypes = new HashSet<Type>(NumericTypesOrdered);
 		}
 
 		/// <summary>
-		/// HashSet of numeric types
+		/// Whether t is one of the CLR numeric types, by reference compares instead of hashing the Type.
+		/// Enums are not numeric here (Type.GetTypeCode would say they are).
 		/// </summary>
-		internal static readonly HashSet<Type> NumericTypes;
+		internal static bool IsNumericType(Type t)
+		{
+			return t == typeof(double) || t == typeof(int) || t == typeof(float) || t == typeof(long)
+				|| t == typeof(uint) || t == typeof(short) || t == typeof(ushort) || t == typeof(byte)
+				|| t == typeof(sbyte) || t == typeof(ulong) || t == typeof(decimal);
+		}
+
 		/// <summary>
 		/// Array of numeric types in order used for some conversions
 		/// </summary>

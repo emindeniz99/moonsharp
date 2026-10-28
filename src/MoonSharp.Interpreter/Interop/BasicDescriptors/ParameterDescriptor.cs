@@ -17,7 +17,16 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 		/// <summary>
 		/// Gets the type of the parameter
 		/// </summary>
-		public Type Type { get; private set; }
+		public Type Type
+		{
+			get { return m_Type; }
+			private set
+			{
+				m_Type = value;
+				IsByRefType = value != null && value.IsByRef;
+				NonByRefType = IsByRefType ? value.GetElementType() : value;
+			}
+		}
 		/// <summary>
 		/// Gets a value indicating whether this instance has a default value.
 		/// </summary>
@@ -47,6 +56,18 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 		/// </summary>
 		public Type OriginalType { get { return m_OriginalType ?? Type; } }
 
+
+		/// <summary>
+		/// Type.IsByRef of <see cref="Type"/>, computed once instead of on every call.
+		/// </summary>
+		internal bool IsByRefType { get; private set; }
+
+		/// <summary>
+		/// <see cref="Type"/> without the by-reference wrapper: the type arguments are converted to.
+		/// </summary>
+		internal Type NonByRefType { get; private set; }
+
+		private Type m_Type;
 
 		/// <summary>
 		/// If the type got restricted, the original type before the restriction.

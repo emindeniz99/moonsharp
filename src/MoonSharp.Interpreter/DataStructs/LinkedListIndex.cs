@@ -41,29 +41,6 @@ namespace MoonSharp.Interpreter.DataStructs
 		}
 
 		/// <summary>
-		/// Updates or creates a new node in the linked list, indexed by the specified key.
-		/// </summary>
-		/// <param name="key">The key.</param>
-		/// <param name="value">The value.</param>
-		/// <returns>The previous value of the element</returns>
-		public TValue Set(TKey key, TValue value)
-		{
-			LinkedListNode<TValue> node = Find(key);
-
-			if (node == null)
-			{
-				Add(key, value);
-				return default(TValue);
-			}
-			else
-			{
-				TValue val = node.Value;
-				node.Value = value;
-				return val;
-			}
-		}
-
-		/// <summary>
 		/// Creates a new node in the linked list, indexed by the specified key.
 		/// </summary>
 		/// <param name="key">The key.</param>

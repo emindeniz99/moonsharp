@@ -109,8 +109,9 @@ namespace MoonSharp.Interpreter.Interop
 			if ((int)scriptDataType > m_Script2Clr.Length)
 				return null;
 
+			// Checked on every argument conversion: an empty map answers without hashing the type.
 			Dictionary<Type, Func<DynValue, object>> map = m_Script2Clr[(int)scriptDataType];
-			return map.GetOrDefault(clrDataType);
+			return (map.Count == 0) ? null : map.GetOrDefault(clrDataType);
 		}
 
 		/// <summary>
@@ -149,7 +150,7 @@ namespace MoonSharp.Interpreter.Interop
 		/// <returns>The converter function, or null if not found</returns>
 		public Func<Script, object, DynValue> GetClrToScriptCustomConversion(Type clrDataType)
 		{
-			return m_Clr2Script.GetOrDefault(clrDataType);
+			return (m_Clr2Script.Count == 0) ? null : m_Clr2Script.GetOrDefault(clrDataType);
 		}
 
 		/// Sets a custom converter from a CLR data type. Set null to remove a previous custom converter.

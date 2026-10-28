@@ -1,4 +1,4 @@
-﻿//
+//
 // This part taken from KopiLua - https://github.com/NLua/KopiLua
 //
 // =========================================================================================================
@@ -42,25 +42,289 @@
 // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
 
-
-#region Usings
 using System;
 using System.Globalization;
-using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using MoonSharp.Interpreter.Interop.LuaStateInterop;
+using lua_Integer = System.Int32;
+using LUA_INTFRM_T = System.Int64;
+using UNSIGNED_LUA_INTFRM_T = System.UInt64;
 
-
-#endregion
-
-namespace MoonSharp.Interpreter.Interop.LuaStateInterop
+namespace MoonSharp.Interpreter.Tests.EndToEnd
 {
-	internal static class Tools
+	/// <summary>
+	/// The KopiLua string.format emulation that MoonSharp used before LuaFormatter, kept verbatim as a test
+	/// oracle (KopiLua_StringLib.str_format and Tools.sprintf, from the interpreter at 0c0e5d4). The
+	/// interpreter no longer contains it; StringFormatTests compares the managed formatter against it.
+	/// </summary>
+	internal class KopiLuaFormatOracle : LuaBase
 	{
-		#region Public Methods
-		#region IsNumericType
+		public const char L_ESC = '%';
+		protected const string LUA_INTFRMLEN = "l";
+
+		// LuaBase helpers that only string.format used, removed from the interpreter with it.
+		static CharPtr strchr(CharPtr str, char c)
+		{
+			for (int index = str.index; str.chars[index] != 0; index++)
+				if (str.chars[index] == c)
+					return new CharPtr(str.chars, index);
+			return null;
+		}
+
+		static CharPtr strcpy(CharPtr dst, CharPtr src)
+		{
+			int i;
+			for (i = 0; src[i] != '\0'; i++)
+				dst[i] = src[i];
+			dst[i] = '\0';
+			return dst;
+		}
+
+		static CharPtr strncpy(CharPtr dst, CharPtr src, int length)
+		{
+			int index = 0;
+			while ((src[index] != '\0') && (index < length))
+			{
+				dst[index] = src[index];
+				index++;
+			}
+			while (index < length)
+				dst[index++] = '\0';
+			return dst;
+		}
+
+		static int strlen(CharPtr str)
+		{
+			int index = 0;
+			while (str[index] != '\0')
+				index++;
+			return index;
+		}
+
+		static bool isdigit(int c) { return Char.IsDigit((char)c); }
+
+		static void sprintf(CharPtr buffer, CharPtr str, params object[] argv)
+		{
+			string temp = Tools.sprintf(str.ToString(), argv);
+			strcpy(buffer, temp);
+		}
+
+		static void LuaLAddString(LuaLBuffer b, string s)
+		{
+			b.StringBuilder.Append(s.ToString());
+		}
+
+		static double LuaLCheckNumber(LuaState L, lua_Integer pos)
+		{
+			DynValue v = ArgAsType(L, pos, DataType.Number, false);
+			return v.Number;
+		}
+
+		static lua_Integer LuaGetTop(LuaState L)
+		{
+			return L.Count;
+		}
+
+		/* maximum size of each formatted item (> len(format('%99.99f', -1e308))) */
+		public const int MAX_ITEM = 512;
+		/* valid flags in a format specification */
+		public const string FLAGS = "-+ #0";
+		/*
+		** maximum size of each format specification (such as '%-099.99d')
+		** (+10 accounts for %99.99x plus margin of error)
+		*/
+		public static readonly int MAX_FORMAT = (FLAGS.Length + 1) + (LUA_INTFRMLEN.Length + 1) + 10;
+
+
+		private static void addquoted(LuaState L, LuaLBuffer b, int arg)
+		{
+			uint l;
+			CharPtr s = LuaLCheckLString(L, arg, out l);
+			LuaLAddChar(b, '"');
+			while ((l--) != 0)
+			{
+				switch (s[0])
+				{
+					case '"':
+					case '\\':
+					case '\n':
+						{
+							LuaLAddChar(b, '\\');
+							LuaLAddChar(b, s[0]);
+							break;
+						}
+					case '\r':
+						{
+							LuaLAddLString(b, "\\r", 2);
+							break;
+						}
+					default:
+						{
+							if (s[0] < (char)16)
+							{
+								bool isfollowedbynum = false;
+
+								if (l >= 1)
+								{
+									if (char.IsNumber(s[1]))
+										isfollowedbynum = true;
+								}
+
+								if (isfollowedbynum)
+									LuaLAddString(b, string.Format("\\{0:000}", (int)s[0]));
+								else
+									LuaLAddString(b, string.Format("\\{0}", (int)s[0]));
+							}
+							else
+							{
+								LuaLAddChar(b, s[0]);
+							}
+							break;
+						}
+				}
+				s = s.next();
+			}
+			LuaLAddChar(b, '"');
+		}
+
+		private static CharPtr scanformat(LuaState L, CharPtr strfrmt, CharPtr form)
+		{
+			CharPtr p = strfrmt;
+			while (p[0] != '\0' && strchr(FLAGS, p[0]) != null) p = p.next();  /* skip flags */
+			if ((uint)(p - strfrmt) >= (FLAGS.Length + 1))
+				LuaLError(L, "invalid format (repeated flags)");
+			if (isdigit((byte)(p[0]))) p = p.next();  /* skip width */
+			if (isdigit((byte)(p[0]))) p = p.next();  /* (2 digits at most) */
+			if (p[0] == '.')
+			{
+				p = p.next();
+				if (isdigit((byte)(p[0]))) p = p.next();  /* skip precision */
+				if (isdigit((byte)(p[0]))) p = p.next();  /* (2 digits at most) */
+			}
+			if (isdigit((byte)(p[0])))
+				LuaLError(L, "invalid format (width or precision too long)");
+			form[0] = '%';
+			form = form.next();
+			strncpy(form, strfrmt, p - strfrmt + 1);
+			form += p - strfrmt + 1;
+			form[0] = '\0';
+			return p;
+		}
+
+
+		private static void addintlen(CharPtr form)
+		{
+			uint l = (uint)strlen(form);
+			char spec = form[l - 1];
+			strcpy(form + l - 1, LUA_INTFRMLEN);
+			form[l + (LUA_INTFRMLEN.Length + 1) - 2] = spec;
+			form[l + (LUA_INTFRMLEN.Length + 1) - 1] = '\0';
+		}
+
+
+		public static int str_format(LuaState L)
+		{
+			int top = LuaGetTop(L);
+			int arg = 1;
+			uint sfl;
+			CharPtr strfrmt = LuaLCheckLString(L, arg, out sfl);
+			CharPtr strfrmt_end = strfrmt + sfl;
+			LuaLBuffer b = new LuaLBuffer(L);
+			LuaLBuffInit(L, b);
+			while (strfrmt < strfrmt_end)
+			{
+				if (strfrmt[0] != L_ESC)
+				{
+					LuaLAddChar(b, strfrmt[0]);
+					strfrmt = strfrmt.next();
+				}
+				else if (strfrmt[1] == L_ESC)
+				{
+					LuaLAddChar(b, strfrmt[0]);  /* %% */
+					strfrmt = strfrmt + 2;
+				}
+				else
+				{ /* format item */
+					strfrmt = strfrmt.next();
+					CharPtr form = new char[MAX_FORMAT];  /* to store the format (`%...') */
+					CharPtr buff = new char[MAX_ITEM];  /* to store the formatted item */
+					if (++arg > top)
+						LuaLArgError(L, arg, "no value");
+					strfrmt = scanformat(L, strfrmt, form);
+					char ch = strfrmt[0];
+					strfrmt = strfrmt.next();
+					switch (ch)
+					{
+						case 'c':
+							{
+								sprintf(buff, form, (int)LuaLCheckNumber(L, arg));
+								break;
+							}
+						case 'd':
+						case 'i':
+							{
+								addintlen(form);
+								sprintf(buff, form, (LUA_INTFRM_T)LuaLCheckNumber(L, arg));
+								break;
+							}
+						case 'o':
+						case 'u':
+						case 'x':
+						case 'X':
+							{
+								addintlen(form);
+								sprintf(buff, form, (UNSIGNED_LUA_INTFRM_T)LuaLCheckNumber(L, arg));
+								break;
+							}
+						case 'e':
+						case 'E':
+						case 'f':
+						case 'g':
+						case 'G':
+							{
+								sprintf(buff, form, (double)LuaLCheckNumber(L, arg));
+								break;
+							}
+						case 'q':
+							{
+								addquoted(L, b, arg);
+								continue;  /* skip the 'addsize' at the end */
+							}
+						case 's':
+							{
+								uint l;
+								CharPtr s = LuaLCheckLString(L, arg, out l);
+								if ((strchr(form, '.') == null) && l >= 100)
+								{
+									/* no precision and string is too long to be formatted;
+									   keep original string */
+									LuaPushValue(L, arg);
+									LuaLAddValue(b);
+									continue;  /* skip the `addsize' at the end */
+								}
+								else
+								{
+									sprintf(buff, form, s);
+									break;
+								}
+							}
+						default:
+							{  /* also treat cases `pnLlh' */
+								return LuaLError(L, "invalid option " + LUA_QL("%" + ch) + " to " +
+													 LUA_QL("format"), strfrmt[-1]);
+							}
+					}
+					LuaLAddLString(b, buff, (uint)strlen(buff));
+				}
+			}
+			LuaLPushResult(b);
+			return 1;
+		}
+
+		static class Tools
+		{
 		/// <summary>
 		/// Determines whether the specified value is of numeric type.
 		/// </summary>
@@ -82,8 +346,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 				o is double ||
 				o is decimal);
 		}
-		#endregion
-		#region IsPositive
 		/// <summary>
 		/// Determines whether the specified value is positive.
 		/// </summary>
@@ -123,8 +385,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 
 			return ZeroIsPositive;
 		}
-		#endregion
-		#region ToUnsigned
 		/// <summary>
 		/// Converts the specified values boxed type to its correpsonding unsigned
 		/// type.
@@ -160,8 +420,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 
 			return null;
 		}
-		#endregion
-		#region ToInteger
 		/// <summary>
 		/// Converts the specified values boxed type to its correpsonding integer
 		/// type.
@@ -200,8 +458,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 
 			return null;
 		}
-		#endregion
-		#region UnboxToLong
 		public static long UnboxToLong(object Value, bool Round)
 		{
 			Type t = Value.GetType();
@@ -231,66 +487,9 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 
 			return 0;
 		}
-		#endregion
-		#region ReplaceMetaChars
-		/// <summary>
-		/// Replaces the string representations of meta chars with their corresponding
-		/// character values.
-		/// </summary>
-		/// <param name="input">The input.</param>
-		/// <returns>A string with all string meta chars are replaced</returns>
-		public static string ReplaceMetaChars(string input)
-		{
-			return Regex.Replace(input, @"(\\)(\d{3}|[^\d])?", new MatchEvaluator(ReplaceMetaCharsMatch));
-		}
-		private static string ReplaceMetaCharsMatch(Match m)
-		{
-			// convert octal quotes (like \040)
-			if (m.Groups[2].Length == 3)
-				return Convert.ToChar(Convert.ToByte(m.Groups[2].Value, 8)).ToString();
-			else
-			{
-				// convert all other special meta characters
-				//TODO: \xhhh hex and possible dec !!
-				switch (m.Groups[2].Value)
-				{
-					case "0":           // null
-						return "\0";
-					case "a":           // alert (beep)
-						return "\a";
-					case "b":           // BS
-						return "\b";
-					case "f":           // FF
-						return "\f";
-					case "v":           // vertical tab
-						return "\v";
-					case "r":           // CR
-						return "\r";
-					case "n":           // LF
-						return "\n";
-					case "t":           // Tab
-						return "\t";
-					default:
-						// if neither an octal quote nor a special meta character
-						// so just remove the backslash
-						return m.Groups[2].Value;
-				}
-			}
-		}
-		#endregion
-		#region fprintf
-		public static void fprintf(TextWriter Destination, string Format, params object[] Parameters)
-		{
-			Destination.Write(Tools.sprintf(Format, Parameters));
-		}
-
-
-		#endregion
-		#region sprintf
 		internal static Regex r = new Regex(@"\%(\d*\$)?([\'\#\-\+ ]*)(\d*)(?:\.(\d+))?([hl])?([dioxXucsfeEgGpn%])");
 		public static string sprintf(string Format, params object[] Parameters)
 		{
-			#region Variables
 			StringBuilder f = new StringBuilder();
 			//Regex r = new Regex( @"\%(\d*\$)?([\'\#\-\+ ]*)(\d*)(?:\.(\d+))?([hl])?([dioxXucsfeEgGpn%])" );
 			//"%[parameter][flags][width][.precision][length]type"
@@ -312,23 +511,19 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 			char shortLongIndicator = '\0';
 			char formatSpecifier = '\0';
 			char paddingCharacter = ' ';
-			#endregion
 
 			// find all format parameters in format string
 			f.Append(Format);
 			m = r.Match(f.ToString());
 			while (m.Success)
 			{
-				#region parameter index
 				paramIx = defaultParamIx;
 				if (m.Groups[1] != null && m.Groups[1].Value.Length > 0)
 				{
 					string val = m.Groups[1].Value.Substring(0, m.Groups[1].Value.Length - 1);
 					paramIx = Convert.ToInt32(val) - 1;
 				};
-				#endregion
 
-				#region format flags
 				// extract format flags
 				flagAlternate = false;
 				flagLeft2Right = false;
@@ -351,9 +546,7 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 					if (flagPositiveSign && flagPositiveSpace)
 						flagPositiveSpace = false;
 				}
-				#endregion
 
-				#region field length
 				// extract field length and
 				// pading character
 				paddingCharacter = ' ';
@@ -363,7 +556,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 					fieldLength = Convert.ToInt32(m.Groups[3].Value);
 					flagZeroPadding = (m.Groups[3].Value[0] == '0');
 				}
-				#endregion
 
 				if (flagZeroPadding)
 					paddingCharacter = '0';
@@ -375,26 +567,20 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 					paddingCharacter = ' ';
 				}
 
-				#region field precision
 				// extract field precision
 				fieldPrecision = int.MinValue;
 				if (m.Groups[4] != null && m.Groups[4].Value.Length > 0)
 					fieldPrecision = Convert.ToInt32(m.Groups[4].Value);
-				#endregion
 
-				#region short / long indicator
 				// extract short / long indicator
 				shortLongIndicator = Char.MinValue;
 				if (m.Groups[5] != null && m.Groups[5].Value.Length > 0)
 					shortLongIndicator = m.Groups[5].Value[0];
-				#endregion
 
-				#region format specifier
 				// extract format
 				formatSpecifier = Char.MinValue;
 				if (m.Groups[6] != null && m.Groups[6].Value.Length > 0)
 					formatSpecifier = m.Groups[6].Value[0];
-				#endregion
 
 				// default precision is 6 digits if none is specified except
 				if (fieldPrecision == int.MinValue &&
@@ -404,7 +590,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 					formatSpecifier != 'o')
 					fieldPrecision = 6;
 
-				#region get next value parameter
 				// get next value parameter and convert value parameter depending on short / long indicator
 				if (Parameters == null || paramIx >= Parameters.Length)
 					o = null;
@@ -435,18 +620,14 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 							o = (ulong)((uint)o);
 					}
 				}
-				#endregion
 
 				// convert value parameters to a string depending on the formatSpecifier
 				w = String.Empty;
 				switch (formatSpecifier)
 				{
-					#region % - character
 					case '%':   // % character
 						w = "%";
 						break;
-					#endregion
-					#region d - integer
 					case 'd':   // integer
 						w = FormatNumber((flagGroupThousands ? "n" : "d"), flagAlternate,
 										fieldLength, int.MinValue, flagLeft2Right,
@@ -454,36 +635,26 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 										paddingCharacter, o);
 						defaultParamIx++;
 						break;
-					#endregion
-					#region i - integer
 					case 'i':   // integer
 						goto case 'd';
-					#endregion
-					#region o - octal integer
 					case 'o':   // octal integer - no leading zero
 						w = FormatOct("o", flagAlternate,
 										fieldLength, int.MinValue, flagLeft2Right,
 										paddingCharacter, o);
 						defaultParamIx++;
 						break;
-					#endregion
-					#region x - hex integer
 					case 'x':   // hex integer - no leading zero
 						w = FormatHex("x", flagAlternate,
 										fieldLength, fieldPrecision, flagLeft2Right,
 										paddingCharacter, o);
 						defaultParamIx++;
 						break;
-					#endregion
-					#region X - hex integer
 					case 'X':   // same as x but with capital hex characters
 						w = FormatHex("X", flagAlternate,
 										fieldLength, fieldPrecision, flagLeft2Right,
 										paddingCharacter, o);
 						defaultParamIx++;
 						break;
-					#endregion
-					#region u - unsigned integer
 					case 'u':   // unsigned integer
 						w = FormatNumber((flagGroupThousands ? "n" : "d"), flagAlternate,
 										fieldLength, int.MinValue, flagLeft2Right,
@@ -491,8 +662,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 										paddingCharacter, ToUnsigned(o));
 						defaultParamIx++;
 						break;
-					#endregion
-					#region c - character
 					case 'c':   // character
 						if (IsNumericType(o))
 							w = Convert.ToChar(o).ToString();
@@ -502,8 +671,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 							w = ((string)o)[0].ToString();
 						defaultParamIx++;
 						break;
-					#endregion
-					#region s - string
 					case 's':   // string
 								//string t = "{0" + ( fieldLength != int.MinValue ? "," + ( flagLeft2Right ? "-" : String.Empty ) + fieldLength.ToString() : String.Empty ) + ":s}";
 						w = o.ToString();
@@ -517,8 +684,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 								w = w.PadLeft(fieldLength, paddingCharacter);
 						defaultParamIx++;
 						break;
-					#endregion
-					#region f - double number
 					case 'f':   // double
 						w = FormatNumber((flagGroupThousands ? "n" : "f"), flagAlternate,
 										fieldLength, fieldPrecision, flagLeft2Right,
@@ -526,8 +691,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 										paddingCharacter, o);
 						defaultParamIx++;
 						break;
-					#endregion
-					#region e - exponent number
 					case 'e':   // double / exponent
 						w = FormatNumber("e", flagAlternate,
 										fieldLength, fieldPrecision, flagLeft2Right,
@@ -535,8 +698,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 										paddingCharacter, o);
 						defaultParamIx++;
 						break;
-					#endregion
-					#region E - exponent number
 					case 'E':   // double / exponent
 						w = FormatNumber("E", flagAlternate,
 										fieldLength, fieldPrecision, flagLeft2Right,
@@ -544,8 +705,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 										paddingCharacter, o);
 						defaultParamIx++;
 						break;
-					#endregion
-					#region g - general number
 					case 'g':   // double / exponent
 						w = FormatNumber("g", flagAlternate,
 										fieldLength, fieldPrecision, flagLeft2Right,
@@ -553,8 +712,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 										paddingCharacter, o);
 						defaultParamIx++;
 						break;
-					#endregion
-					#region G - general number
 					case 'G':   // double / exponent
 						w = FormatNumber("G", flagAlternate,
 										fieldLength, fieldPrecision, flagLeft2Right,
@@ -562,8 +719,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 										paddingCharacter, o);
 						defaultParamIx++;
 						break;
-					#endregion
-					#region p - pointer
 					case 'p':   // pointer
 						if (o is IntPtr)
 #if ENABLE_DOTNET
@@ -573,15 +728,12 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 #endif
 						defaultParamIx++;
 						break;
-					#endregion
-					#region n - number of processed chars so far
 					case 'n':   // number of characters so far
 						w = FormatNumber("d", flagAlternate,
 										fieldLength, int.MinValue, flagLeft2Right,
 										flagPositiveSign, flagPositiveSpace,
 										paddingCharacter, m.Index);
 						break;
-					#endregion
 					default:
 						w = String.Empty;
 						defaultParamIx++;
@@ -600,11 +752,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 
 			return f.ToString();
 		}
-		#endregion
-		#endregion
-
-		#region Private Methods
-		#region FormatOCT
 		private static string FormatOct(string NativeFormat, bool Alternate,
 											int FieldLength, int FieldPrecision,
 											bool Left2Right,
@@ -638,8 +785,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 
 			return w;
 		}
-		#endregion
-		#region FormatHEX
 		private static string FormatHex(string NativeFormat, bool Alternate,
 											int FieldLength, int FieldPrecision,
 											bool Left2Right,
@@ -676,8 +821,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 
 			return w;
 		}
-		#endregion
-		#region FormatNumber
 		private static string FormatNumber(string NativeFormat, bool Alternate,
 											int FieldLength, int FieldPrecision,
 											bool Left2Right,
@@ -724,9 +867,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 
 			return w;
 		}
-		#endregion
-		#endregion
+		}
 	}
 }
-
-

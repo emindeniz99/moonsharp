@@ -113,7 +113,7 @@ and properties use what it gives back.
 | `List<T>`, `IList<T>`, `IEnumerable<T>`, `T[]` | `T[]` (the table is converted) | `T[]` (a copy) unless the type is registered |
 | `Dictionary<K,V>`, `IDictionary<K,V>` | `table<K, V>` | `table<K, V>` unless registered |
 | other `IEnumerable` | | `fun(): T`, an iterator for `for ... in` |
-| delegate | not convertible, see warnings | `fun(...)`: MoonSharp returns a callable |
+| delegate | `fun(...)` when its `Invoke` has up to 4 parameters, none by reference (MoonSharp converts the function, `Closure.ToDelegate`); otherwise not convertible, see warnings | `fun(...)`: MoonSharp returns a callable |
 | event | | `{ add: fun(handler), remove: fun(handler) }`, used as `obj.Event.add(f)` |
 | `out` parameter | left out | an extra return value |
 | `ref` parameter | kept | also an extra return value |
@@ -146,10 +146,10 @@ what actually works and lists the rest in `Warnings` (the CLI prints them):
 - a member whose type is not registered and has no other conversion: reading
   it raises "cannot convert clr type" at run time, so it is declared `any`.
   Register the type or change the member.
-- a delegate parameter: MoonSharp converts a script function only to
-  `Closure` and `ScriptFunctionDelegate`, not to `Action<T>` or `Func<T>`,
-  unless a custom converter is registered. The parameter is declared as an
-  empty class, so passing a function is reported.
+- a delegate parameter whose `Invoke` has more than four parameters, or one
+  by reference: MoonSharp cannot convert a script function to it unless a
+  custom converter is registered. The parameter is declared as an empty
+  class, so passing a function is reported.
 - a standard function LuaLS still offers although the script lacks it.
   LuaLS can only switch whole libraries; the generator declares the global
   functions, `os` and `package` itself, but keeps LuaLS's `io` and `debug`.

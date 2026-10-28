@@ -188,3 +188,20 @@ for k in pairs(u) do io.write(k, ' ') end
 hosts that enumerate tables (`Table.Pairs`, `Keys`, `Values`, JSON,
 `Dictionary` conversion, the Lua-source serializer) and scripts or snapshot
 tests that depend on the `pairs` order after clearing more than one key.
+
+## Tables have an array part
+
+Tables now keep integer keys 1..n in an array and every other key in one
+hash part, instead of a linked list indexed by three dictionaries. Values,
+`#t` and the `pairs` order stay as they were (insertion order, with the
+dead-key rule above). What a host can see:
+
+- Integer keys below 1 stored with `Table.Set(int, ...)` are the same keys
+  a script uses. They used to live in an index that `t[0]` and `t[-1]` never
+  reached, so a host's `t.Set(0, v)` was invisible to the script, and a
+  later `pairs(t)` failed with "invalid key to 'next'".
+- `Table.Remove(key)` returns false for a key whose value was set to nil.
+  It returned true while the dead key was still stored.
+- `Table.Pairs`, `Keys` and `Values` follow the rules of `next`: clearing
+  fields while enumerating is allowed; whether a key added during the
+  enumeration is visited is not defined.

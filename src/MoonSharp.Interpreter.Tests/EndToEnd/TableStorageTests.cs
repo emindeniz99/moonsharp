@@ -435,25 +435,76 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			StringAssert.EndsWith("|nil", res);
 		}
 
-		// The dead-key sweep removes every entry holding nil (see the pinned test above).
-		static void RemoveNils(List<KeyValuePair<string, string>> model)
+		/// <summary>
+		/// Reference model of the table's entry list as the linked-list table kept it (with its dead-key bugs
+		/// fixed): entries in insertion order, a key set to nil keeps its entry (even a key that was absent),
+		/// and storing a value into a new or nil key after a nil was stored drops every entry that holds nil.
+		/// Keys are the keys' print strings.
+		/// </summary>
+		sealed class EntryListModel
 		{
-			model.RemoveAll(e => e.Value == null);
+			readonly List<KeyValuePair<string, string>> m_Entries = new List<KeyValuePair<string, string>>();
+			bool m_HasNil;
+
+			public void Set(string key, string val)
+			{
+				int idx = m_Entries.FindIndex(e => e.Key == key);
+				bool wasAbsentOrNil = idx < 0 || m_Entries[idx].Value == null;
+
+				if (idx >= 0) m_Entries[idx] = new KeyValuePair<string, string>(key, val);
+				else m_Entries.Add(new KeyValuePair<string, string>(key, val));
+
+				if (m_HasNil && val != null && wasAbsentOrNil)
+					Collect();
+				else if (val == null)
+					m_HasNil = true;
+			}
+
+			public void Remove(string key)
+			{
+				m_Entries.RemoveAll(e => e.Key == key);
+			}
+
+			public void Collect()
+			{
+				m_Entries.RemoveAll(e => e.Value == null);
+				m_HasNil = false;
+			}
+
+			public bool IsLive(string key)
+			{
+				return m_Entries.Exists(e => e.Key == key && e.Value != null);
+			}
+
+			public int Border()
+			{
+				int n = 0;
+				while (IsLive((n + 1).ToString())) n++;
+				return n;
+			}
+
+			public string Live()
+			{
+				return string.Join(",", m_Entries.Where(e => e.Value != null).Select(e => e.Key + "=" + e.Value));
+			}
+		}
+
+		static string HostPairs(Table t)
+		{
+			return string.Join(",", t.Pairs.Select(p => p.Key.ToPrintString() + "=" + (p.Value.IsNil() ? "nil" : p.Value.ToPrintString())));
 		}
 
 		[Test]
 		public void PairsOrderMatchesTheInsertionModelUnderRandomEdits()
 		{
-			// Reference model of the entry list (including entries that hold nil, which neither pairs() nor
-			// Table.Pairs returns). Random script-style stores of mixed integer and string keys, C# removes
-			// and explicit CollectDeadKeys calls must leave the table's order identical to the model's.
+			// Random script-style stores of mixed integer and string keys, C# removes and explicit
+			// CollectDeadKeys calls must leave pairs() and Table.Pairs in the model's order.
 			var rnd = new Random(1028);
 			var script = new Script();
 			var t = new Table(script);
 			DynValue tv = DynValue.NewTable(t);
 			DynValue pairsToString = script.DoString(PairsToString);
-			var model = new List<KeyValuePair<string, string>>();
-			bool modelHasNil = false;
+			var model = new EntryListModel();
 			string[] keys = { "1", "2", "3", "4", "5", "6", "a", "b", "c", "d", "e", "f" };
 
 			for (int step = 0; step < 3000; step++)
@@ -461,43 +512,111 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				string key = keys[rnd.Next(keys.Length)];
 				DynValue dkey = char.IsDigit(key[0]) ? DynValue.NewNumber(int.Parse(key)) : DynValue.NewString(key);
 				int op = rnd.Next(100);
-				int idx = model.FindIndex(e => e.Key == key);
 
 				if (op < 90)
 				{
 					string val = op < 50 ? step.ToString() : null;
 					t.Set(dkey, val == null ? DynValue.Nil : DynValue.NewNumber(step));
-
-					bool wasAbsentOrNil = idx < 0 || model[idx].Value == null;
-					if (idx >= 0) model[idx] = new KeyValuePair<string, string>(key, val);
-					else model.Add(new KeyValuePair<string, string>(key, val));
-
-					if (modelHasNil && val != null && wasAbsentOrNil)
-					{
-						RemoveNils(model);
-						modelHasNil = false;
-					}
-					else if (val == null)
-					{
-						modelHasNil = true;
-					}
+					model.Set(key, val);
 				}
 				else if (op < 97)
 				{
 					t.Remove(dkey);
-					if (idx >= 0) model.RemoveAt(idx);
+					model.Remove(key);
 				}
 				else
 				{
 					t.CollectDeadKeys();
-					RemoveNils(model);
-					modelHasNil = false;
+					model.Collect();
 				}
 
-				string expected = string.Join(",", model.Where(e => e.Value != null).Select(e => e.Key + "=" + e.Value));
-				string actualHost = string.Join(",", t.Pairs.Select(p => p.Key.ToPrintString() + "=" + (p.Value.IsNil() ? "nil" : p.Value.ToPrintString())));
-				Assert.AreEqual(expected, actualHost, "Table.Pairs after step " + step);
+				string expected = model.Live();
+				Assert.AreEqual(expected, HostPairs(t), "Table.Pairs after step " + step);
 				Assert.AreEqual(expected, script.Call(pairsToString, tv).String, "pairs() after step " + step);
+			}
+		}
+
+		[Test]
+		public void ContentsLengthAndOrderMatchTheEntryListModelOverEveryKeyKind()
+		{
+			// Differential check against the model over keys that reach every storage path: a dense run
+			// (array prefix), integer keys that arrive after other keys (pointer entries), sparse integers
+			// (hash part, moved into the array when it grows), a queue over growing integer keys (the
+			// sparse-array guard), zero and negatives, fractions, booleans and strings. Every step compares
+			// contents and order (Table.Pairs) and #t; every 64th step also pairs() in a script.
+			var rnd = new Random(20261028);
+			var script = new Script();
+			var t = new Table(script);
+			DynValue tv = DynValue.NewTable(t);
+			DynValue pairsToString = script.DoString(PairsToString);
+			var model = new EntryListModel();
+			int head = 1, tail = 1;
+
+			for (int step = 0; step < 20000; step++)
+			{
+				DynValue dkey;
+				int r = rnd.Next(100);
+
+				if (step % 2000 == 0)
+				{
+					t.Clear();
+					model = new EntryListModel();
+					head = tail = 1;
+				}
+
+				if (r < 15)
+				{
+					// queue: push at the tail, sometimes pop at the head
+					dkey = DynValue.NewNumber(tail++);
+					if (rnd.Next(2) == 0)
+					{
+						DynValue h = DynValue.NewNumber(head++);
+						t.Set(h, DynValue.Nil);
+						model.Set(h.ToPrintString(), null);
+					}
+				}
+				else if (r < 50) dkey = DynValue.NewNumber(rnd.Next(1, 41));
+				else if (r < 60) dkey = DynValue.NewNumber(rnd.Next(41, 700));
+				else if (r < 64) dkey = DynValue.NewNumber(-rnd.Next(0, 4));
+				else if (r < 68) dkey = DynValue.NewNumber(rnd.Next(0, 20) + 0.5);
+				else if (r < 70) dkey = DynValue.NewBoolean(rnd.Next(2) == 0);
+				else dkey = DynValue.NewString("s" + rnd.Next(40));
+
+				string key = dkey.ToPrintString();
+				int op = rnd.Next(100);
+
+				if (op < 55)
+				{
+					t.Set(dkey, DynValue.NewNumber(step));
+					model.Set(key, step.ToString());
+				}
+				else if (op < 85)
+				{
+					t.Set(dkey, DynValue.Nil);
+					model.Set(key, null);
+				}
+				else if (op < 92)
+				{
+					int n = model.Border() + 1;
+					t.Append(DynValue.NewNumber(step));
+					model.Set(n.ToString(), step.ToString());
+				}
+				else if (op < 98)
+				{
+					t.Remove(dkey);
+					model.Remove(key);
+				}
+				else
+				{
+					t.CollectDeadKeys();
+					model.Collect();
+				}
+
+				Assert.AreEqual(model.Live(), HostPairs(t), "Table.Pairs after step " + step);
+				Assert.AreEqual(model.Border(), t.Length, "#t after step " + step);
+
+				if (step % 64 == 0)
+					Assert.AreEqual(model.Live(), script.Call(pairsToString, tv).String, "pairs() after step " + step);
 			}
 		}
 
@@ -513,6 +632,87 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				return seen .. ',' .. tostring(next(t)) .. ',' .. #t").String;
 
 			Assert.AreEqual("200,nil,0", res);
+		}
+
+		[Test]
+		public void NextSurvivesClearingKeysAheadDuringTraversal()
+		{
+			// Every storage path at once: a prefix run (1..20), array keys stored after a hash key (21..40),
+			// a sparse integer, a fraction and strings. The loop clears the current key and, at key 10, two keys
+			// it has not reached yet; those must be skipped, everything else visited once, in insertion order.
+			string res = Script.RunString(@"
+				local t = {}
+				for i = 1, 20 do t[i] = i end
+				t.a = 'a'
+				for i = 21, 40 do t[i] = i end
+				t[100] = 100; t[1.5] = 1.5; t.b = 'b'
+				local seen = {}
+				for k, v in pairs(t) do
+					seen[#seen + 1] = tostring(k)
+					t[k] = nil
+					if k == 10 then t[30] = nil; t.b = nil end
+				end
+				return #seen .. ',' .. tostring(next(t)) .. ',' .. #t .. '|' .. table.concat(seen, ' ')").String;
+
+			Assert.AreEqual("42,nil,0|1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 a 21 22 23 24 25 26 27 28 29 " +
+				"31 32 33 34 35 36 37 38 39 40 100 1.5", res);
+		}
+
+		[Test]
+		public void HostEnumerationSurvivesClearingDuringTraversal()
+		{
+			var script = new Script();
+			Table t = script.DoString("local t = {} for i = 1, 10 do t[i] = i end t.x = 1 t[11] = 11 t.y = 2 return t").Table;
+			var seen = new List<string>();
+
+			foreach (TablePair p in t.Pairs)
+			{
+				seen.Add(p.Key.ToPrintString());
+				t.Set(p.Key, DynValue.Nil);
+			}
+
+			Assert.AreEqual("1,2,3,4,5,6,7,8,9,10,x,11,y", string.Join(",", seen));
+			Assert.AreEqual(0, t.Pairs.Count());
+		}
+
+		[Test]
+		public void IntegerKeysBelowOneSetFromTheHostAreTheScriptsKeys()
+		{
+			// Table.Set(int) stored keys below 1 in an index that script keys 0 and -1 never reached, so a
+			// host's t.Set(0, v) was invisible to t[0] in a script (and the other way round).
+			var script = new Script();
+			Table t = script.DoString("t = { [-1] = 'script' } return t").Table;
+			t.Set(0, DynValue.NewString("host"));
+
+			string res = script.DoString("local s = {} for k, v in pairs(t) do s[#s + 1] = tostring(k) .. '=' .. v end return tostring(t[0]) .. '|' .. table.concat(s, ',')").String;
+
+			Assert.AreEqual("host|-1=script,0=host", res);
+			Assert.AreEqual("script", t.Get(-1).String);
+			Assert.IsTrue(t.Remove(-1));
+			Assert.AreEqual("nil", script.DoString("return tostring(t[-1])").String);
+		}
+
+		[Test]
+		public void QueueOverGrowingIntegerKeysStaysSmall()
+		{
+			// A FIFO over ever-growing integer keys keeps 32 live entries. Growing the array part whenever
+			// the next key fits kept a slot for every key ever pushed (8.4 MB after 1M push/pop pairs in the
+			// prototype); the array grows only when more than half of the new size would hold values.
+			var script = new Script();
+			DynValue fill = script.DoString(@"return function(n)
+				local q, head, tail = {}, 1, 1
+				for i = 1, 32 do q[tail] = i tail = tail + 1 end
+				for i = 1, n do q[tail] = i tail = tail + 1 q[head] = nil head = head + 1 end
+				return q end");
+			script.Call(fill, 10);
+
+			long before = GC.GetTotalMemory(true);
+			DynValue q = script.Call(fill, 200000);
+			long retained = GC.GetTotalMemory(true) - before;
+			GC.KeepAlive(q);
+
+			Assert.AreEqual(32, q.Table.Pairs.Count());
+			Assert.Less(retained, 64 * 1024, "bytes retained by a queue with 32 live entries after 200k push/pop pairs");
 		}
 	}
 }

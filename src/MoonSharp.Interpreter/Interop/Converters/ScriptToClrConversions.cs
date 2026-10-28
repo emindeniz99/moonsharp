@@ -82,6 +82,14 @@ namespace MoonSharp.Interpreter.Interop.Converters
 			if (desiredType.IsByRef)
 				desiredType = desiredType.GetElementType();
 
+			return DynValueToObjectOfNonByRefType(value, desiredType, defaultValue, isOptional);
+		}
+
+		/// <summary>
+		/// <see cref="DynValueToObjectOfType"/> for a type already known not to be by-reference.
+		/// </summary>
+		internal static object DynValueToObjectOfNonByRefType(DynValue value, Type desiredType, object defaultValue, bool isOptional)
+		{
 			var converter = Script.GlobalOptions.CustomConverters.GetScriptToClrCustomConversion(value.Type, desiredType);
 			if (converter != null)
 			{
@@ -141,7 +149,7 @@ namespace MoonSharp.Interpreter.Interop.Converters
 						Type underType = Enum.GetUnderlyingType(desiredType);
 						return NumericConversions.DoubleToType(underType, value.Number);
 					}
-					if (NumericConversions.NumericTypes.Contains(desiredType))
+					if (NumericConversions.IsNumericType(desiredType))
 					{
 						object d = NumericConversions.DoubleToType(desiredType, value.Number);
 						if (d.GetType() == desiredType)
@@ -264,7 +272,7 @@ namespace MoonSharp.Interpreter.Interop.Converters
 					{	// number to enum conv
 						return WEIGHT_NUMBER_TO_ENUM;
 					}
-					if (NumericConversions.NumericTypes.Contains(desiredType))
+					if (NumericConversions.IsNumericType(desiredType))
 						return GetNumericTypeWeight(desiredType);
 					if (stringSubType != StringConversions.StringSubtype.None)
 						return WEIGHT_NUMBER_TO_STRING;

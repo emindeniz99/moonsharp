@@ -602,16 +602,18 @@ namespace MoonSharp.Interpreter
 				case DataType.UserData:
 					{
 						// int64 and uint64 values are immutable and equal by value, so they can hash
-						// by value too. Other userdata keep the constant: their Equals may depend on
-						// mutable state, and this hash is cached.
+						// by value too. Other userdata never hash by the object's own GetHashCode: their
+						// Equals may depend on mutable state, and this hash is cached.
 						object o = UserData.Object;
 						if (o is LuaInt64 || o is LuaUInt64)
 							m_HashCode = baseValue ^ o.GetHashCode();
 						else
-							m_HashCode = 999;
+							m_HashCode = baseValue ^ UserData.GetHashCodeForEquals();
 					}
 					break;
 				case DataType.Thread:
+					m_HashCode = baseValue ^ System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Coroutine);
+					break;
 				default:
 					m_HashCode = 999;
 					break;

@@ -1340,7 +1340,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 				{
 					UserData ud = obj.UserData;
 
-					var v = ud.Descriptor.Index(this.GetScript(), ud.Object, originalIdx, isNameIndex);
+					var dispatching = ud.Descriptor as Interop.BasicDescriptors.DispatchingUserDataDescriptor;
+					var v = (dispatching != null)
+						? dispatching.IndexUserData(this.GetScript(), ud, originalIdx, isNameIndex)
+						: ud.Descriptor.Index(this.GetScript(), ud.Object, originalIdx, isNameIndex);
 
 					if (v == null)
 					{

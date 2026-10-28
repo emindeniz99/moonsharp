@@ -25,10 +25,19 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 		}
 
 
+		internal override Expression SuffixBase
+		{
+			get { return m_BaseExp; }
+		}
+
 		public override void Compile(ByteCode bc)
 		{
-			m_BaseExp.Compile(bc);
+			CompileSuffixBase(bc, m_BaseExp);
+			CompileSuffix(bc);
+		}
 
+		internal override void CompileSuffix(ByteCode bc)
+		{
 			if (m_Name != null)
 			{
 				bc.Emit_Index(DynValue.NewString(m_Name), true);
@@ -47,7 +56,7 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 
 		public void CompileAssignment(ByteCode bc, int stackofs, int tupleidx)
 		{
-			m_BaseExp.Compile(bc);
+			CompileSuffixBase(bc, m_BaseExp);
 
 			if (m_Name != null)
 			{
@@ -67,7 +76,26 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 
 		public override DynValue Eval(ScriptExecutionContext context)
 		{
-			DynValue b = m_BaseExp.Eval(context).ToScalar();
+			// Like CompileSuffixBase: innermost first, then each index in a loop.
+			var chain = new System.Collections.Generic.Stack<IndexExpression>();
+			Expression e = this;
+
+			for (var ie = e as IndexExpression; ie != null; ie = e as IndexExpression)
+			{
+				chain.Push(ie);
+				e = ie.m_BaseExp;
+			}
+
+			DynValue b = e.Eval(context).ToScalar();
+
+			while (chain.Count > 0)
+				b = chain.Pop().EvalIndex(context, b);
+
+			return b;
+		}
+
+		private DynValue EvalIndex(ScriptExecutionContext context, DynValue b)
+		{
 			DynValue i = m_IndexExp != null ? m_IndexExp.Eval(context).ToScalar() : DynValue.NewString(m_Name);
 
 			if (b.Type != DataType.Table) throw new DynamicExpressionException("Attempt to index non-table.");

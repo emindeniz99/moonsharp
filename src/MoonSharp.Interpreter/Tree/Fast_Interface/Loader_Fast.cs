@@ -1,5 +1,4 @@
-﻿using System;
-using MoonSharp.Interpreter.Debugging;
+﻿using MoonSharp.Interpreter.Debugging;
 using MoonSharp.Interpreter.Execution;
 using MoonSharp.Interpreter.Execution.VM;
 using MoonSharp.Interpreter.Tree.Expressions;
@@ -30,16 +29,6 @@ namespace MoonSharp.Interpreter.Tree.Fast_Interface
 				ex.Rethrow();
 				throw;
 			}
-		}
-
-		// The parser counts nesting levels, but an operator chain (1+1+...+1) parses in a loop and compiles
-		// recursively; a chain longer than the native stack allows becomes a syntax error instead of a
-		// StackOverflowException that ends the process.
-		private static SyntaxErrorException TooDeeplyNested(Script script, ScriptLoadingContext lcontext)
-		{
-			var ex = new SyntaxErrorException(lcontext.Lexer.Current, "chunk has too many syntax levels");
-			ex.DecorateMessage(script);
-			return ex;
 		}
 
 		private static ScriptLoadingContext CreateLoadingContext(Script script, SourceCode source)
@@ -85,10 +74,6 @@ namespace MoonSharp.Interpreter.Tree.Fast_Interface
 				ex.Rethrow();
 				throw;
 			}
-			catch (InsufficientExecutionStackException)
-			{
-				throw TooDeeplyNested(script, lcontext);
-			}
 		}
 
 		internal static int LoadFunction(Script script, SourceCode source, ByteCode bytecode, bool usesGlobalEnv)
@@ -123,10 +108,6 @@ namespace MoonSharp.Interpreter.Tree.Fast_Interface
 				ex.DecorateMessage(script);
 				ex.Rethrow();
 				throw;
-			}
-			catch (InsufficientExecutionStackException)
-			{
-				throw TooDeeplyNested(script, lcontext);
 			}
 
 		}

@@ -373,13 +373,14 @@ host stops at the same depth:
 | Source with more than 200 nested expressions and blocks (`load`, `Script.LoadString`) | `SyntaxErrorException` "chunk has too many syntax levels" |
 | `json.parse` input or `json.serialize` tables more than 200 levels deep, or cyclic tables | `json nesting exceeds 200 levels` (a `ScriptRuntimeException` from Lua) |
 
-A stack probe (`RuntimeHelpers.EnsureSufficientExecutionStack`) stays behind the counts for threads
-with a small stack, and stops very long operator chains such as a generated `1+1+...+1` with a million
-terms, which parse in a loop but compile recursively.
+Chains of any length, such as a generated `1+1+...+1` with a million terms or `a.b.b.b...`, now
+compile without recursion, as in Lua; they used to overflow the stack too. A stack probe
+(`RuntimeHelpers.EnsureSufficientExecutionStack`) stays behind the VM count for threads with a small
+stack.
 
 **Affected:** code nested deeper than Lua 5.2 allows, which MoonSharp used to accept as long as the
-stack held. On IL2CPP the stack probe depends on the runtime's support, which has not been verified;
-the counts work everywhere.
+stack held. The stack probe does not work on Mono here (a test on Mono 6 overflowed inside it) and is
+unverified on IL2CPP; the counts work everywhere.
 
 ## `xpcall` message handlers only see errors that reach them
 

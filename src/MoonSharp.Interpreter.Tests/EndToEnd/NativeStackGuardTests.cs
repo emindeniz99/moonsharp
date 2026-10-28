@@ -92,14 +92,53 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			StringAssert.Contains("chunk has too many syntax levels", r.Tuple[1].String);
 		}
 
-		[Test]
-		public void NativeStack_LongOperatorChainIsASyntaxError()
+		static string Chain(string first, string link, int length)
 		{
-			// Parsed in a loop, but compiled as a tree as deep as the chain; the stack probe stops it.
-			var sb = new StringBuilder("return 1");
-			for (int i = 0; i < 1000000; i++) sb.Append("+1");
+			var sb = new StringBuilder(first);
+			for (int i = 0; i < length; i++) sb.Append(link);
+			return sb.ToString();
+		}
 
-			AssertTooDeep(sb.ToString());
+		[Test]
+		public void NativeStack_LongOperatorChainsCompileAndRun()
+		{
+			// A chain parses in a loop into a tree as deep as the chain; the compiler walks that tree
+			// without recursion, so no chain length reaches the native stack (Mono's stack probe let a
+			// million-term chain overflow it). Lua compiles such chains too.
+			const int length = 200000;
+			Script s = new Script();
+
+			Assert.AreEqual(length + 1, s.DoString(Chain("return 1", "+1", length)).Number);
+			// ^ and .. are right associative: every operand waits on the value stack, which holds 10000 easily.
+			Assert.AreEqual(2, s.DoString(Chain("return 2", "^1", 10000)).Number);
+			Assert.AreEqual(true, s.DoString(Chain("return true", " and true", length)).Boolean);
+			Assert.AreEqual(1, s.DoString(Chain("return false", " or 1", length)).Number);
+			Assert.AreEqual("aaaa", s.DoString(Chain("return 'a'", " .. 'a'", 3)).String);
+			Assert.AreEqual(true, s.DoString(Chain("return 2 > 1", " == true", length)).Boolean);
+
+			// Dynamic expressions evaluate the same trees.
+			Assert.AreEqual(length + 1, s.CreateDynamicExpression(Chain("1", "+1", length)).Evaluate().Number);
+			Assert.AreEqual(1, s.CreateDynamicExpression(Chain("false", " or 1", length)).Evaluate().Number);
+		}
+
+		[Test]
+		public void NativeStack_LongSuffixChainsCompileAndRun()
+		{
+			// a.b.c... and f()()... also parse in a loop into a tree as deep as the chain; 300000 links
+			// ended the process.
+			const int length = 300000;
+			Script s = new Script();
+			s.DoString("t = { v = 1 } t.t = t function f() return f end o = { m = function(self) return self end, v = 2 }");
+
+			Assert.AreEqual(1, s.DoString(Chain("return t", ".t", length) + ".v").Number);
+			Assert.AreEqual(1, s.DoString(Chain("return t", "['t']", length) + ".v").Number);
+			Assert.AreEqual(DataType.Function, s.DoString(Chain("return f", "()", length)).Type);
+			Assert.AreEqual(2, s.DoString(Chain("return o", ":m()", length) + ".v").Number);
+
+			s.DoString(Chain("t", ".t", length) + ".v = 3");
+			Assert.AreEqual(3, s.DoString("return t.v").Number);
+
+			Assert.AreEqual(3, s.CreateDynamicExpression(Chain("t", ".t", length) + ".v").Evaluate().Number);
 		}
 
 		[Test]

@@ -17,6 +17,45 @@ namespace MoonSharp.Interpreter.Tree
 
 		public abstract DynValue Eval(ScriptExecutionContext context);
 
+		/// <summary>
+		/// The expression a suffix (a.b, a[i], f(), o:m()) applies to; null for other expressions.
+		/// </summary>
+		internal virtual Expression SuffixBase
+		{
+			get { return null; }
+		}
+
+		/// <summary>
+		/// Emits what a suffix does once the value of its base is on the stack.
+		/// </summary>
+		internal virtual void CompileSuffix(Execution.VM.ByteCode bc)
+		{
+		}
+
+		/// <summary>
+		/// Compiles the base of a suffix. A suffix chain (a.b.c..., f()()...) parses in a loop into a tree
+		/// as deep as the chain; compiling the innermost expression and then each suffix in a loop keeps a
+		/// chain of any length off the native stack, as in Lua.
+		/// </summary>
+		protected static void CompileSuffixBase(Execution.VM.ByteCode bc, Expression e)
+		{
+			if (e.SuffixBase == null)
+			{
+				e.Compile(bc);
+				return;
+			}
+
+			var suffixes = new Stack<Expression>();
+
+			for (; e.SuffixBase != null; e = e.SuffixBase)
+				suffixes.Push(e);
+
+			e.Compile(bc);
+
+			while (suffixes.Count > 0)
+				suffixes.Pop().CompileSuffix(bc);
+		}
+
 		public virtual SymbolRef FindDynamic(ScriptExecutionContext context)
 		{
 			return null;

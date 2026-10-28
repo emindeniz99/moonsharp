@@ -135,7 +135,7 @@ Measured on 2026-10-28 on a 4-core Intel Xeon 2.1 GHz cloud VM, Ubuntu 24.04.
 | Shared fixtures, headless Chromium 153 (Playwright 1.63), main thread | 24/24 |
 | Web Worker path, Chromium | pass (eligibility call, 2^53 + 1 rejected) |
 | Shared fixtures, Java 21 through the worker | 24/24, plus 6 worker behaviour tests |
-| Spring Boot 3.3 sample over HTTP | 4/4 |
+| Spring Boot 3.5 sample over HTTP | 4/4 |
 | Firefox, Safari/WebKit, iOS Safari | not run (only Chromium is installed here) |
 | Unity Editor, Android/iOS IL2CPP | not run (no Unity licence or devices here) |
 | Windows/macOS hosts | not run |

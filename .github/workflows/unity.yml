@@ -11,6 +11,13 @@ name: Unity
 # UNITY_TOTP_KEY (authenticator-app 2FA, used to exchange a Personal activation file on
 # the Unity website) or UNITY_SERIAL (the serial from a Personal licence activated in Unity
 # Hub). UNITY_SERIAL wins when both are set.
+#
+# A manual run with "bench" also times the Lua workloads of the register VM measurement
+# (src/DevTools/Benchmarks/WorkloadTsv.cs) in the editor and in the IL2CPP player. With
+# "bench_baseline" (a branch, tag or SHA that has this benchmark mode), the same runner builds the
+# test bed and the size probe from that ref too, runs both players in alternating rounds and reports
+# the ratios and the size difference: one machine, so the comparison does not mix in the speed of
+# two runners. Steps: docs/ROADMAP.md, "Needs the owner".
 on:
   push:
     branches:
@@ -19,6 +26,15 @@ on:
       - "docs/**"
       - "**/*.md"
   workflow_dispatch:
+    inputs:
+      bench:
+        description: Also time the Lua workloads in the editor and the IL2CPP player
+        type: boolean
+        default: false
+      bench_baseline:
+        description: With bench, a ref to compare with on the same runner (empty for none)
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -56,7 +72,8 @@ jobs:
     needs: secrets
     if: needs.secrets.outputs.activation != 'none'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # A benchmark run adds an editor run, and with a baseline two more IL2CPP builds.
+    timeout-minutes: ${{ inputs.bench && 180 || 120 }}
     strategy:
       fail-fast: false
       # One version at a time: every job signs in to the same Unity account, and parallel
@@ -112,6 +129,25 @@ jobs:
         run: |
           tools/upm/stage-local-package.sh "0.0.0-ci.${{ github.run_number }}"
           src/Unity/UnityTestBed/sync.sh
+
+      - name: Check out the benchmark baseline
+        id: baseline
+        if: inputs.bench && inputs.bench_baseline != ''
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.bench_baseline }}
+          path: .bench-baseline
+          persist-credentials: false
+
+      # Its package goes to .bench-baseline/.upm-staging, where its own manifests point.
+      - name: Stage the baseline's UPM package and test sources
+        if: steps.baseline.outcome == 'success'
+        env:
+          BASELINE_REF: ${{ inputs.bench_baseline }}
+        run: |
+          .bench-baseline/tools/upm/stage-local-package.sh "0.0.0-ci.${{ github.run_number }}"
+          .bench-baseline/src/Unity/UnityTestBed/sync.sh
+          echo "BASELINE_NAME=${BASELINE_REF} $(git -C .bench-baseline rev-parse --short HEAD)" >> "$GITHUB_ENV"
 
       - name: Pull and start the Unity editor container
         run: |
@@ -228,13 +264,78 @@ jobs:
           src/Unity/UnityTestBed/compare-results.sh "$RESULTS/reference.tsv" "$RESULTS/il2cpp.tsv" "Unity ${{ matrix.unity }} IL2CPP player" || code=1
           exit "$code"
 
+      # One editor process per build, with release code optimization (the editor default is debug).
+      - name: Benchmark in the editor (Mono)
+        if: always() && inputs.bench && (steps.activate-serial.outcome == 'success' || steps.activate-totp.outcome == 'success')
+        timeout-minutes: 40
+        env:
+          BASELINE: ${{ steps.baseline.outcome == 'success' }}
+        run: |
+          mkdir -p "$RESULTS/bench"
+          bench() {
+            docker exec unity unity-editor -batchmode -nographics -quit -logFile - -releaseCodeOptimization \
+              -projectPath "$2" -executeMethod MoonSharp.UnityTestBed.BatchRunner.RunBenchmarks \
+              -moonsharpBench "/github/workspace/$RESULTS/bench/editor-$1-r1.tsv"
+          }
+          code=0
+          bench this "$PROJECT" || code=1
+          if [ "$BASELINE" = true ]; then
+            bench baseline /github/workspace/.bench-baseline/src/Unity/UnityTestBed || code=1
+          fi
+          src/Unity/UnityTestBed/bench-summary.sh "Unity ${{ matrix.unity }} editor (Mono)" "$RESULTS/bench" editor \
+            "$GITHUB_REF_NAME $(git rev-parse --short HEAD)" "${BASELINE_NAME:-}" || code=1
+          exit "$code"
+
+      - name: Build the baseline Linux IL2CPP player
+        id: build-baseline
+        if: always() && steps.baseline.outcome == 'success' && (steps.activate-serial.outcome == 'success' || steps.activate-totp.outcome == 'success')
+        timeout-minutes: 45
+        run: |
+          docker exec unity unity-editor -batchmode -nographics -quit -logFile - \
+            -projectPath /github/workspace/.bench-baseline/src/Unity/UnityTestBed \
+            -executeMethod MoonSharp.UnityTestBed.BatchRunner.BuildLinuxIl2cpp \
+            -moonsharpBuild /github/workspace/.unity-build-baseline/TestBed.x86_64
+
+      # Seven rounds; each runs every player once, in an order that rotates per round. "this2" is
+      # this player again, so its ratio to "this" shows the noise of the runner.
+      - name: Benchmark the IL2CPP players
+        if: always() && inputs.bench && steps.build.outcome == 'success'
+        timeout-minutes: 40
+        env:
+          BASELINE: ${{ steps.build-baseline.outcome == 'success' }}
+        run: |
+          mkdir -p "$RESULTS/bench" .unity-bench-logs
+          players=(this this2)
+          if [ "$BASELINE" = true ]; then players+=(baseline); fi
+          code=0
+          for round in 1 2 3 4 5 6 7; do
+            for k in "${!players[@]}"; do
+              side="${players[$(( (k + round) % ${#players[@]} ))]}"
+              build=.unity-build
+              if [ "$side" = baseline ]; then build=.unity-build-baseline; fi
+              name="il2cpp-$side-r$round"
+              if ! docker exec unity "/github/workspace/$build/TestBed.x86_64" -batchmode -nographics -logFile - \
+                  -moonsharpBench "/github/workspace/$RESULTS/bench/$name.tsv" > ".unity-bench-logs/$name.log" 2>&1; then
+                echo "::error::$name: the player failed"
+                tail -n 50 ".unity-bench-logs/$name.log"
+                code=1
+              fi
+            done
+          done
+          src/Unity/UnityTestBed/bench-summary.sh "Unity ${{ matrix.unity }} IL2CPP player" "$RESULTS/bench" il2cpp \
+            "$GITHUB_REF_NAME $(git rev-parse --short HEAD)" "${BASELINE_NAME:-}" || code=1
+          exit "$code"
+
       # What MoonSharp adds to an IL2CPP player, as a proxy for an Android ARM64 APK: src/Unity/SizeProbe
       # built as committed and without MoonSharp (no Assets/Probe, no package), with the editor's
       # default player settings. The sizes go to the job summary; then the player with MoonSharp
-      # must run its script, or stripping removed what the script needs.
+      # must run its script, or stripping removed what the script needs. With a benchmark baseline,
+      # the probe is also built with the baseline's package and the table shows the difference.
       - name: Size of MoonSharp in a Linux IL2CPP player
         if: always() && (steps.activate-serial.outcome == 'success' || steps.activate-totp.outcome == 'success')
-        timeout-minutes: 45
+        timeout-minutes: 60
+        env:
+          BASELINE: ${{ steps.baseline.outcome == 'success' }}
         run: |
           set -euo pipefail
           mkdir -p .unity-size
@@ -251,8 +352,14 @@ jobs:
           build without /github/workspace/.unity-size/project-without
           build with /github/workspace/src/Unity/SizeProbe
 
-          tools/size/unity-players.sh "Unity ${{ matrix.unity }}" .unity-size/without .unity-size/with \
-            "$(grep -m 1 '^SizeBuild: Unity' .unity-size/build-with.log)"
+          note="$(grep -m 1 '^SizeBuild: Unity' .unity-size/build-with.log || true)"
+          if [ "$BASELINE" = true ]; then
+            build with-baseline /github/workspace/.bench-baseline/src/Unity/SizeProbe
+            tools/size/unity-players.sh "Unity ${{ matrix.unity }}" .unity-size/without .unity-size/with \
+              "$note. This build: $GITHUB_REF_NAME $(git rev-parse --short HEAD); baseline: $BASELINE_NAME." .unity-size/with-baseline
+          else
+            tools/size/unity-players.sh "Unity ${{ matrix.unity }}" .unity-size/without .unity-size/with "$note"
+          fi
 
           docker exec unity /github/workspace/.unity-size/with/SizeProbe.x86_64 -batchmode -nographics -logFile - \
             | tee .unity-size/run.log
@@ -265,7 +372,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: unity-${{ matrix.unity }}-results
-          path: .unity-results/*.tsv
+          path: .unity-results/**/*.tsv
           if-no-files-found: ignore
 
       - name: Return the Unity licence

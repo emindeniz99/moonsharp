@@ -439,13 +439,12 @@ namespace MoonSharp.Interpreter.Execution.VM
 			DynValue v = m_ValueStack.Peek(stackofs);
 
 			if (v.Type == DataType.Tuple)
-			{
-				return (tupleidx < v.Tuple.Length) ? v.Tuple[tupleidx] : DynValue.NewNil();
-			}
-			else
-			{
-				return (tupleidx == 0) ? v : DynValue.NewNil();
-			}
+				v = (tupleidx < v.Tuple.Length) ? v.Tuple[tupleidx] : null;
+			else if (tupleidx != 0)
+				v = null;
+
+			// A call that returns nothing leaves void; a variable takes nil, as in Lua.
+			return (v == null || v.Type == DataType.Void) ? DynValue.NewNil() : v;
 		}
 
 		private void ExecClosure(Instruction i)

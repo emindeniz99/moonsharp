@@ -581,3 +581,16 @@ yields its arguments and returns the next resume's arguments. `Coroutine.Type` i
 `CoroutineType.ClrCallback` and `ClrCallbackDead` are no longer produced.
 
 **Affected:** hosts that checked `Coroutine.Type == CoroutineType.ClrCallback`.
+
+## Variables given no value hold nil
+
+**Before:** `local x` with no value could pick up a value left on the stack (inside a `for ... in`
+loop it read the iterator's state), and `local v = f()` where `f` returns nothing stored "no value",
+so `type(v)` failed with "bad argument #1 to 'type' (value expected)".
+
+**After:** both hold `nil`, as in Lua. A call with no results passed straight as an argument,
+`type(f())`, still passes no value, as Lua does
+([upstream #263](https://github.com/moonsharp-devs/moonsharp/issues/263),
+[#258](https://github.com/moonsharp-devs/moonsharp/issues/258)).
+
+**Affected:** scripts that read a variable declared without a value and got the leftover value.

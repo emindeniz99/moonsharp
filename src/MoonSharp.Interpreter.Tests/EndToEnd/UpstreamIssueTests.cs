@@ -445,7 +445,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		// https://github.com/moonsharp-devs/moonsharp/issues/263: "local x" without a value could
 		// take a leftover value from the stack instead of nil.
 		[Test]
-		[Ignore("waits for compiler work: https://github.com/moonsharp-devs/moonsharp/issues/263")]
 		public void Issue263_LocalWithoutValueIsNil()
 		{
 			Script s = new Script();
@@ -456,7 +455,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		// https://github.com/moonsharp-devs/moonsharp/issues/258: a local assigned from a function
 		// that returns nothing held "no value", so type(x) failed with "value expected".
 		[Test]
-		[Ignore("waits for compiler work: https://github.com/moonsharp-devs/moonsharp/issues/258")]
 		public void Issue258_LocalFromVoidCallIsNil()
 		{
 			Script s = new Script();

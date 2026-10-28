@@ -266,3 +266,37 @@ it exited 1 on any failure and printed `pass` or `FAIL`.
 converter. `SetScriptToClrCustomConversion` throws `ArgumentException` for
 them instead of `IndexOutOfRangeException`. Affected: code that looped over
 every `DataType`.
+
+## Numbers print the same text on every runtime
+
+`tostring`, concatenation (`..`), `string.format('%s')`, JSON output and conversions to CLR strings now
+share one formatter that reproduces .NET Core's output on every runtime: the fewest significant digits
+that read back as the same number, in the invariant culture. Output on .NET is unchanged.
+
+- On Mono and Unity (Mono and IL2CPP), numbers that need more than 15 digits used to lose digits:
+  `2^53` printed `9.00719925474099E+15`. It now prints `9007199254740992`, as on .NET.
+- Concatenation and `%s` used the process culture: `1.5 .. ''` gave `1,5` under a decimal-comma culture.
+  They now always give `1.5`.
+- Negative zero prints `-0` everywhere (Mono printed `0`).
+
+Who is affected: scripts and hosts that compare printed numbers as text, mostly on Unity.
+
+## Exceptions from C# methods called through reflection
+
+A C# method that threw, called from Lua through reflection, reached the
+host as a `TargetInvocationException` wrapping the real exception; through
+the compiled path it reached the host as itself. Reflection is what
+`InteropAccessMode.Reflection` uses, what every call uses on AOT platforms
+(IL2CPP, iOS), and what a `BackgroundOptimized` method uses until it is
+compiled. The original exception is now rethrown on every path, with its
+stack trace. Affected: hosts on IL2CPP or iOS, or using `Reflection`, that
+caught `TargetInvocationException` and read `InnerException`.
+
+## The Unity package requires Unity 2021.3
+
+`package.json` of `org.moonsharp.moonsharp` and
+`org.moonsharp.debugger.vscode` declares `"unity": "2021.3"` (it was
+`2020.3`). The fork targets Unity 2021.3 LTS, 2022.3 LTS and Unity 6 LTS,
+which `.github/workflows/unity.yml` tests; 2020.3 is out of support and was
+never tested. Nothing in the package needed the lower number. Affected:
+projects on Unity 2020.3.

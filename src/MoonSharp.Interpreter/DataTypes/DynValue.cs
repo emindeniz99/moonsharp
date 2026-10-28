@@ -536,7 +536,7 @@ namespace MoonSharp.Interpreter
 				case DataType.Boolean:
 					return Boolean.ToString().ToLower();
 				case DataType.Number:
-					return Number.ToString(CultureInfo.InvariantCulture);
+					return NumberFormatting.ToShortestString(Number);
 				case DataType.String:
 					return "\"" + String + "\"";
 				case DataType.Function:
@@ -698,7 +698,7 @@ namespace MoonSharp.Interpreter
 			DynValue rv = ToScalar();
 			if (rv.Type == DataType.Number)
 			{
-				return rv.Number.ToString();
+				return NumberFormatting.ToShortestString(rv.Number);
 			}
 			else if (rv.Type == DataType.String)
 			{

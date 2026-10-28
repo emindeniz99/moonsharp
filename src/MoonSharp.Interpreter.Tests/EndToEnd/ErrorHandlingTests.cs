@@ -176,14 +176,32 @@ return a()
 			AssertOriginalExceptionFrame(exception, typeof(ClassWithMember));
 		}
 
-		private class ReflectionModeMembers
+		private class ClassWithReflectedMember
 		{
 			[MethodImpl(MethodImplOptions.NoInlining)]
 			public void MethodWithError()
 			{
 				throw new NullReferenceException();
 			}
+		}
 
+		// AOT platforms (IL2CPP, iOS) always call through reflection, which wrapped the exception in a
+		// TargetInvocationException, so hosts there caught a different type than on .NET or Mono.
+		[Test]
+		public void Errors_Get_OriginalException_WhenUsingMemberThroughReflection()
+		{
+			Script script = new Script(CoreModules.None);
+
+			UserData.RegisterType<ClassWithReflectedMember>(InteropAccessMode.Reflection);
+
+			script.Globals["objectWithMethod"] = new ClassWithReflectedMember();
+
+			var exception = Assert.Throws<NullReferenceException>(() => script.DoString("objectWithMethod.MethodWithError()"));
+			AssertOriginalExceptionFrame(exception, typeof(ClassWithReflectedMember));
+		}
+
+		private class ClassWithReflectedProperty
+		{
 			public int Value
 			{
 				get { throw new InvalidOperationException("getter"); }
@@ -191,29 +209,18 @@ return a()
 			}
 		}
 
-		// Reflection access mode is the only one on AOT platforms (IL2CPP, NativeAOT). It calls members
-		// through MethodBase.Invoke, which wraps what they throw in a TargetInvocationException; hosts
-		// must get the member's own exception, as in the compiled modes.
+		// Property accessors go through reflection the same way.
 		[Test]
-		public void Errors_Get_OriginalException_WhenUsingMemberByReflection()
+		public void Errors_Get_OriginalException_WhenUsingPropertyThroughReflection()
 		{
-			UserData.RegisterType<ReflectionModeMembers>(InteropAccessMode.Reflection);
+			Script script = new Script(CoreModules.None);
 
-			try
-			{
-				Script script = new Script(CoreModules.None);
-				script.Globals["obj"] = new ReflectionModeMembers();
+			UserData.RegisterType<ClassWithReflectedProperty>(InteropAccessMode.Reflection);
 
-				var exception = Assert.Throws<NullReferenceException>(() => script.DoString("obj.MethodWithError()"));
-				AssertOriginalExceptionFrame(exception, typeof(ReflectionModeMembers));
+			script.Globals["obj"] = new ClassWithReflectedProperty();
 
-				Assert.AreEqual("getter", Assert.Throws<InvalidOperationException>(() => script.DoString("return obj.Value")).Message);
-				Assert.AreEqual("setter", Assert.Throws<InvalidOperationException>(() => script.DoString("obj.Value = 1")).Message);
-			}
-			finally
-			{
-				UserData.UnregisterType<ReflectionModeMembers>();
-			}
+			Assert.AreEqual("getter", Assert.Throws<InvalidOperationException>(() => script.DoString("return obj.Value")).Message);
+			Assert.AreEqual("setter", Assert.Throws<InvalidOperationException>(() => script.DoString("obj.Value = 1")).Message);
 		}
 
 		// A long-lived Script (a game session, a server worker) must survive any number of failed calls.

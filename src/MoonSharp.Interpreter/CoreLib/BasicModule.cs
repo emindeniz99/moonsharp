@@ -243,7 +243,7 @@ namespace MoonSharp.Interpreter.CoreLib
 				if (args[0].Type != DataType.Number)
 					ee = args.AsType(0, "tonumber", DataType.String, false);
 				else
-					ee = DynValue.NewString(args[0].Number.ToString(CultureInfo.InvariantCulture));
+					ee = DynValue.NewString(NumberFormatting.ToShortestString(args[0].Number));
 
 				int bb = (int)b.Number;
 

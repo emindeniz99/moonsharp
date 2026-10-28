@@ -34,15 +34,22 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			try
 			{
 				File.WriteAllText(path, content);
+				DynValue result = null;
 
-				Script script = new Script(CoreModules.Preset_Complete);
-				script.Globals.Set("path", DynValue.NewString(path));
+				// A full platform, because the default one on Unity leaves the io module out.
+				WithPlatform(new StandardPlatformAccessor(), () =>
+				{
+					Script script = new Script(CoreModules.Preset_Complete);
+					script.Globals.Set("path", DynValue.NewString(path));
 
-				return script.DoString(
-					"local f = assert(io.open(path, 'r'))\n" +
-					"local a, b = " + readCode + "\n" +
-					"f:close()\n" +
-					"return a, b");
+					result = script.DoString(
+						"local f = assert(io.open(path, 'r'))\n" +
+						"local a, b = " + readCode + "\n" +
+						"f:close()\n" +
+						"return a, b");
+				});
+
+				return result;
 			}
 			finally
 			{

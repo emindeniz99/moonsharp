@@ -1,4 +1,4 @@
-#if !(UNITY_5_3_OR_NEWER || UNITY_EDITOR || UNITY_STANDALONE)
+#if !(EMBEDTEST || UNITY_5_3_OR_NEWER || UNITY_EDITOR || UNITY_STANDALONE)
 
 using System;
 using NUnit.Framework.Interfaces;

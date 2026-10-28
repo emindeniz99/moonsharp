@@ -255,6 +255,22 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
+		public void AllocationBudget_CsToLuaCall3Typed()
+		{
+			// The typed call pushes its arguments and reads the result as VM values: no boxes, no argument
+			// array, no DynValue per argument or for the result.
+			SkipUnlessMeasurable();
+			Script script = new Script();
+			Closure fn = script.DoString("return function(a, b, c) return a * b + c end").Function;
+
+			AssertBudget("cs_to_lua_call3_typed", n =>
+			{
+				for (long i = 0; i < n; i++)
+					fn.Call<double, double, double, double>(i, 2, 3);
+			}, N, NoAllocation);
+		}
+
+		[Test]
 		public void AllocationBudget_ClrInteropReflection()
 		{
 			SkipUnlessMeasurable();

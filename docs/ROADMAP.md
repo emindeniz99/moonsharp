@@ -118,6 +118,7 @@ Not measured yet: an Android ARM64 APK and `libil2cpp.so` (follow-up below), an 
 | branch `fix/require-package` | `require` and `package` follow Lua 5.2 where hosts depend on them: `package.preload` ([#285](https://github.com/moonsharp-devs/moonsharp/issues/285)), `package.path` searched by `ScriptLoaderBase` before the host's `ModulePaths` ([#332](https://github.com/moonsharp-devs/moonsharp/issues/332)), `package.searchers` (and `package.loaders`), a module's own `package.loaded` entry kept, and a "not found" error that lists what was tried at the caller's position. `require` stays Lua compiled on first use, so it still yields in coroutines and works under `pcall` and `Script.Call`. `MoonSharp.Interpreter.dll` (netstandard2.0 Release) 429,568 to 431,616 bytes (+2,048) against `next` with the inline caches. See [MIGRATING.md](MIGRATING.md). |
 | branch `perf/lua-patterns` | `string.find`, `match`, `gmatch` and `gsub` run a port of Lua 5.2.4's `lstrlib.c` over string indices instead of KopiLua's `CharPtr` matcher (PLAN B11): one reused match state per thread, classes from a 256-entry table, text between `gsub` matches copied in one piece. Fixed: [#318](https://github.com/moonsharp-devs/moonsharp/issues/318) (trim idiom "pattern too complex"), [#187](https://github.com/moonsharp-devs/moonsharp/issues/187) (low-byte comparison), [#134](https://github.com/moonsharp-devs/moonsharp/issues/134) (`%p`), a `gmatch` iterator under `pcall`; Lua 5.2 rules for an init past the end and `'\0'` in patterns. Identical to `lua5.2` on 219,075 generated ASCII cases; against the old matcher over 228,000 cases only the listed differences. `workloads 7` string_pattern 23,913-27,115 to 4,736-4,773 ns (native Lua 3,199, Lua-CSharp 6,474), 48,840 to 968 bytes. `ab` against `next` 9695eb7 (15 rounds): StringPattern 0.18, Gsub 0.22, Gmatch 0.27, GsubCapture (Lua-CSharp's `patterns` case) 0.19 with 7.4 KB to 328 B; other rows 0.94-1.26, as in the A/A run (0.94-1.29, a build ran alongside). `LuaBase`, `CharPtr` and `LuaLBuffer` moved to the tests. `MoonSharp.Interpreter.dll` (netstandard2.0 Release) 431,616 to 423,936 bytes (-7,680). See [MIGRATING.md](MIGRATING.md). |
 
+| branch `feat/typed-calls` | C# to Lua calls without boxing (PLAN B9): `Closure.Call<T1..T4, TResult>` push numbers, booleans, strings, tables, functions and `DynValue`s onto the value stack as `LuaValue`s and read the result without a `DynValue` (the loop now returns a `LuaValue`; `Processing_Loop` wraps it). C# calling `function(a, b, c) return a * b + c end` with three numbers: 0 bytes per call (`Script.Call` 224), JIT 205-212 ns against 346-351, NativeAOT 238-281 against 317-375 (two runs, load 6-11). Lua functions convert to `Action`, `Func<>` and other delegates with up to four parameters, cached per function, so `-=` works (upstream #186, `Closure.ToDelegate`); the source generator writes typed factories (`GeneratedUserData.RegisterDelegateTypes`) so NativeAOT, which cannot close the generic bridge for value types, needs no `MakeGenericMethod`. Overloads are looked up by argument signature (`ab-interop` overload_call 0.955 of `next`, IQR 0.887-0.987), and the old overload cache now resets when custom converters change (it kept stale choices). `ab` against `next`: no row slower outside noise (Fib20 0.947, SumLoop100K 0.892). LuaCATS declares delegate parameters as `fun(...)`. `MoonSharp.Interpreter.dll` 431,616 to 442,368 bytes (+10,752, measured with `tools/size/size.sh` against `next` 51fad04). See [MIGRATING.md](MIGRATING.md). |
 ## In progress
 
 | Work | Where |
@@ -167,7 +168,6 @@ float_math 71 vs 42.6 (1.7x), fib_recursive 54 vs 40.8 us (1.3x). The stack VM i
 - Stop allocating a bound callback on every `obj:Method()` call.
 - Choose argument converters once per parameter, not per call.
 - Hash userdata by identity so userdata keys do not all collide.
-- Call Lua from C# with typed arguments and no boxing.
 
 - Found with the NativeAOT suite, not fixed:
   - `CallbackFunction.FromDelegate` caches descriptors in a `ConditionalWeakTable` keyed by `Delegate.Method`. NativeAOT returns a new `MethodInfo` on every read (measured: `ReferenceEquals(d.Method, d.Method)` is false), so the cache never hits there and each conversion builds a descriptor. Key it by equality. IL2CPP not measured.
@@ -225,7 +225,6 @@ float_math 71 vs 42.6 (1.7x), fib_recursive 54 vs 40.8 us (1.3x). The stack VM i
 - In-process JVM hosting as the default: the native stack guard and the execution budget (`ScriptOptions.InterruptHandler`) now exist; the hosting layer needs an error kind for an interrupted script, then a new measurement against the worker.
 - Browser: AOT-compiled WebAssembly against the interpreter build; Firefox and WebKit tests.
 - From upstream feature requests ([upstream-issues.md](upstream-issues.md)):
-  - convert Lua functions to `Action` and `Func<...>` parameters (upstream #186), with the typed calls from C# to Lua above;
   - a `ScriptedImporter` for `.lua` files in the Unity package (upstream #235), with the Unity CI matrix;
   - send bytecode and source to an attached debugger only when its `GetDebuggerCaps()` asks for them (upstream #261), a two-line check in `Script.cs`.
 - LuaCATS follow-ups:
@@ -233,8 +232,12 @@ float_math 71 vs 42.6 (1.7x), fib_recursive 54 vs 40.8 us (1.3x). The stack VM i
   - typed host global functions: a global set from a delegate is declared `fun(...): any`, because a `CallbackFunction` keeps no signature;
   - `T?` for C# nullable reference annotations (only `Nullable<T>` is read today);
   - move the lua-language-server pin to 3.19.2 once its release digests have been read.
-- Source generator follow-ups ([source-generator.md](source-generator.md#follow-ups)): run it in the Unity matrix (needs the secrets); overload dispatch with precomputed checks when no custom converter is registered; a typed call convention for generated members once the VM has one; a `link.xml` fragment for the members it binds by reflection.
-- Convert script functions to delegate parameters (`Action<T>`, `Func<T>`). Today only `Closure` and `ScriptFunctionDelegate` parameters take a function, unless the host adds a custom converter; the LuaCATS generator reports such parameters.
+- Source generator follow-ups ([source-generator.md](source-generator.md#follow-ups)): run it in the Unity matrix (needs the secrets); a typed call convention for generated members once the VM has one; a `link.xml` fragment for the members it binds by reflection; `void` delegate factories that discard the result without a `DynValue`.
+- Typed calls follow-ups (branch `feat/typed-calls`):
+  - `Script.Call` still allocates a CLR `SourceRef` per call (48 bytes) for the frame's calling location; the typed calls share one. A one-line change in `Processor.cs`.
+  - `Script.Call<TResult>` for a `DynValue` that may be a C# function or a table with `__call`; today the typed calls are on `Closure` only.
+  - Event handlers (`obj.Event.add(f)`) still go through `EventMemberDescriptor`'s own subscription list, not `Closure.ToDelegate`.
+  - IL2CPP: the delegate factories and typed calls are proven on NativeAOT only; the Unity matrix will show whether IL2CPP needs the factories on 2022.3+ (full generic sharing).
 - The Teal vs TypeScriptToLua trial from the decisions table.
 - A Debug Adapter Protocol server, so any editor can debug scripts.
 - Save and restore a `Script`'s state.

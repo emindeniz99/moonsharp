@@ -1,4 +1,4 @@
-<linker>
+﻿<linker>
   <!--
     Trimming descriptor for MoonSharp.Interpreter.
 
@@ -42,5 +42,7 @@
     <type fullname="MoonSharp.Interpreter.CoreLib.IO.FileUserDataBase" preserve="all" />
     <type fullname="MoonSharp.Interpreter.Serialization.Json.JsonNull" preserve="all" />
     <type fullname="MoonSharp.Interpreter.Serialization.Json.JsonEmptyArray" preserve="all" />
+    <!-- Lua functions as delegates: ClosureDelegates.Build closes these generic methods by name. -->
+    <type fullname="MoonSharp.Interpreter.Interop.ClosureDelegateBridge" preserve="all" />
   </assembly>
 </linker>

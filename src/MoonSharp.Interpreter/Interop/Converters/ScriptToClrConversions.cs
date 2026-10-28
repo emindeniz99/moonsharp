@@ -23,6 +23,8 @@ namespace MoonSharp.Interpreter.Interop.Converters
 		internal const int WEIGHT_TABLE_CONVERSION = 90;
 		internal const int WEIGHT_NUMBER_DOWNCAST = 99;
 		internal const int WEIGHT_FRACTION_TO_INTEGER = 98;
+		// A Lua function as a delegate (upstream #186): below Closure and ScriptFunctionDelegate.
+		internal const int WEIGHT_FUNCTION_TO_DELEGATE = 90;
 		internal const int WEIGHT_NO_MATCH = 0;
 		internal const int WEIGHT_NO_EXTRA_PARAMS_BONUS = 100;
 		internal const int WEIGHT_EXTRA_PARAMS_MALUS = 2;
@@ -167,6 +169,7 @@ namespace MoonSharp.Interpreter.Interop.Converters
 				case DataType.Function:
 					if (desiredType == typeof(Closure)) return value.Function;
 					else if (desiredType == typeof(ScriptFunctionDelegate)) return value.Function.GetDelegate();
+					else if (IsDelegateType(desiredType)) return value.Function.ToDelegate(desiredType);
 					break;
 				case DataType.ClrFunction:
 					if (desiredType == typeof(CallbackFunction)) return value.Callback;
@@ -289,6 +292,7 @@ namespace MoonSharp.Interpreter.Interop.Converters
 				case DataType.Function:
 					if (desiredType == typeof(Closure)) return WEIGHT_EXACT_MATCH;
 					else if (desiredType == typeof(ScriptFunctionDelegate)) return WEIGHT_EXACT_MATCH;
+					else if (IsDelegateType(desiredType) && ClosureDelegates.CanCreate(desiredType)) return WEIGHT_FUNCTION_TO_DELEGATE;
 					break;
 				case DataType.ClrFunction:
 					if (desiredType == typeof(CallbackFunction)) return WEIGHT_EXACT_MATCH;
@@ -322,6 +326,14 @@ namespace MoonSharp.Interpreter.Interop.Converters
 			}
 
 			return WEIGHT_NO_MATCH;
+		}
+
+		/// <summary>
+		/// A concrete delegate type: not Delegate or MulticastDelegate themselves, which have no signature.
+		/// </summary>
+		private static bool IsDelegateType(Type t)
+		{
+			return t != typeof(Delegate) && t != typeof(MulticastDelegate) && Framework.Do.IsAssignableFrom(typeof(Delegate), t);
 		}
 
 		/// <summary>

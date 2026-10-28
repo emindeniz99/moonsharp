@@ -44,6 +44,7 @@ namespace MoonSharp.Interpreter.Interop
 		private OverloadCacheItem[] m_Cache = new OverloadCacheItem[CACHE_SIZE];
 		private int m_CacheHits = 0;
 		private int m_ExtensionMethodVersion = 0;
+		private int m_CacheConvertersVersion = 0;
 
 		/// <summary>
 		/// Gets or sets a value indicating whether this instance ignores extension methods.
@@ -123,6 +124,7 @@ namespace MoonSharp.Interpreter.Interop
 		{
 			m_Overloads.Add(overload);
 			m_Unsorted = true;
+			m_Signatures = null;
 		}
 
 		/// <summary>
@@ -162,10 +164,49 @@ namespace MoonSharp.Interpreter.Interop
 			if (m_Overloads.Count == 1 && m_ExtOverloads.Count == 0 && extMethodCacheNotExpired)
 				return m_Overloads[0].Execute(script, obj, context, args);
 
+			// Arguments whose weights depend only on their type (and, for numbers, on having a fraction)
+			// choose the same overload every time: look the choice up by that signature. It holds only
+			// while no extension method competes and no custom converter changes the weights.
+			long signature;
+
+			if ((IgnoreExtensionMethods || obj == null || (extMethodCacheNotExpired && m_ExtOverloads.Count == 0))
+				&& !Script.GlobalOptions.CustomConverters.HasScriptToClrConversions
+				&& TryGetSignature(obj != null, args, out signature))
+			{
+				IOverloadableMemberDescriptor known = FindSignature(signature);
+
+				if (known == null)
+				{
+					known = Resolve(obj, context, args, extMethodCacheNotExpired);
+					AddSignature(signature, known);
+				}
+
+				return known.Execute(script, obj, context, args);
+			}
+
+			return Resolve(obj, context, args, extMethodCacheNotExpired).Execute(script, obj, context, args);
+		}
+
+		/// <summary>
+		/// The overload MoonSharp's weights choose for these arguments: from the cache of recent argument
+		/// types, or by scoring every overload.
+		/// </summary>
+		private IOverloadableMemberDescriptor Resolve(object obj, ScriptExecutionContext context, CallbackArguments args, bool extMethodCacheNotExpired)
+		{
 			if (m_Unsorted)
 			{
 				m_Overloads.Sort(new OverloadableMemberDescriptorComparer());
 				m_Unsorted = false;
+			}
+
+			// Custom converters change the weights, so a choice made under other converters is stale.
+			int convertersVersion = Script.GlobalOptions.CustomConverters.ScriptToClrVersion;
+
+			if (m_CacheConvertersVersion != convertersVersion)
+			{
+				m_Cache = new OverloadCacheItem[CACHE_SIZE];
+				m_CacheHits = 0;
+				m_CacheConvertersVersion = convertersVersion;
 			}
 
 			if (extMethodCacheNotExpired)
@@ -177,7 +218,7 @@ namespace MoonSharp.Interpreter.Interop
 #if DEBUG_OVERLOAD_RESOLVER
 						System.Diagnostics.Debug.WriteLine(string.Format("[OVERLOAD] : CACHED! slot {0}, hits: {1}", i, m_CacheHits));
 #endif
-						return m_Cache[i].Method.Execute(script, obj, context, args);
+						return m_Cache[i].Method;
 					}
 				}
 			}
@@ -224,10 +265,104 @@ namespace MoonSharp.Interpreter.Interop
 			if (bestOverload != null)
 			{
 				Cache(obj != null, args, bestOverload);
-				return bestOverload.Execute(script, obj, context, args);
+				return bestOverload;
 			}
 
 			throw new ScriptRuntimeException("function call doesn't match any overload");
+		}
+
+		// The argument signatures seen, with the overload each one chose. A signature packs, per scored
+		// argument, 3 bits for its kind (nil, void, boolean, whole number, fractional number, string, Lua
+		// function, C# function), then the argument count and whether there is an object and a method call.
+		// Tables, userdata and other kinds weigh by their contents or runtime type and are not packed.
+		const int MAX_SIGNATURE_ARGS = 16;
+		const int MAX_SIGNATURES = 8;
+
+		sealed class Signature
+		{
+			public long Key;
+			public IOverloadableMemberDescriptor Method;
+		}
+
+		// Replaced, never changed in place, so a reader on another thread sees a whole table.
+		Signature[] m_Signatures;
+		// ClosureDelegates.Version when the table was filled: registering a delegate factory can make a Lua
+		// function match a delegate parameter it did not match before.
+		int m_SignaturesDelegateVersion;
+
+		private static bool TryGetSignature(bool hasObject, CallbackArguments args, out long signature)
+		{
+			int first = args.IsMethodCall ? 1 : 0;
+			int count = args.Count - first;
+			long key = 0;
+			signature = 0;
+
+			if (count > MAX_SIGNATURE_ARGS)
+				return false;
+
+			for (int i = 0; i < count; i++)
+			{
+				DynValue arg = args.RawGet(first + i, false);
+				int kind;
+
+				switch (arg.Type)
+				{
+					case DataType.Nil: kind = 0; break;
+					case DataType.Void: kind = 1; break;
+					case DataType.Boolean: kind = 2; break;
+					case DataType.Number: kind = ScriptToClrConversions.IsFractional(arg.Number) ? 4 : 3; break;
+					case DataType.String: kind = 5; break;
+					case DataType.Function: kind = 6; break;
+					case DataType.ClrFunction: kind = 7; break;
+					default: return false;
+				}
+
+				key = (key << 3) | (long)kind;
+			}
+
+			signature = (((key << 5) | (long)count) << 2) | (hasObject ? 2L : 0L) | (args.IsMethodCall ? 1L : 0L);
+			return true;
+		}
+
+		private IOverloadableMemberDescriptor FindSignature(long signature)
+		{
+			Signature[] table = m_Signatures;
+
+			if (table == null)
+				return null;
+
+			if (m_SignaturesDelegateVersion != ClosureDelegates.Version)
+			{
+				m_Signatures = null;
+				return null;
+			}
+
+			for (int i = 0; i < table.Length; i++)
+				if (table[i].Key == signature)
+					return table[i].Method;
+
+			return null;
+		}
+
+		private void AddSignature(long signature, IOverloadableMemberDescriptor method)
+		{
+			Signature[] table = m_Signatures;
+			int n = table == null ? 0 : table.Length;
+
+			if (n >= MAX_SIGNATURES)
+				return;
+
+			Signature[] grown = new Signature[n + 1];
+
+			if (table != null)
+				Array.Copy(table, grown, n);
+
+			grown[n] = new Signature() { Key = signature, Method = method };
+
+			if (table == null)
+				m_SignaturesDelegateVersion = ClosureDelegates.Version;
+
+			m_Signatures = grown;
 		}
 
 		private void Cache(bool hasObject, CallbackArguments args, IOverloadableMemberDescriptor bestOverload)

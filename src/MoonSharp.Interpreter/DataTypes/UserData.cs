@@ -381,6 +381,20 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
+		/// Registers how Lua functions become delegates of type <typeparamref name="TDelegate"/> (as
+		/// <see cref="Closure.ToDelegate{TDelegate}"/> and arguments of that type convert them). Without a
+		/// registration the delegate is built by reflection, which on AOT platforms works only when code for
+		/// the delegate's types was compiled ahead of time. The source generator registers a factory for each
+		/// delegate type it sees, from <c>GeneratedUserData.RegisterAll()</c>.
+		/// </summary>
+		/// <param name="factory">Creates the delegate for a function, typically with the typed calls of
+		/// <see cref="Closure"/>: <c>f =&gt; x =&gt; f.Call&lt;int, DynValue&gt;(x)</c>.</param>
+		public static void RegisterDelegateType<TDelegate>(Func<Closure, TDelegate> factory) where TDelegate : Delegate
+		{
+			ClosureDelegates.Register(typeof(TDelegate), factory);
+		}
+
+		/// <summary>
 		/// Registers an extension Type (that is a type containing extension methods)
 		/// </summary>
 		/// <param name="type">The type.</param>

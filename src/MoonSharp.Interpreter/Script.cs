@@ -529,6 +529,14 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
+		/// The processor that calls from C# start on (they move on to the running coroutine, if any).
+		/// </summary>
+		internal Processor MainProcessor
+		{
+			get { return m_MainProcessor; }
+		}
+
+		/// <summary>
 		/// Calls the specified function.
 		/// </summary>
 		/// <param name="function">The Lua/MoonSharp function to be called</param>

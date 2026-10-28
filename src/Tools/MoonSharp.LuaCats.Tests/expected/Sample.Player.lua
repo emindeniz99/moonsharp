@@ -81,7 +81,7 @@ function Sample_Player:Heal(amount, overheal) end
 ---@param target Sample.IDamageable
 function Sample_Player:Hit(target) end
 
----@param callback System.Action_System_Double
+---@param callback fun(obj: number)
 function Sample_Player:OnTick(callback) end
 
 ---@return int64

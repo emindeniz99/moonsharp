@@ -912,3 +912,72 @@ interpreter (7 KB of the DLL). `LuaState` and `ScriptExecutionContext.EmulateCla
 Affected: hosts that subclass `LuaBase` or use `CharPtr`. Copy the three files from MoonSharp 2.0
 ([LuaStateInterop](https://github.com/moonsharp-devs/moonsharp/tree/fbd03678d5c0f731d731d099211c7f4a3a1ae8b7/src/MoonSharp.Interpreter/Interop/LuaStateInterop))
 into your project; they need only the public API. Scripts are not affected.
+
+## Typed calls from C# to Lua
+
+New, nothing changes for existing calls. `Closure.Call<TResult>()` up to
+`Closure.Call<T1, T2, T3, T4, TResult>(...)` call a Lua function with typed
+arguments and return its first result as `TResult`:
+
+```csharp
+Closure area = script.DoString("return function(w, h) return w * h end").Function;
+double a = area.Call<double, double, double>(3, 4.5);
+```
+
+Arguments convert as `Call(params object[])` converts them (custom
+converters, `ExactInt64Interop`, ownership checks and errors included), and
+the result as `DynValue.ToObject<T>()` converts it. Numbers, booleans,
+strings, tables, functions and `DynValue`s go to the function without boxing,
+without an argument array and without a `DynValue` each; a `double`,
+`float`, `int`, `long`, `bool`, `string`, `Table` or `Closure` result comes
+back without a `DynValue`. A call with three numbers and a number result
+allocates nothing (224 bytes through `Script.Call`). With `DynValue` as
+`TResult` all results come back, as `Call()` returns them; use it when the
+result does not matter.
+
+## Lua functions convert to delegate parameters
+
+**Before:** a Lua function passed to a C# parameter of type `Action`,
+`Func<...>` or any other delegate type failed with "cannot convert" (or
+"function call doesn't match any overload"); only `Closure`,
+`ScriptFunctionDelegate`, `object` and `DynValue` parameters took one
+([upstream #186](https://github.com/moonsharp-devs/moonsharp/issues/186)).
+
+**After:** the function converts to the delegate when its `Invoke` has up to
+four parameters, none by reference; the delegate converts its arguments and
+result as the typed calls above. `Closure.ToDelegate<TDelegate>()` does the
+same from C#. A function returns the same delegate for a type every time, so
+a handler added with `+=` can be removed with `-=`. The delegate keeps the
+function and its script alive. Overloads still prefer `Closure`,
+`ScriptFunctionDelegate`, `object` and `DynValue` parameters; a delegate
+parameter weighs less, so only calls that failed before change.
+
+On AOT platforms the delegate for a type with value-type parameters or
+result needs code compiled ahead of time: the source generator writes it for
+delegate types its generated members take and for delegate types listed with
+`[assembly: MoonSharpUserDataTypes]` (`GeneratedUserData.RegisterAll()` or
+`RegisterDelegateTypes()` registers them), or register one with
+`UserData.RegisterDelegateType<TDelegate>(factory)`. Without one, the
+conversion fails with an error that names the type and these fixes.
+
+**Affected:** hosts whose scripts relied on such calls failing; the source
+generator no longer registers a listed delegate type as a userdata type by
+reflection (it warned MSUD002 for it before), it writes the factory instead.
+
+## Overload choices follow custom converters added later
+
+**Before:** the overload resolver remembered its choice for the last five
+argument signatures of a method, and kept it after a custom converter was
+set or removed. With `G(int)` and `G(string)`, `o:G(2)` called `G(int)`;
+after a number-to-`string` converter it still called `G(int)`, although the
+converter weighs more than the number downcast.
+
+**After:** setting, removing or clearing a script-to-CLR converter makes
+every method resolve its overloads again. Overloaded calls whose arguments
+are nil, booleans, numbers, strings or functions now look the overload up in
+a table keyed by the argument kinds (and whether each number has a fraction),
+filled from the same weights; the table is skipped while any custom
+converter is registered or an extension method of the same name applies.
+
+**Affected:** hosts that register custom converters after scripts have
+called overloaded methods.

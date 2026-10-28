@@ -103,6 +103,12 @@ namespace MoonSharp.Interpreter.Interop.Converters
 
 			if (v != null) return v;
 
+			// int64 and uint64 carry their own descriptor and need no registration.
+			if (obj is LuaInt64)
+				return ((LuaInt64)obj).ToDynValue();
+			if (obj is LuaUInt64)
+				return ((LuaUInt64)obj).ToDynValue();
+
 			v = UserData.Create(obj);
 			if (v != null) return v;
 

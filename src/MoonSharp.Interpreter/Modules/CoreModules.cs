@@ -81,6 +81,11 @@ namespace MoonSharp.Interpreter
 		/// The "json" package (introduced by MoonSharp).
 		/// </summary>
 		Json = 0x10000,
+		/// <summary>
+		/// The "int64" and "uint64" packages of exact 64-bit integers (introduced by MoonSharp).
+		/// Not included in any preset, so existing scripts see no new globals.
+		/// </summary>
+		Int64 = 0x20000,
 
 
 		/// <summary>

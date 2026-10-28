@@ -37,7 +37,7 @@ namespace MoonSharp.Interpreter.CoreLib
 		public static DynValue __wrap_wrapper(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
 			DynValue handle = (DynValue)executionContext.AdditionalData;
-			return handle.Coroutine.Resume(args.GetArray());
+			return executionContext.Return(handle.Coroutine.ResumeValue(args.GetArray()));
 		}
 
 		[MoonSharpModuleMethod]
@@ -86,7 +86,7 @@ namespace MoonSharp.Interpreter.CoreLib
 		[MoonSharpModuleMethod]
 		public static DynValue yield(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			return executionContext.YieldRequestFor(args.GetArray());
+			return executionContext.YieldRequestFor(args);
 		}
 
 

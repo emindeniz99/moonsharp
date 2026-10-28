@@ -209,9 +209,9 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		{
 			// Each coroutine reuses its yield request, a resume with no values pushes nil without a DynValue,
 			// and an empty argument list is a shared array (400 bytes before). The two calls' contexts and
-			// argument views are reused (248 bytes before). Left: the yielded values' array and the yielded
-			// number's DynValue.
-			AssertLuaBudget("coroutine_switch", "return function(n) local co = coroutine.wrap(function() local i = 0 while true do i = i + 1 coroutine.yield(i) end end)\nlocal s = 0 for i = 1, n do s = s + co() end return s end", 72);
+			// argument views are reused (248 bytes before), the yielded values wait in a buffer the coroutine
+			// keeps, and coroutine.wrap hands one value to its caller through its context (72 bytes before).
+			AssertLuaBudget("coroutine_switch", "return function(n) local co = coroutine.wrap(function() local i = 0 while true do i = i + 1 coroutine.yield(i) end end)\nlocal s = 0 for i = 1, n do s = s + co() end return s end", NoAllocation);
 		}
 
 		[Test]

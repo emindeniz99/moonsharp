@@ -425,5 +425,63 @@ checkresume(6, false, 'cannot resume dead coroutine');
 			Assert.AreEqual("out1in1out2in2out3in3", r.String);
 		}
 
+			[Test]
+		public void Coroutine_YieldAndResumeShapesFollowLua52()
+		{
+			// Yielded values wait in a buffer of the coroutine and coroutine.wrap hands one value to its caller
+			// without a DynValue: every shape of yield and resume still gives lua5.2's (5.2.4) results.
+			const string expected =
+				"start,a,b\n" +
+				"\n" +
+				"got,x,y\n" +
+				"1,nil,3\n" +
+				"got,z\n" +
+				"nil\n" +
+				"\n" +
+				"s,nil,e\n" +
+				"inpcall,9\n" +
+				"pcall,true,r1,r2\n" +
+				"done,7\n" +
+				"true,2,4,5\n" +
+				"true,42\n" +
+				"false,cannot resume dead coroutine\n" +
+				"1,1\n" +
+				"2,4\n" +
+				"3,9\n" +
+				"i1\n" +
+				"i2\n" +
+				"1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20\n";
+
+			Assert.AreEqual(expected.TrimEnd('\n'), new Script().DoString(@"
+				local out = {}
+				local function put(...) local t = {} for i = 1, select('#', ...) do t[i] = tostring((select(i, ...))) end out[#out + 1] = table.concat(t, ',') end
+				local function none() end
+				local co = coroutine.wrap(function(a, b)
+				  put('start', a, b)
+				  local x, y = coroutine.yield()
+				  put('got', x, y)
+				  local z = coroutine.yield(1, nil, 3)
+				  put('got', z)
+				  coroutine.yield(nil)
+				  coroutine.yield(none())
+				  coroutine.yield('s', none(), 'e')
+				  local p = { pcall(coroutine.yield, 'inpcall', 9) }
+				  put('pcall', table.unpack(p))
+				  return 'done', 7
+				end)
+				put(co('a', 'b')) put(co('x', 'y')) put(co('z')) put(co()) put(co()) put(co()) put(co('r1', 'r2'))
+				local co2 = coroutine.create(function(...) local n = select('#', ...) local v = coroutine.yield(n, ...) return v * 2 end)
+				put(coroutine.resume(co2, 4, 5)) put(coroutine.resume(co2, 21)) put(coroutine.resume(co2))
+				local gen = coroutine.wrap(function() for i = 1, 3 do coroutine.yield(i, i * i) end end)
+				put(gen()) put(gen()) put(gen())
+				local outer = coroutine.wrap(function()
+				  local inner = coroutine.wrap(function() coroutine.yield('i1') coroutine.yield('i2') end)
+				  coroutine.yield(inner()) coroutine.yield(inner())
+				end)
+				put(outer()) put(outer())
+				local big = coroutine.wrap(function() local t = {} for i = 1, 20 do t[i] = i end coroutine.yield(table.unpack(t)) end)
+				put(big())
+				return table.concat(out, '\n')").String);
+		}
 	}
 }

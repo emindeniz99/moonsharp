@@ -75,6 +75,18 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
+		/// <see cref="Return(double)"/> for any VM value.
+		/// </summary>
+		internal DynValue Return(LuaValue value)
+		{
+			if (!LentByProcessor)
+				return value.ToDynValue();
+
+			m_Result = value;
+			return ResultInContext;
+		}
+
+		/// <summary>
 		/// The result a callback left with Return, as a VM value; the context lets go of it.
 		/// </summary>
 		internal LuaValue TakeResult()
@@ -176,11 +188,12 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
-		/// A request to yield <paramref name="values"/> from the running coroutine (reused for every yield).
+		/// A request to yield the values of <paramref name="args"/> from the running coroutine (reused for every
+		/// yield, and the values copied into a buffer the coroutine keeps).
 		/// </summary>
-		internal DynValue YieldRequestFor(DynValue[] values)
+		internal DynValue YieldRequestFor(CallbackArguments args)
 		{
-			return m_Processor.YieldRequestFor(values);
+			return m_Processor.YieldRequestFor(args);
 		}
 
 		/// <summary>

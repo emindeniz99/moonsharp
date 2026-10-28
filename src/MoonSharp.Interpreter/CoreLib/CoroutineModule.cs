@@ -68,7 +68,7 @@ namespace MoonSharp.Interpreter.CoreLib
 						}
 					}
 				}
-				else
+				else if (ret.Type != DataType.Void)
 				{
 					retval.Add(ret);
 				}

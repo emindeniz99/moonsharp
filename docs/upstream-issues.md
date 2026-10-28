@@ -20,8 +20,8 @@ again; planned work goes in [ROADMAP.md](ROADMAP.md), and fork-only changes in
 
 | Status | Issues | Pull requests |
 |---|---|---|
-| fixed in the fork | 23 | 8 |
-| reproduces, waits for other work | 3 | 1 |
+| fixed in the fork | 25 | 9 |
+| reproduces, waits for other work | 1 | 0 |
 | needs the owner | 5 | 2 |
 | does not reproduce | 16 | 3 |
 | question, answered | 8 | 0 |
@@ -74,7 +74,7 @@ keys 1..n (`77c8662`).
 | [#293](https://github.com/moonsharp-devs/moonsharp/issues/293) | Docs say heuristic should resolve float/int overloads properly; actually does not | bug | fixed | Branch `fix/interop-decisions`: a fractional number weighs 98 for integer parameters, and the overload cache keys on whole vs fractional; `Issue293_FractionalNumberPicksTheFloatingOverload` |
 | [#291](https://github.com/moonsharp-devs/moonsharp/issues/291) | System.NullReferenceException on registering DynamicMethod | bug | fixed | `c86a064`; `Issue291_CompiledExpressionDelegateIsCallable` |
 | [#288](https://github.com/moonsharp-devs/moonsharp/issues/288) | CSharp.lua error | bug | does not reproduce | No reproduction given; `require('Core.Sys')` through `LUA_PATH` with a dotted directory resolves |
-| [#287](https://github.com/moonsharp-devs/moonsharp/issues/287) | Empty tuples are incorrectly treated as nil | bug | waits: VM core | Reproduces: `select('#', table.unpack({}, 1, 0))` is 1. Ignored test `UpstreamIssueTests.Issue287_EmptyUnpackReturnsNoValues` |
+| [#287](https://github.com/moonsharp-devs/moonsharp/issues/287) | Empty tuples are incorrectly treated as nil | bug | fixed | Branch `fix/vm-correctness`: `DynValue.NewTuple()` with no values is `Void`, and argument lists, `return` lists, `pcall` and `coroutine.resume` add no value for it; `Issue287_EmptyUnpackReturnsNoValues`, `Issue287_EmptyTupleFromCSharpIsNoValues` |
 | [#286](https://github.com/moonsharp-devs/moonsharp/issues/286) | Cannot register type SqlCommand | bug | fixed | `34c66d4`; `Issue286_MembersHiddenWithNewUseTheDerivedMember` |
 | [#285](https://github.com/moonsharp-devs/moonsharp/issues/285) | The package table is missing most of its fields | bug | fixed | Branch `fix/require-package`: `package` has `path`, `preload`, `searchers` and `loaders`, and `require` follows Lua 5.2; `Issue285_RequireUsesPackagePreload`, `RequireTests`. Still missing: `cpath`, `loadlib`, `searchpath` |
 | [#282](https://github.com/moonsharp-devs/moonsharp/issues/282) | JSON parse error for "\/" | duplicate | does not reproduce | Fixed upstream in 714c265, before the fork base |
@@ -110,7 +110,7 @@ keys 1..n (`77c8662`).
 | [#207](https://github.com/moonsharp-devs/moonsharp/issues/207) | Script organization like Grimrock | question | answered | Separate global tables per entity (`DoString(code, env)`); not in our docs |
 | [#204](https://github.com/moonsharp-devs/moonsharp/issues/204) | json.parse() and then json.serialize() turns empty array to empty object. | bug | does not reproduce | `json.parse(s, true)` keeps empty arrays (`JsonEmptyArray`); without it Lua cannot tell `[]` from `{}` |
 | [#199](https://github.com/moonsharp-devs/moonsharp/issues/199) | Table.Get does not respect __index? | question | answered | `Table.Get` is a raw read; there is no metamethod-aware read in the C# API. Not in our docs |
-| [#198](https://github.com/moonsharp-devs/moonsharp/issues/198) | Bug in Varargs when no parameters is passed to a function | bug | waits: VM core | Reproduces. Ignored test `UpstreamIssueTests.Issue198_VarargsWithoutArgumentsAreEmpty`; upstream [PR #324](https://github.com/moonsharp-devs/moonsharp/pull/324) |
+| [#198](https://github.com/moonsharp-devs/moonsharp/issues/198) | Bug in Varargs when no parameters is passed to a function | bug | fixed | Branch `fix/vm-correctness` (with #287): no values, from a call or a resume, reach `...` as no values; `Issue198_VarargsWithoutArgumentsAreEmpty`. Upstream [PR #324](https://github.com/moonsharp-devs/moonsharp/pull/324) not taken |
 | [#197](https://github.com/moonsharp-devs/moonsharp/issues/197) | VS Code debugger not working properly since 1.13 update | bug | out of scope | VS Code extension, unchanged in the fork |
 | [#196](https://github.com/moonsharp-devs/moonsharp/issues/196) | Support for .Net 4.5 portable profile 111 | feature | out of scope | PCL profiles are gone; the interpreter targets netstandard2.0 and net45 |
 | [#192](https://github.com/moonsharp-devs/moonsharp/issues/192) | CTRL-Z crashes with unhandled exception | bug | does not reproduce | The REPL loop checks for end of input (`src/MoonSharp/Program.cs`) |
@@ -154,7 +154,7 @@ keys 1..n (`77c8662`).
 | [#336](https://github.com/moonsharp-devs/moonsharp/pull/336) | Fix for #175 (Inheritance for static methods) | bug | needs owner | Same as #175 |
 | [#334](https://github.com/moonsharp-devs/moonsharp/pull/334) | Bitwise operators and floor division operator from Lua 5.3 | feature | feature: not planned | Waits for the integer decision; targets `legacy/2.0` |
 | [#327](https://github.com/moonsharp-devs/moonsharp/pull/327) | DynValue ToString uses InvariantCulture | bug | fixed | `00c75be` on `next` (numbers print the same on every runtime); `UpstreamIssueTests.PR327_ConcatenationIgnoresTheCulture` passes |
-| [#324](https://github.com/moonsharp-devs/moonsharp/pull/324) | Fix for #198 (var args are nil when void is passed) | bug | waits: VM core | Same as #198 |
+| [#324](https://github.com/moonsharp-devs/moonsharp/pull/324) | Fix for #198 (var args are nil when void is passed) | bug | fixed | Same as #198, fixed on branch `fix/vm-correctness` |
 | [#321](https://github.com/moonsharp-devs/moonsharp/pull/321) | Added compatibility with Unity 2017+ | bug | needs owner | `#if UNITY_5` paths are dead on Unity 2017 and later (also in the fork); enabling them needs the Unity CI matrix |
 | [#316](https://github.com/moonsharp-devs/moonsharp/pull/316) | FIX (net6.0-ios, net6.0-wasm) | bug | does not reproduce | The fork's browser build runs the netstandard2.0 interpreter (fork [PR #8](https://github.com/emindeniz99/moonsharp/pull/8)) |
 | [#283](https://github.com/moonsharp-devs/moonsharp/pull/283) | Fix of incorrect work of the split string with the Cyrillic symbols | bug | does not reproduce | `gmatch('[^ ]+')` splits Cyrillic text |

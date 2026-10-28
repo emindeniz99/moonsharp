@@ -208,6 +208,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 								if (top.Type == DataType.Tuple)
 									top = top.ToScalar();
+
+								// (f()) is one value even when f returns none: nil.
+								if (top.Type == DataType.Void)
+									top = LuaValue.Nil;
 							}
 							break;
 						case OpCode.Not:
@@ -758,6 +762,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 			int first = m_ValueStack.Count - count;
 			DynValue[] values;
 
+			// The last expression is a call that returned nothing (return 1, f()): it adds no value.
+			if (count > 0 && m_ValueStack[first + count - 1].Type == DataType.Void)
+			{
+				m_ValueStack.RemoveLast();
+				count--;
+			}
+
 			if (count > 0 && m_ValueStack[first + count - 1].Type == DataType.Tuple)
 			{
 				// The last expression is a call or '...': its values extend the list.
@@ -1129,6 +1140,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 				{
 					foreach (DynValue d in a.TupleValue.Tuple)
 						argsList.Add(d.ToLuaValue());
+				}
+				else if (i == numargs - 1 && (a.Type == DataType.Void || a.Type == DataType.Tuple))
+				{
+					// A last argument that is a call returning no values (f(1, g())) adds none, or its one value.
+					LuaValue v = a.ToScalar();
+					if (v.Type != DataType.Void)
+						argsList.Add(v);
 				}
 				else
 				{

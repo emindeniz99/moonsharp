@@ -998,3 +998,25 @@ converter is registered or an extension method of the same name applies.
 
 **Affected:** hosts that register custom converters after scripts have
 called overloaded methods.
+
+## Empty result lists are no values
+
+**Before:** a C# function that returned no values (`DynValue.NewTuple()`
+with no arguments, and so `table.unpack({})`, `string.byte('')`,
+`coroutine.yield()` resumed with nothing) gave one nil:
+`select('#', table.unpack({}))` was 1, `f(1, table.unpack({}))` passed `f`
+two values, `pcall(table.unpack, {})` returned `true, nil`, and a coroutine
+resumed with no values saw one nil from `coroutine.yield()`
+([upstream #287](https://github.com/moonsharp-devs/moonsharp/issues/287),
+[#198](https://github.com/moonsharp-devs/moonsharp/issues/198)). A Lua
+function that returned nothing gave no values already, but `(f())` kept "no
+value" instead of nil, and `return 1, f()` returned two values.
+
+**After:** as in Lua 5.2. `DynValue.NewTuple()` with no values returns
+`DynValue.Void`, the value a function that returns nothing gives; argument
+lists, `return` lists, `pcall`, `coroutine.resume` and `coroutine.yield`
+add no value for it, and parentheses turn it into nil.
+
+**Affected:** hosts that test `DynValue.NewTuple()` or a call's result for
+`DataType.Nil`: test `IsNil()`, which is true for both. Scripts that counted
+the extra nil.

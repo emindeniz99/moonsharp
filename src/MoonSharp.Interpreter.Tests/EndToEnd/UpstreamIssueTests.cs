@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -416,25 +416,71 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		// https://github.com/moonsharp-devs/moonsharp/issues/287: an empty tuple became one nil, so
-		// table.unpack({}, 1, 0) returned one value instead of none.
+		// table.unpack({}, 1, 0) returned one value instead of none. Code that counts or forwards values
+		// (select('#', ...), argument lists, table constructors, pcall) saw a nil that Lua 5.2 does not
+		// produce. The expectations are lua5.2's output for the same chunk.
 		[Test]
-		[Ignore("waits for VM core work (DynValue.NewTuple): https://github.com/moonsharp-devs/moonsharp/issues/287")]
 		public void Issue287_EmptyUnpackReturnsNoValues()
 		{
 			Script s = new Script();
 
-			Assert.AreEqual(0.0, s.DoString("return select('#', table.unpack({}, 1, 0))").Number);
+			DynValue r = s.DoString(@"
+				local function count(...) return select('#', ...) end
+				local function forward(...) return count(...) end
+				local function list(...) return 1, ... end
+				local function none() end
+				local t = { table.unpack({}) }
+				return select('#', table.unpack({}, 1, 0)), select('#', table.unpack({})), count(table.unpack({})),
+					count(1, table.unpack({})), forward(table.unpack({})), select('#', list(table.unpack({}))),
+					#t, next(t) == nil, select('#', (table.unpack({}))), (table.unpack({})) == nil,
+					select('#', pcall(table.unpack, {})), select('#', (none())), tostring(table.unpack({}, 1, 0) == nil)");
+
+			Assert.AreEqual("0,0,0,1,0,1,0", string.Join(",", r.Tuple[0].Number, r.Tuple[1].Number, r.Tuple[2].Number,
+				r.Tuple[3].Number, r.Tuple[4].Number, r.Tuple[5].Number, r.Tuple[6].Number));
+			Assert.AreEqual(true, r.Tuple[7].Boolean);
+			// Parentheses adjust to exactly one value: nil.
+			Assert.AreEqual(1, r.Tuple[8].Number);
+			Assert.AreEqual(true, r.Tuple[9].Boolean);
+			Assert.AreEqual(1, r.Tuple[10].Number, "pcall returns true and nothing else");
+			Assert.AreEqual(1, r.Tuple[11].Number);
+			Assert.AreEqual("true", r.Tuple[12].String);
+		}
+
+		// The same through C#: a callback that returns DynValue.NewTuple() returns no values.
+		[Test]
+		public void Issue287_EmptyTupleFromCSharpIsNoValues()
+		{
+			Script s = new Script();
+			s.Globals["nothing"] = DynValue.NewCallback((ctx, args) => DynValue.NewTuple());
+
+			DynValue r = s.DoString("return select('#', nothing()), select('#', 1, nothing()), #{ nothing() }");
+
+			Assert.AreEqual(0, r.Tuple[0].Number);
+			Assert.AreEqual(1, r.Tuple[1].Number);
+			Assert.AreEqual(0, r.Tuple[2].Number);
+			Assert.AreEqual(DataType.Void, DynValue.NewTuple().Type);
 		}
 
 		// https://github.com/moonsharp-devs/moonsharp/issues/198 (upstream PR #324): a vararg function
-		// called with no arguments saw one nil, so select('#', ...) was 1.
+		// called with no arguments saw one nil, so select('#', ...) was 1. Values that come back from a
+		// coroutine with nothing in them are the same case.
 		[Test]
-		[Ignore("waits for VM core work: https://github.com/moonsharp-devs/moonsharp/issues/198")]
 		public void Issue198_VarargsWithoutArgumentsAreEmpty()
 		{
 			Script s = new Script();
 
-			Assert.AreEqual(0.0, s.DoString("local function count(...) return select('#', ...) end return count()").Number);
+			DynValue r = s.DoString(@"
+				local function count(...) return select('#', ...) end
+				local co = coroutine.create(function(...) return count(...), count(coroutine.yield()) end)
+				local yielded = select('#', coroutine.resume(co))
+				local _, b, c = coroutine.resume(co)
+				return count(), yielded, b, c, select('#', coroutine.resume(coroutine.create(function() end)))");
+
+			Assert.AreEqual(0, r.Tuple[0].Number);
+			Assert.AreEqual(1, r.Tuple[1].Number, "yield() yields no values: resume returns only true");
+			Assert.AreEqual(0, r.Tuple[2].Number, "a coroutine started with no values");
+			Assert.AreEqual(0, r.Tuple[3].Number, "resume() resumes with no values");
+			Assert.AreEqual(1, r.Tuple[4].Number, "a coroutine that returns nothing gives only true");
 		}
 
 		// https://github.com/moonsharp-devs/moonsharp/issues/263: "local x" without a value could

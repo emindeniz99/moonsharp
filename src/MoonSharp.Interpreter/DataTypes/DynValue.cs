@@ -430,12 +430,14 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
-		/// Creates a new tuple initialized to the specified values.
+		/// Creates a new tuple initialized to the specified values. No values give <see cref="Void"/>, the
+		/// empty result of a function that returns nothing, so <c>select('#', f())</c> is 0 for a C#
+		/// function that returns <c>NewTuple()</c>, as in Lua.
 		/// </summary>
 		public static DynValue NewTuple(params DynValue[] values)
 		{
 			if (values.Length == 0)
-				return DynValue.NewNil();
+				return DynValue.Void;
 
 			if (values.Length == 1)
 				return values[0];
@@ -448,10 +450,14 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
-		/// Creates a new tuple initialized to the specified values - which can be potentially other tuples
+		/// Creates a new tuple initialized to the specified values - which can be potentially other tuples.
+		/// A last value that is <see cref="Void"/> (a call that returned nothing) adds no value.
 		/// </summary>
 		public static DynValue NewTupleNested(params DynValue[] values)
 		{
+			if (values.Length > 0 && values[values.Length - 1].Type == DataType.Void)
+				Array.Resize(ref values, values.Length - 1);
+
 			if (!values.Any(v => v.Type == DataType.Tuple))
 				return NewTuple(values);
 

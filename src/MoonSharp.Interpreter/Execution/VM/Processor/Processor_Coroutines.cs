@@ -105,14 +105,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 				}
 				else
 				{
-					// The values of this resume are the results of the yield call: none reads as nil.
+					// The values of this resume are the results of the yield call; none is no value, so
+					// select('#', coroutine.yield()) is 0 and a local assigned from it is nil.
 					if (previous == CoroutineState.Suspended)
-					{
-						if (args.Length == 0)
-							m_ValueStack.Push(LuaValue.Nil);
-						else
-							m_ValueStack.Push(DynValue.NewTuple(args));
-					}
+						m_ValueStack.Push(DynValue.NewTuple(args));
 
 					retVal = Processing_Loop(m_SavedInstructionPtr);
 				}

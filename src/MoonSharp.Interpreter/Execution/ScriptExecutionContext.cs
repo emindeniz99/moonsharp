@@ -24,6 +24,15 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
+		/// Prepares a context the processor reuses for every C# function call at one call depth.
+		/// </summary>
+		internal void Reuse(CallbackFunction callBackFunction, SourceRef sourceRef)
+		{
+			m_Callback = callBackFunction;
+			CallingLocation = sourceRef;
+		}
+
+		/// <summary>
 		/// Gets a value indicating whether this instance is running a dynamic execution.
 		/// Under a dynamic execution, most methods of ScriptExecutionContext are not reliable as the
 		/// processing engine of the script is not "really" running or is not available.

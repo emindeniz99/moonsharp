@@ -1294,12 +1294,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 				if (callback.BuiltinId != 0 && handlers == null && TryFastCall(callback.BuiltinId, argsCount))
 					return instructionPtr;
 
-				DynValue[] args = (callback.ReadsArgumentsInPlace && argsCount > 0) ? null : CreateArgsListForFunctionCall(argsCount);
+				DynValue[] args = callback.ReadsArgumentsInPlace ? null : CreateArgsListForFunctionCall(argsCount);
 
 				// instructionPtr - 1: instructionPtr already points to the next instruction at this moment
 				// but we need the current instruction here
 				SourceRef sref = GetCurrentSourceRef(instructionPtr - 1);
 
+				int depth = m_ExecutionStack.Count;
 				ref CallStackItem frame = ref m_ExecutionStack.Push();
 				frame.ClrFunction = callback;
 				frame.ReturnAddress = instructionPtr;
@@ -1310,9 +1311,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 				frame.Flags = flags;
 				frame.CCalls = cCalls;
 
-				var ctx = new ScriptExecutionContext(this, callback, sref);
+				ScriptExecutionContext ctx = CallContext(depth, callback, sref);
 				var ret = args == null
-					? callback.InvokeOnStack(ctx, m_ValueStack, m_ValueStack.Count - argsCount, argsCount, thisCall)
+					? callback.InvokeOnStack(ctx, CallArguments(depth), m_ValueStack, m_ValueStack.Count - argsCount, argsCount, thisCall)
 					: callback.Invoke(ctx, args, isMethodCall: thisCall);
 				m_ValueStack.RemoveLast(argsCount + 1);
 				m_ValueStack.Push(ret);

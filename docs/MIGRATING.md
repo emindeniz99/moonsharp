@@ -1089,3 +1089,40 @@ comparator now stops the script; `table.sort` used to drop it and return a
 half-sorted table.
 
 **Affected:** hosts whose interrupt handler counts its own calls.
+
+## C# function calls reuse their context and argument object
+
+**Before:** every call from Lua to a C# function created a new
+`ScriptExecutionContext` and a new `CallbackArguments`; outside the standard
+library it also copied the arguments into a new `DynValue[]`.
+
+**After:** the processor keeps one `ScriptExecutionContext` per call depth and
+lends it to every C# function called at that depth. Standard library
+functions, userdata methods (reflection and generated descriptors) and
+delegates converted by MoonSharp also get a reused `CallbackArguments` that
+reads the arguments in place on the value stack. A CLR method with a
+`CallbackArguments` parameter gets a copy, which it may keep.
+
+Host callbacks (`DynValue.NewCallback`, `new CallbackFunction(...)`) still get
+a `CallbackArguments` of their own, which they may keep. A host callback that
+does not keep it can say so:
+
+```csharp
+script.Globals["add"] = new CallbackFunction(
+    (ctx, args) => DynValue.NewNumber(args[0].Number + args[1].Number))
+    { UsesArgumentsOnlyDuringCall = true };
+```
+
+Such a callback must not read its `CallbackArguments` after it returns; it
+reads the value stack, which later calls overwrite.
+
+Bytes per call (`AllocationBudgetTests`): `string.format` 216 to 120, a host
+callback with one argument 192 to 144 (80 with
+`UsesArgumentsOnlyDuringCall`), a userdata method call and a property read
+through reflection 424 to 256, `coroutine.wrap` plus `coroutine.yield` 248 to
+72.
+
+**Affected:** hosts that keep a `ScriptExecutionContext` after their callback
+returned and read its `CallingLocation` or `AdditionalData` later: they now
+see the latest call at the same depth. `GetScript`, `Call`,
+`GetCallingCoroutine` and the metatable helpers work as before.

@@ -596,7 +596,9 @@ namespace MoonSharp.Interpreter.Interop
 		/// <returns></returns>
 		public CallbackFunction GetCallbackFunction(Script script, object obj = null)
 		{
-			return new CallbackFunction(GetCallback(script, obj), this.Name);
+			// Argument conversion reads the arguments during the call only; a CallbackArguments parameter gets
+			// a copy (CallbackArguments.SkipMethodCall).
+			return new CallbackFunction(GetCallback(script, obj), this.Name) { UsesArgumentsOnlyDuringCall = true };
 		}
 
 		/// <summary>

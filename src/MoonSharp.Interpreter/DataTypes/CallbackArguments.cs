@@ -44,6 +44,8 @@ namespace MoonSharp.Interpreter
 
 		private protected void CountArguments(int slots, DataType lastType, int lastTupleLength)
 		{
+			m_LastIsTuple = false;
+
 			if (lastType == DataType.Tuple)
 			{
 				m_Count = lastTupleLength - 1 + slots;
@@ -65,26 +67,37 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
-		/// The arguments of a call to a library function, read in place from the value stack: the
-		/// <c>slots</c> values from <c>first</c>.
+		/// The arguments of a call to a C# function that uses them only during the call, read in place from
+		/// the value stack: the <c>slots</c> values from <c>first</c>. The processor reuses one view per call
+		/// depth (<see cref="Reuse"/>).
 		/// </summary>
 		internal sealed class StackArguments : CallbackArguments
 		{
-			readonly ValueStack m_Stack;
-			readonly int m_First;
-			readonly int m_Slots;
+			ValueStack m_Stack;
+			int m_First;
+			int m_Slots;
 
 			internal StackArguments(ValueStack stack, int first, int slots, bool isMethodCall)
 				: base(isMethodCall)
 			{
+				Reuse(stack, first, slots, isMethodCall);
+			}
+
+			internal void Reuse(ValueStack stack, int first, int slots, bool isMethodCall)
+			{
 				m_Stack = stack;
 				m_First = first;
 				m_Slots = slots;
+				IsMethodCall = isMethodCall;
 
 				if (slots > 0)
 				{
 					ref LuaValue last = ref stack.Items[first + slots - 1];
 					CountArguments(slots, last.Type, last.Type == DataType.Tuple ? last.TupleValue.Tuple.Length : 0);
+				}
+				else
+				{
+					CountArguments(0, DataType.Nil, 0);
 				}
 			}
 
@@ -105,11 +118,6 @@ namespace MoonSharp.Interpreter
 				}
 
 				return v;
-			}
-
-			internal StackArguments SkipFirst()
-			{
-				return new StackArguments(m_Stack, m_First + 1, m_Slots - 1, false);
 			}
 		}
 
@@ -298,16 +306,25 @@ namespace MoonSharp.Interpreter
 
 		/// <summary>
 		/// Returns a copy of CallbackArguments where the first ("self") argument is skipped if this was a method call,
-		/// otherwise returns itself.
+		/// otherwise returns itself. Arguments read in place on the value stack are copied, so the result stays
+		/// valid after the call: CLR methods that take a <see cref="CallbackArguments"/> parameter get it from here.
 		/// </summary>
 		/// <returns></returns>
 		public CallbackArguments SkipMethodCall()
 		{
+			if (m_Args == null)
+			{
+				int skip = this.IsMethodCall ? 1 : 0;
+				DynValue[] values = new DynValue[System.Math.Max(0, m_Count - skip)];
+
+				for (int i = 0; i < values.Length; i++)
+					values[i] = RawGet(i + skip, false);
+
+				return new CallbackArguments(values, false);
+			}
+
 			if (this.IsMethodCall)
 			{
-				if (m_Args == null)
-					return ((StackArguments)this).SkipFirst();
-
 				Slice<DynValue> slice = new Slice<DynValue>(m_Args, 1, m_Args.Count - 1, false);
 				return new CallbackArguments(slice, false);
 			}

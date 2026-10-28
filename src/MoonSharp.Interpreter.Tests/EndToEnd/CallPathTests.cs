@@ -289,5 +289,112 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual(true, r.Tuple[1].Boolean);
 			Assert.AreEqual("[a][b][c]", r.Tuple[2].String);
 		}
+			[Test]
+		public void CallPath_NestedCSharpCallsKeepTheirOwnContext()
+		{
+			// The processor reuses one execution context per call depth. A C# function that calls Lua, which
+			// calls another C# function, still sees its own context after the inner call returns.
+			Script script = new Script();
+			var inner = new CallbackFunction((ctx, args) => DynValue.NewString((string)ctx.AdditionalData), "inner") { AdditionalData = "inner" };
+			var outer = new CallbackFunction((ctx, args) =>
+			{
+				MoonSharp.Interpreter.Debugging.SourceRef before = ctx.CallingLocation;
+				DynValue innerResult = ctx.Call(args[0]);
+				Assert.AreSame(before, ctx.CallingLocation);
+				return DynValue.NewString((string)ctx.AdditionalData + "/" + innerResult.String);
+			}, "outer") { AdditionalData = "outer" };
+
+			script.Globals["inner"] = inner;
+			script.Globals["outer"] = outer;
+
+			DynValue r = script.DoString("return outer(function() return inner() end), outer(function() return outer(function() return inner() end) end)");
+
+			Assert.AreEqual("outer/inner", r.Tuple[0].String);
+			Assert.AreEqual("outer/outer/inner", r.Tuple[1].String);
+		}
+
+		[Test]
+		public void CallPath_HostCallbacksMayKeepTheirArguments()
+		{
+			// A host callback gets argument objects of its own by default, which it may keep and read after it
+			// returned (code written for MoonSharp 2.0 does). Only callbacks that declare they do not keep them
+			// read the value stack in place.
+			Script script = new Script();
+			var kept = new System.Collections.Generic.List<CallbackArguments>();
+			script.Globals["keep"] = DynValue.NewCallback((ctx, args) => { kept.Add(args); return DynValue.Nil; });
+
+			script.DoString("local function two() return 'b', 'c' end keep(1, 'a') keep(2, two()) local function f(...) keep(...) end f(3, 4, 5)");
+
+			Assert.AreEqual(3, kept.Count);
+			Assert.AreEqual("1,a", kept[0][0].Number + "," + kept[0][1].String);
+			Assert.AreEqual("2,b,c", kept[1][0].Number + "," + kept[1][1].String + "," + kept[1][2].String);
+			Assert.AreEqual(3, kept[2].Count);
+			Assert.AreEqual(5, kept[2][2].Number);
+		}
+
+		[Test]
+		public void CallPath_CallbacksThatUseArgumentsOnlyDuringTheCall()
+		{
+			// Arguments read in place: every argument shape, ':' calls, and a callback that calls itself
+			// through Lua reads its own arguments again after the inner call returned.
+			Script script = new Script();
+			script.Globals["f"] = new CallbackFunction((ctx, args) =>
+			{
+				string own = string.Join(",", System.Array.ConvertAll(args.GetArray(), v => v.ToPrintString()));
+
+				if (args.Count > 0 && args[0].Type == DataType.Function)
+				{
+					string inner = ctx.Call(args[0]).String;
+					string again = string.Join(",", System.Array.ConvertAll(args.GetArray(1), v => v.ToPrintString()));
+					return DynValue.NewString(inner + "|" + again);
+				}
+
+				return DynValue.NewString(own + ";" + args.IsMethodCall);
+			}, "f") { UsesArgumentsOnlyDuringCall = true };
+
+			DynValue r = script.DoString(@"
+				local function two() return 'b', 'c' end
+				local function none() end
+				local t = { f = f }
+				return f(1, two()), f(two(), 'z'), f(1, none()), t:f(9), f(function() return f('x', 'y') end, 7, 8)");
+
+			Assert.AreEqual("1,b,c;False", r.Tuple[0].String);
+			Assert.AreEqual("b,z;False", r.Tuple[1].String);
+			Assert.AreEqual("1;False", r.Tuple[2].String);
+			StringAssert.EndsWith(",9;True", r.Tuple[3].String);
+			Assert.AreEqual("x,y;False|7,8", r.Tuple[4].String);
+		}
+
+		public class ArgumentKeeper
+		{
+			public CallbackArguments Kept;
+
+			public int Keep(CallbackArguments args)
+			{
+				if (Kept == null)
+					Kept = args;
+
+				return args.Count;
+			}
+		}
+
+		[Test]
+		public void CallPath_UserDataMethodsKeepACopyOfTheirArguments()
+		{
+			// Userdata methods read their arguments in place, but a CallbackArguments parameter gets a copy
+			// that stays valid after the call.
+			UserData.RegisterType<ArgumentKeeper>();
+			Script script = new Script();
+			var keeper = new ArgumentKeeper();
+			script.Globals["k"] = keeper;
+
+			DynValue r = script.DoString("local n = k:Keep(1, 'two', 3) k:Keep(4, 5) return n + #string.rep('x', 3)");
+
+			Assert.AreEqual(6, r.Number);
+			Assert.AreEqual(3, keeper.Kept.Count);
+			Assert.AreEqual(1, keeper.Kept[0].Number);
+			Assert.AreEqual("two", keeper.Kept[1].String);
+			Assert.AreEqual(3, keeper.Kept[2].Number);
+		}
 	}
 }

@@ -32,8 +32,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 		
 		protected const int LUA_MULTRET = -1;
 
-		protected const string LUA_INTFRMLEN = "l";
-
 		protected static DynValue GetArgument(LuaState L, lua_Integer pos)
 		{
 			return L.At(pos);
@@ -114,11 +112,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 			b.StringBuilder.Append(s.ToString((int)p));
 		}
 
-		protected static void LuaLAddString(LuaLBuffer b, string s)
-		{
-			b.StringBuilder.Append(s.ToString());
-		}
-
 
 		protected static lua_Integer LuaLOptInteger(LuaState L, lua_Integer pos, lua_Integer def)
 		{
@@ -145,11 +138,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 		protected static lua_Integer LuaLCheckInt(LuaState L, lua_Integer argNum)
 		{
 			return LuaLCheckInteger(L, argNum);
-		}
-
-		protected static lua_Integer LuaGetTop(LuaState L)
-		{
-			return L.Count;
 		}
 
 		protected static lua_Integer LuaLError(LuaState luaState, string message, params object[] args)
@@ -257,12 +245,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 		protected static void LuaLArgError(LuaState L, lua_Integer arg, string p)
 		{
 			throw ScriptRuntimeException.BadArgument(arg - 1, L.FunctionName, p);
-		}
-
-		protected static double LuaLCheckNumber(LuaState L, lua_Integer pos)
-		{
-			DynValue v = ArgAsType(L, pos, DataType.Number, false);
-			return v.Number;
 		}
 
 		protected static void LuaPushValue(LuaState L, lua_Integer arg)

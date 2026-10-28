@@ -37,7 +37,10 @@ namespace MoonSharp.Benchmarks
 			("table_concat", 50 * K, "local parts = {} for i = 1, 32 do parts[i] = tostring(i) end\nreturn function(n) local s = 0 for i = 1, n do s = s + #table.concat(parts, ',') end return s end", "4300000", null),
 			("coroutine_switch", 500 * K, "return function(n) local co = coroutine.wrap(function() local i = 0 while true do i = i + 1 coroutine.yield(i) end end)\nlocal s = 0 for i = 1, n do s = s + co() end return s end", "125000250000", null),
 			("gc_small_tables", 500 * K, "return function(n) local keep, s = {}, 0 for i = 1, n do local t = { i, i + 1, x = i } keep[i % 128 + 1] = t s = s + t[2] end return s end", "125000750000", null),
-			("oop_inherit", 1000 * K, "local Base = {} Base.__index = Base function Base:get() return self.v end\nlocal Derived = setmetatable({}, Base) Derived.__index = Derived\nlocal o = setmetatable({ v = 3 }, Derived)\nreturn function(n) local s = 0 for i = 1, n do s = s + o:get() end return s end", "3000000", null),
+			// MoonSharp-only cases (not in flag_bench.c): table operations that were quadratic in the table size.
+			("table_insert_len_10k", 10, "return function(n) local s = 0 for r = 1, n do local t = {} for i = 1, 10000 do table.insert(t, i) end s = s + #t end return s end", "100000", "MoonSharp-only; one iteration = 10k table.insert then #t"),
+			("table_remove_readd_10k", 5 * K, "local t, keys = {}, {} for i = 1, 10000 do t[i] = i end for i = 1, 64 do keys[i] = 'k' .. i t[keys[i]] = i end\nreturn function(n) local s, j = 0, 1 for i = 1, n do local v = table.remove(t) t[#t + 1] = v local k = keys[j] t[k] = nil t[k] = i j = j % 64 + 1 s = s + #t end return s end", "50000000", "MoonSharp-only; delete/reinsert churn on a 10k-entry table"),
+			("oop_inherit", 1000 * K,"local Base = {} Base.__index = Base function Base:get() return self.v end\nlocal Derived = setmetatable({}, Base) Derived.__index = Derived\nlocal o = setmetatable({ v = 3 }, Derived)\nreturn function(n) local s = 0 for i = 1, n do s = s + o:get() end return s end", "3000000", null),
 		};
 
 		public static int Run(string[] args)

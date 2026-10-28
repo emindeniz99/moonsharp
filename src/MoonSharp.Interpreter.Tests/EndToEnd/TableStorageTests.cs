@@ -693,6 +693,17 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
+		public void TablePairValueSetterStoresTheValue()
+		{
+			// The setter assigned the Value property to itself, so any write recursed until the stack
+			// overflowed, which ends the process.
+			var p = new TablePair(DynValue.NewString("k"), DynValue.NewNumber(1));
+			p.Value = DynValue.NewNumber(2);
+
+			Assert.AreEqual(2.0, p.Value.Number);
+		}
+
+		[Test]
 		public void QueueOverGrowingIntegerKeysStaysSmall()
 		{
 			// A FIFO over ever-growing integer keys keeps 32 live entries. Growing the array part whenever

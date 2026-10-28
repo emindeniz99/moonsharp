@@ -9,20 +9,17 @@ namespace MoonSharp.Interpreter.Execution.VM
 			int from = I.NumVal;
 			int to = I.NumVal2;
 
-			var array = this.m_ExecutionStack.Peek().LocalScope;
-
 			if (to >= 0 && from >= 0 && to >= from)
 			{
-				// Blocks usually hold a few locals; a loop is cheaper than Array.Clear for those.
-				if (to - from < 8)
-				{
-					for (int k = from; k <= to; k++)
-						array[k] = null;
-				}
-				else
-				{
-					Array.Clear(array, from, to - from + 1);
-				}
+				int basePointer = this.m_ExecutionStack.Peek().BasePointer;
+
+				// The block's locals go out of scope: closures that captured them keep their values. Locals
+				// of enclosing blocks sit in lower slots, so only this block's and nested blocks' close.
+				if (m_OpenUpvalues != null)
+					CloseUpvalues(basePointer + from);
+
+				for (int k = from; k <= to; k++)
+					m_ValueStack[basePointer + k] = null;
 			}
 		}
 
@@ -41,9 +38,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 				case SymbolRefType.Global:
 					return GetGlobalSymbol(GetGenericSymbol(symref.i_Env), symref.i_Name);
 				case SymbolRefType.Local:
-					return m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex)).LocalScope[symref.i_Index];
+					return m_ValueStack[m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex)).BasePointer + symref.i_Index];
 				case SymbolRefType.Upvalue:
-					return m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex)).ClosureScope[symref.i_Index];
+					return m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex)).Upvalues[symref.i_Index].Get();
 				default:
 					throw new InternalErrorException("Unexpected {0} LRef at resolution: {1}", symref.i_Type, symref.i_Name);
 			}
@@ -76,23 +73,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 				case SymbolRefType.Local:
 					{
 						ref CallStackItem stackframe = ref m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex));
-
-						DynValue v = stackframe.LocalScope[symref.i_Index];
-						if (v == null)
-							stackframe.LocalScope[symref.i_Index] = v = DynValue.NewNil();
-
-						v.Assign(value);
+						m_ValueStack[stackframe.BasePointer + symref.i_Index] = value.AsReadOnly();
 					}
 					break;
 				case SymbolRefType.Upvalue:
 					{
 						ref CallStackItem stackframe = ref m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex));
-
-						DynValue v = stackframe.ClosureScope[symref.i_Index];
-						if (v == null)
-							stackframe.ClosureScope[symref.i_Index] = v = DynValue.NewNil();
-
-						v.Assign(value);
+						stackframe.Upvalues[symref.i_Index].Set(value.AsReadOnly());
 					}
 					break;
 				case SymbolRefType.DefaultEnv:
@@ -149,18 +136,18 @@ namespace MoonSharp.Interpreter.Execution.VM
 						{
 							var l = stackframe.Debug_Symbols[i];
 
-							if (l.i_Name == name && stackframe.LocalScope[i] != null)
+							if (l.i_Name == name && m_ValueStack[stackframe.BasePointer + i] != null)
 								return l;
 						}
 					}
 
 
-					var closure = stackframe.ClosureScope;
+					var closure = stackframe.Function;
 
 					if (closure != null)
 					{
-						for (int i = 0; i < closure.Symbols.Length; i++)
-							if (closure.Symbols[i] == name)
+						for (int i = 0; i < closure.GetUpvaluesCount(); i++)
+							if (closure.GetUpvalueName(i) == name)
 								return SymbolRef.Upvalue(name, i);
 					}
 				}

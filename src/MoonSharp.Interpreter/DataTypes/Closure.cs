@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using MoonSharp.Interpreter.Execution;
+using MoonSharp.Interpreter.Execution.VM;
 
 namespace MoonSharp.Interpreter
 {
@@ -40,19 +41,21 @@ namespace MoonSharp.Interpreter
 		public Script OwnerScript { get; private set; }
 
 
+		static readonly Upvalue[] s_NoUpvalues = new Upvalue[0];
+		static readonly SymbolRef[] s_NoSymbols = new SymbolRef[0];
+
 		/// <summary>
-		/// Shortcut for an empty closure
+		/// The captured variables, in the order of the function's upvalue symbols.
 		/// </summary>
-		private static ClosureContext emptyClosure = new ClosureContext();
+		internal readonly Upvalue[] Upvalues;
+
+		// The upvalue symbols of the function prototype, shared by every closure made from it; only the
+		// debugger and the debug library read their names.
+		SymbolRef[] m_UpvalueSymbols;
+
 
 		/// <summary>
-		/// The current closure context
-		/// </summary>
-		internal ClosureContext ClosureContext { get; private set; }
-
-
-		/// <summary>
-		/// Initializes a new instance of the <see cref="Closure"/> class.
+		/// Initializes a new instance of the <see cref="Closure"/> class whose upvalues hold the given values.
 		/// </summary>
 		/// <param name="script">The script.</param>
 		/// <param name="idx">The index.</param>
@@ -64,21 +67,25 @@ namespace MoonSharp.Interpreter
 
 			EntryPointByteCodeLocation = idx;
 
-			if (symbols.Length > 0)
-				ClosureContext = new ClosureContext(symbols, resolvedLocals);
-			else
-				ClosureContext = emptyClosure;
+			List<Upvalue> upvalues = new List<Upvalue>();
+
+			foreach (DynValue v in resolvedLocals)
+				upvalues.Add(Upvalue.CreateClosed(v.AsReadOnly()));
+
+			Upvalues = upvalues.Count > 0 ? upvalues.ToArray() : s_NoUpvalues;
+			m_UpvalueSymbols = symbols.Length > 0 ? symbols : s_NoSymbols;
 		}
 
 		/// <summary>
-		/// Initializes a new instance of the <see cref="Closure"/> class over an already filled context
-		/// (null when the function has no upvalues).
+		/// Initializes a new instance of the <see cref="Closure"/> class over captured upvalues, one per
+		/// symbol.
 		/// </summary>
-		internal Closure(Script script, int idx, ClosureContext context)
+		internal Closure(Script script, int idx, SymbolRef[] symbols, Upvalue[] upvalues)
 		{
 			OwnerScript = script;
 			EntryPointByteCodeLocation = idx;
-			ClosureContext = context ?? emptyClosure;
+			Upvalues = upvalues ?? s_NoUpvalues;
+			m_UpvalueSymbols = symbols ?? s_NoSymbols;
 		}
 
 		/// <summary>
@@ -139,7 +146,7 @@ namespace MoonSharp.Interpreter
 		/// <returns>The number of upvalues in this closure</returns>
 		public int GetUpvaluesCount()
 		{
-			return ClosureContext.Count;
+			return Upvalues.Length;
 		}
 
 		/// <summary>
@@ -149,17 +156,29 @@ namespace MoonSharp.Interpreter
 		/// <returns>The upvalue name</returns>
 		public string GetUpvalueName(int idx)
 		{
-			return ClosureContext.Symbols[idx];
+			return m_UpvalueSymbols[idx].i_Name;
 		}
 
 		/// <summary>
-		/// Gets the value of an upvalue. To set the value, use GetUpvalue(idx).Assign(...);
+		/// Gets the value of an upvalue. The value is read-only; to change the variable, use
+		/// <see cref="SetUpvalue"/>.
 		/// </summary>
 		/// <param name="idx">The index of the upvalue.</param>
 		/// <returns>The value of an upvalue </returns>
 		public DynValue GetUpvalue(int idx)
 		{
-			return ClosureContext[idx];
+			return Upvalues[idx].Get();
+		}
+
+		/// <summary>
+		/// Sets the value of an upvalue, as debug.setupvalue does. Every closure that shares the variable,
+		/// and the function that declared it while it runs, sees the new value.
+		/// </summary>
+		/// <param name="idx">The index of the upvalue.</param>
+		/// <param name="value">The new value.</param>
+		public void SetUpvalue(int idx, DynValue value)
+		{
+			Upvalues[idx].Set(value.AsReadOnly());
 		}
 
 		/// <summary>

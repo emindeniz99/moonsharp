@@ -17,14 +17,17 @@ namespace MoonSharp.Interpreter.Execution.VM
 		public CallbackFunction ClrFunction;
 		public CallStackItemHandlers Handlers;
 
-		// For a Lua function: the value stack holds the function, then ArgCount arguments, and BasePointer is
-		// the index just past the last argument (where the callee's own values start).
+		// For a Lua function: the value stack holds the function, then ArgCount arguments, then the
+		// function's locals (BeginFn reserves one slot per local symbol), then its temporaries. BasePointer
+		// is the index of the first local, just past the last argument. -1 for a C# function.
 		public int BasePointer;
 		public int ReturnAddress;
 		public int ArgCount;
 		public CallStackItemFlags Flags;
-		public DynValue[] LocalScope;
-		public ClosureContext ClosureScope;
+
+		// The running closure and its upvalues (the same array; kept here to save a load per access).
+		public Closure Function;
+		public Upvalue[] Upvalues;
 
 		public CallbackFunction Continuation { get { return Handlers != null ? Handlers.Continuation : null; } }
 		public CallbackFunction ErrorHandler { get { return Handlers != null ? Handlers.ErrorHandler : null; } }

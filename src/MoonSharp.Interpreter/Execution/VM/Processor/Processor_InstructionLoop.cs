@@ -202,12 +202,11 @@ namespace MoonSharp.Interpreter.Execution.VM
 							ExecExpTuple(i);
 							break;
 						case OpCode.Local:
-							var scope = m_ExecutionStack.Peek().LocalScope;
-							var index = i.Symbol.i_Index;
-							m_ValueStack.Push(scope[index].AsReadOnly());
+							// Locals hold read-only values (see AssignLocal), so the stack can share them.
+							m_ValueStack.Push(m_ValueStack[m_ExecutionStack.Peek().BasePointer + i.Symbol.i_Index]);
 							break;
 						case OpCode.Upvalue:
-							m_ValueStack.Push(m_ExecutionStack.Peek().ClosureScope[i.Symbol.i_Index].AsReadOnly());
+							m_ValueStack.Push(m_ExecutionStack.Peek().Upvalues[i.Symbol.i_Index].Get());
 							break;
 						case OpCode.StoreUpv:
 							ExecStoreUpv(i);
@@ -390,15 +389,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 
 
+		/// <summary>
+		/// Stores a value in a local of the running function. Locals and upvalues hold read-only values only:
+		/// a store replaces the slot's value instead of changing a shared object, so a value read from a
+		/// variable earlier does not change when the variable is assigned again.
+		/// </summary>
 		private void AssignLocal(SymbolRef symref, DynValue value)
 		{
-			ref CallStackItem stackframe = ref m_ExecutionStack.Peek();
-
-			DynValue v = stackframe.LocalScope[symref.i_Index];
-			if (v == null)
-				stackframe.LocalScope[symref.i_Index] = v = DynValue.NewNil();
-
-			v.Assign(value);
+			m_ValueStack[m_ExecutionStack.Peek().BasePointer + symref.i_Index] = value.AsReadOnly();
 		}
 
 		private void ExecStoreLcl(Instruction i)
@@ -414,13 +412,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			DynValue value = GetStoreValue(i);
 			SymbolRef symref = i.Symbol;
 
-			ref CallStackItem stackframe = ref m_ExecutionStack.Peek();
-
-			DynValue v = stackframe.ClosureScope[symref.i_Index];
-			if (v == null)
-				stackframe.ClosureScope[symref.i_Index] = v = DynValue.NewNil();
-
-			v.Assign(value);
+			m_ExecutionStack.Peek().Upvalues[symref.i_Index].Set(value.AsReadOnly());
 		}
 
 		private void ExecSwap(Instruction i)
@@ -446,35 +438,37 @@ namespace MoonSharp.Interpreter.Execution.VM
 				v = null;
 
 			// A call that returns nothing leaves void; a variable takes nil, as in Lua.
-			return (v == null || v.Type == DataType.Void) ? DynValue.NewNil() : v;
+			return (v == null || v.Type == DataType.Void) ? DynValue.Nil : v;
 		}
 
 		private void ExecClosure(Instruction i)
 		{
 			// Fill the upvalue list directly: no LINQ iterator, no intermediate list, no per-closure name array.
 			SymbolRef[] symbols = i.SymbolList;
-			ClosureContext context = null;
+			Upvalue[] upvalues = null;
 
 			if (symbols.Length > 0)
 			{
-				ref CallStackItem frame = ref m_ExecutionStack.Peek();
-				context = new ClosureContext(symbols);
+				int basePointer = m_ExecutionStack.Peek().BasePointer;
+				Upvalue[] enclosing = m_ExecutionStack.Peek().Upvalues;
+				upvalues = new Upvalue[symbols.Length];
 
 				for (int k = 0; k < symbols.Length; k++)
-					context.Add(GetUpvalueSymbol(ref frame, symbols[k]));
+				{
+					SymbolRef s = symbols[k];
+
+					// A local of the running function: share its open upvalue. An upvalue of the running
+					// function: share the same upvalue.
+					if (s.Type == SymbolRefType.Local)
+						upvalues[k] = FindUpvalue(basePointer + s.i_Index);
+					else if (s.Type == SymbolRefType.Upvalue)
+						upvalues[k] = enclosing[s.i_Index];
+					else
+						throw new Exception("unsupported symbol type");
+				}
 			}
 
-			m_ValueStack.Push(DynValue.NewClosure(new Closure(this.m_Script, i.NumVal, context)));
-		}
-
-		private static DynValue GetUpvalueSymbol(ref CallStackItem frame, SymbolRef s)
-		{
-			if (s.Type == SymbolRefType.Local)
-				return frame.LocalScope[s.i_Index];
-			else if (s.Type == SymbolRefType.Upvalue)
-				return frame.ClosureScope[s.i_Index];
-			else
-				throw new Exception("unsupported symbol type");
+			m_ValueStack.Push(DynValue.NewClosure(new Closure(this.m_Script, i.NumVal, symbols, upvalues)));
 		}
 
 		private void ExecMkTuple(Instruction i)
@@ -632,17 +626,41 @@ namespace MoonSharp.Interpreter.Execution.VM
 			ref CallStackItem cur = ref m_ExecutionStack.Peek();
 
 			cur.Debug_Symbols = i.SymbolList;
-			cur.LocalScope = new DynValue[i.NumVal];
 
-			ClearBlockData(i);
+			// The locals live on the value stack at the base pointer, one slot per local symbol. Slots above
+			// the top are always null, so the new locals start out undeclared.
+			m_ValueStack.Expand(i.NumVal);
 		}
 
 		private CallStackItem PopToBasePointer()
 		{
 			var csi = m_ExecutionStack.Pop();
 			if (csi.BasePointer >= 0)
+			{
+				CloseUpvalues(csi.BasePointer);
 				m_ValueStack.CropAtCount(csi.BasePointer);
+			}
 			return csi;
+		}
+
+		/// <summary>
+		/// Leaves the running script function: closes the upvalues of its locals and removes its frame,
+		/// locals, temporaries, arguments and the function value. Returns the return address.
+		/// </summary>
+		private int PopScriptFrame(out CallbackFunction continuation)
+		{
+			ref CallStackItem csi = ref m_ExecutionStack.Peek();
+			int retpoint = csi.ReturnAddress;
+			int basePointer = csi.BasePointer;
+			int argCount = csi.ArgCount;
+			continuation = csi.Continuation;
+			m_ExecutionStack.RemoveLast();
+
+			if (m_OpenUpvalues != null)
+				CloseUpvalues(basePointer);
+
+			m_ValueStack.CropAtCount(basePointer - argCount - 1);
+			return retpoint;
 		}
 
 		private int PopExecStackAndCheckVStack(int vstackguard)
@@ -699,19 +717,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			if (!lastArgExpands && !hasVarArgs)
 			{
-				// Common case: read the arguments in place and keep the writable copy as the parameter's
-				// cell, instead of a Slice, a new nil cell and a second copy into it.
-				DynValue[] scope = frame.LocalScope;
+				// Common case: copy the arguments, read in place, into the parameters' slots.
+				int basePointer = frame.BasePointer;
 
 				for (int i = 0; i < symbols.Length; i++)
 				{
-					int index = symbols[i].i_Index;
-					DynValue value = (i < numargs) ? m_ValueStack[argsBase + i].ToScalar().CloneAsWritable() : DynValue.NewNil();
-
-					if (scope[index] == null)
-						scope[index] = value;
-					else
-						scope[index].Assign(value);
+					m_ValueStack[basePointer + symbols[i].i_Index] = (i < numargs)
+						? m_ValueStack[argsBase + i].ToScalar().AsReadOnly()
+						: DynValue.Nil;
 				}
 
 				return;
@@ -724,7 +737,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			{
 				if (i >= argsList.Count)
 				{
-					this.AssignLocal(I.SymbolList[i], DynValue.NewNil());
+					this.AssignLocal(I.SymbolList[i], DynValue.Nil);
 				}
 				else if ((i == I.SymbolList.Length - 1) && (I.SymbolList[i].i_Name == WellKnownSymbols.VARARGS))
 				{
@@ -733,14 +746,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 					for (int ii = 0; ii < len; ii++, i++)
 					{
-						varargs[ii] = argsList[i].ToScalar().CloneAsWritable();
+						varargs[ii] = argsList[i].ToScalar().AsReadOnly();
 					}
 
 					this.AssignLocal(I.SymbolList[I.SymbolList.Length - 1], DynValue.NewTuple(Internal_AdjustTuple(varargs)));
 				}
 				else
 				{
-					this.AssignLocal(I.SymbolList[i], argsList[i].ToScalar().CloneAsWritable());
+					this.AssignLocal(I.SymbolList[i], argsList[i].ToScalar());
 				}
 			}
 		}
@@ -817,7 +830,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 				frame.ReturnAddress = instructionPtr;
 				frame.Debug_EntryPoint = fn.Function.EntryPointByteCodeLocation;
 				frame.CallingSourceRef = GetCurrentSourceRef(instructionPtr - 1); // See right above in GetCurrentSourceRef(instructionPtr - 1)
-				frame.ClosureScope = fn.Function.ClosureContext;
+				frame.Function = fn.Function;
+				frame.Upvalues = fn.Function.Upvalues;
 				frame.Handlers = CallStackItemHandlers.Create(continuation, handler, unwindHandler);
 				frame.Flags = flags;
 				return fn.Function.EntryPointByteCodeLocation;
@@ -868,22 +882,18 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private int ExecRet(Instruction i)
 		{
-			CallStackItem csi;
+			CallbackFunction continuation;
 			int retpoint = 0;
 
 			if (i.NumVal == 0)
 			{
-				csi = PopToBasePointer();
-				retpoint = csi.ReturnAddress;
-				m_ValueStack.RemoveLast(csi.ArgCount + 1);
+				retpoint = PopScriptFrame(out continuation);
 				m_ValueStack.Push(DynValue.Void);
 			}
 			else if (i.NumVal == 1)
 			{
 				var retval = m_ValueStack.Pop();
-				csi = PopToBasePointer();
-				retpoint = csi.ReturnAddress;
-				m_ValueStack.RemoveLast(csi.ArgCount + 1);
+				retpoint = PopScriptFrame(out continuation);
 				m_ValueStack.Push(retval);
 				retpoint = Internal_CheckForTailRequests(i, retpoint);
 			}
@@ -892,8 +902,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 				throw new InternalErrorException("RET supports only 0 and 1 ret val scenarios");
 			}
 
-			if (csi.Continuation != null)
-				m_ValueStack.Push(csi.Continuation.Invoke(new ScriptExecutionContext(this, csi.Continuation, i.SourceCodeRef),
+			if (continuation != null)
+				m_ValueStack.Push(continuation.Invoke(new ScriptExecutionContext(this, continuation, i.SourceCodeRef),
 					new DynValue[1] { m_ValueStack.Pop() }));
 
 			return retpoint;

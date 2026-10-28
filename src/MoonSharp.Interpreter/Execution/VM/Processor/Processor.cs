@@ -29,6 +29,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 		int m_SavedInstructionPtr = -1;
 		DebugContext m_Debug;
 
+		// Open upvalues of this processor's stack, sorted by stack index, highest first (lfunc.c's openupval).
+		Upvalue m_OpenUpvalues;
+
 
 		public Processor(Script script, Table globalContext, ByteCode byteCode)
 		{
@@ -104,6 +107,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 					// shrinks the stack. A finally block, not catch and rethrow: see Processing_Loop.
 					if (!completed)
 					{
+						CloseUpvalues(valueStackBase);
 						m_ValueStack.CropAtCount(valueStackBase);
 						m_ExecutionStack.CropAtCount(executionStackBase);
 					}
@@ -140,7 +144,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 			frame.ArgCount = args.Length;
 			frame.Debug_EntryPoint = function.Function.EntryPointByteCodeLocation;
 			frame.ReturnAddress = -1;
-			frame.ClosureScope = function.Function.ClosureContext;
+			frame.Function = function.Function;
+			frame.Upvalues = function.Function.Upvalues;
 			frame.CallingSourceRef = SourceRef.GetClrLocation();
 			frame.Flags = flags;
 
@@ -231,6 +236,53 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 
 			t_NativeNesting++;
+		}
+
+		/// <summary>
+		/// Returns the open upvalue for the value stack slot at <paramref name="index"/>, creating it if no
+		/// closure captured that slot yet, so closures that capture one variable share one upvalue.
+		/// </summary>
+		private Upvalue FindUpvalue(int index)
+		{
+			Upvalue previous = null;
+			Upvalue current = m_OpenUpvalues;
+
+			while (current != null && current.Index > index)
+			{
+				previous = current;
+				current = current.NextOpen;
+			}
+
+			if (current != null && current.Index == index)
+				return current;
+
+			Upvalue created = new Upvalue(m_ValueStack, index) { NextOpen = current };
+
+			if (previous == null)
+				m_OpenUpvalues = created;
+			else
+				previous.NextOpen = created;
+
+			return created;
+		}
+
+		/// <summary>
+		/// Closes the open upvalues of the value stack slots at <paramref name="level"/> and above: their
+		/// variables go out of scope, so the upvalues keep the values from now on.
+		/// </summary>
+		private void CloseUpvalues(int level)
+		{
+			Upvalue u = m_OpenUpvalues;
+
+			while (u != null && u.Index >= level)
+			{
+				Upvalue next = u.NextOpen;
+				u.Close();
+				u.NextOpen = null;
+				u = next;
+			}
+
+			m_OpenUpvalues = u;
 		}
 
 		internal SourceRef GetCoroutineSuspendedLocation()

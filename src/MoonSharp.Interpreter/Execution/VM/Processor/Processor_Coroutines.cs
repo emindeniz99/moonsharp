@@ -21,7 +21,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		public DynValue Coroutine_Recycle(Processor mainProcessor, Closure closure)
 		{
-			// Clear the used parts of the stacks to prep for reuse
+			// Clear the used parts of the stacks to prep for reuse. A coroutine that died with an error can
+			// leave open upvalues behind; close them first, or closures would see the new coroutine's values.
+			CloseUpvalues(0);
 			this.m_ValueStack.ClearUsed();
 			this.m_ExecutionStack.ClearUsed();
 

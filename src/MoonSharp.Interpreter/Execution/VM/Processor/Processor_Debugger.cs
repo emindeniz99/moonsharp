@@ -360,9 +360,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			ref CallStackItem frame = ref m_ExecutionStack.Peek(stackFrameIndex);
 
-			if (frame.Debug_Symbols != null && frame.LocalScope != null)
+			if (frame.Debug_Symbols != null && frame.BasePointer >= 0)
 			{
-				int len = Math.Min(frame.Debug_Symbols.Length, frame.LocalScope.Length);
+				int len = Math.Min(frame.Debug_Symbols.Length, m_ValueStack.Count - frame.BasePointer);
 
 				for (int i = 0; i < len; i++)
 				{
@@ -370,7 +370,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 					{
 						IsError = false,
 						LValue = frame.Debug_Symbols[i],
-						Value = frame.LocalScope[i],
+						Value = m_ValueStack[frame.BasePointer + i],
 						Name = frame.Debug_Symbols[i].i_Name
 					});
 				}
@@ -388,20 +388,20 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			ref CallStackItem frame = ref m_ExecutionStack.Peek(stackFrameIndex);
 
-			var closure = frame.ClosureScope;
+			var closure = frame.Function;
 
 			if (closure != null)
 			{
-				for (int i = 0; i < closure.Symbols.Length; i++)
+				for (int i = 0; i < closure.GetUpvaluesCount(); i++)
 				{
-					var name = closure.Symbols[i];
-					var symbolRef = SymbolRef.Upvalue(closure.Symbols[i], i);
+					var name = closure.GetUpvalueName(i);
+					var symbolRef = SymbolRef.Upvalue(name, i);
 
 					variables.Add(new WatchItem()
 					{
 						IsError = false,
 						LValue = symbolRef,
-						Value = frame.ClosureScope[i],
+						Value = closure.GetUpvalue(i),
 						Name = name
 					});
 				}

@@ -331,5 +331,74 @@ return y;
 			for (int i = 0; i < 6; i++)
 				Assert.AreEqual(list[eqs[i]], list[i]);
 		}
+
+		const string DivideSource = "return function(a, b)\n  if b == 0 then\n    error('division by zero')\n  end\n  return a / b\nend";
+
+		// The same function dumped by MoonSharp before dumps carried source locations (format 0x151).
+		const string DivideDump0x151 = "HU1PT04jDRp/UQEBFAMAAAABYgABAQFhAQACBF9FTlb///8VFAEDCzxjaHVua18xOjE+ABYCAQIAARcCAQALAAUBAwAAAAAAAAAAJDMcEBQCAQ0CDwEEBAVlcnJvcgUBBAUQZGl2aXNpb24gYnkgemVybxgBBgACARQCARsQCwELACgaARoA";
+
+		static DynValue DumpAndLoad(string source, string chunkName)
+		{
+			Script s1 = new Script();
+			DynValue func = s1.DoString(source);
+
+			using (MemoryStream ms = new MemoryStream())
+			{
+				s1.Dump(func, ms);
+				ms.Seek(0, SeekOrigin.Begin);
+				return new Script().LoadStream(ms, null, chunkName);
+			}
+		}
+
+		// Servers compile once, dump, and load the bytecode into many scripts. Errors in that
+		// bytecode must still point at the source line (upstream issue #348).
+		[Test]
+		public void BinDump_RuntimeErrorKeepsSourceLine()
+		{
+			DynValue divide = DumpAndLoad(DivideSource, "divide.lua");
+
+			var ex = Assert.Throws<ScriptRuntimeException>(() => divide.Function.Call(1, 0));
+			StringAssert.StartsWith("divide.lua:(3,", ex.DecoratedMessage);
+			Assert.AreEqual(3, ex.CallStack[0].Location.FromLine);
+		}
+
+		[Test]
+		public void BinDump_LoadedFunctionStillRuns()
+		{
+			DynValue divide = DumpAndLoad(DivideSource, "divide.lua");
+			Assert.AreEqual(2.5, divide.Function.Call(5, 2).Number);
+		}
+
+		// A dump without locations is the previous format, byte for byte, for size-sensitive assets.
+		[Test]
+		public void BinDump_WithoutLocationsWritesPreviousFormat()
+		{
+			Script s1 = new Script();
+			DynValue func = s1.DoString(DivideSource);
+
+			using (MemoryStream withLocations = new MemoryStream())
+			using (MemoryStream without = new MemoryStream())
+			{
+				s1.Dump(func, withLocations);
+				s1.Dump(func, without, false);
+
+				CollectionAssert.AreEqual(Convert.FromBase64String(DivideDump0x151), without.ToArray());
+				Assert.Greater(withLocations.Length, without.Length);
+			}
+		}
+
+		// Dumps written before locations were stored must keep loading, with the old line-0 locations.
+		[Test]
+		public void BinDump_LoadsPreviousFormatWithoutLocations()
+		{
+			using (MemoryStream ms = new MemoryStream(Convert.FromBase64String(DivideDump0x151)))
+			{
+				DynValue divide = new Script().LoadStream(ms, null, "old.lua");
+				Assert.AreEqual(2.5, divide.Function.Call(5, 2).Number);
+
+				var ex = Assert.Throws<ScriptRuntimeException>(() => divide.Function.Call(1, 0));
+				StringAssert.StartsWith("old.lua:(0,", ex.DecoratedMessage);
+			}
+		}
 	}
 }

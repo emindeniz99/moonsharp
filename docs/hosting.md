@@ -18,6 +18,23 @@ Unity uses MoonSharp directly and does not need this layer. To check Unity
 against the other hosts, run the fixtures through `ScriptHost` inside a player
 (not done yet; see the status table below).
 
+## Tools
+
+Run `mise install` in the repository root before building. It installs the
+versions pinned in [`mise.toml`](../mise.toml): the .NET 10 SDK with the .NET 8
+runtime, Java 17, Maven, Node and CMake. CI installs the same versions with
+`jdx/mise-action`. The NativeAOT build also needs clang and zlib, which come
+from the distribution (`sudo apt-get install clang zlib1g-dev`), as in CI.
+
+```sh
+mise install
+dotnet build -c Release src/Hosting/MoonSharp.Hosting.Cli
+dotnet src/Hosting/MoonSharp.Hosting.Cli/bin/Release/net8.0/moonsharp-host.dll test src/Hosting/fixtures/logic.suite.json
+```
+
+Run the commands in a shell where mise is activated, or prefix them with
+`mise exec --`.
+
 ## The contract (version 1)
 
 Every call takes and returns JSON text. A result is an envelope:
@@ -411,6 +428,7 @@ Measured on 2026-10-28 on a 4-core Intel Xeon 2.1 GHz cloud VM, Ubuntu 24.04.
 | Shared fixtures, Java 21, in process through NativeAOT (.NET 8) | 24/24, plus 10 in-process behaviour tests |
 | MoonSharp unit tests compiled with NativeAOT (experiment, not in CI) | 680/732; 49 failures are CLR interop, 3 are descriptor tests that cannot pass when trimmed (see "NativeAOT and trimming") |
 | Spring Boot 4.1 sample over HTTP | 4/4 |
+| Fixtures on .NET (default culture and invariant globalization), Chromium, the Java worker, CoreCLR and NativeAOT in process, and the Spring Boot sample, rerun with the `mise.toml` tools (SDK 10.0.402, .NET 8.0.32, Temurin 17.0.20.1, Maven 3.10.0, Node 24.22.1, CMake 4.4.4) | all pass |
 | Firefox, Safari/WebKit, iOS Safari | not run (only Chromium is installed here) |
 | Unity Editor, Android/iOS IL2CPP | not run (no Unity licence or devices here) |
 | Windows/macOS hosts | not run |

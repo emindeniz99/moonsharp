@@ -308,6 +308,22 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
+		public void AllocationBudget_CsToLuaCall0()
+		{
+			// Script.Call(fn) and Closure.Call() with no arguments share one empty argument array (24 bytes per
+			// call before); the result 1 is a shared DynValue.
+			SkipUnlessMeasurable();
+			Script script = new Script();
+			DynValue fn = script.DoString("return function() return 1 end");
+
+			AssertBudget("cs_to_lua_call0", n =>
+			{
+				for (long i = 0; i < n; i++)
+					script.Call(fn);
+			}, N, NoAllocation);
+		}
+
+		[Test]
 		public void AllocationBudget_CsToLuaCall3Typed()
 		{
 			// The typed call pushes its arguments and reads the result as VM values: no boxes, no argument

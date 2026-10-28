@@ -112,7 +112,7 @@ namespace MoonSharp.Interpreter
 		/// <exception cref="System.ArgumentException">Thrown if function is not of DataType.Function</exception>
 		public DynValue Call()
 		{
-			return OwnerScript.Call(this);
+			return OwnerScript.Call(DynValue.NewClosure(this), DynValue.NoValues);
 		}
 
 		/// <summary>

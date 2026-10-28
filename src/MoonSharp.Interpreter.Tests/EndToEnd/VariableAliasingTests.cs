@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using MoonSharp.Interpreter.Debugging;
 using NUnit.Framework;
 
@@ -103,6 +103,27 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				end
 				local a, b, c = 'x', 'y', 'z'
 				return f(), c"));
+		}
+
+		[Test]
+		public void Aliasing_LoopEnteredAgainAfterAGotoOutOfItsBody()
+		{
+			// The goto leaves the inner loop without running its end-of-iteration clear; entering the loop
+			// again must still leave the closures already made their own values. (While loops: a goto out
+			// of a for loop leaves the loop's control values on the stack, a separate bug.)
+			Assert.AreEqual("1224", Run(@"
+				local fs = {}
+				for round = 1, 2 do
+					local i = 0
+					while i < 3 do
+						i = i + 1
+						local v = i * round
+						fs[#fs + 1] = function() return v end
+						if i == 2 then goto next end
+					end
+					::next::
+				end
+				return fs[1]() .. fs[2]() .. fs[3]() .. fs[4]()"));
 		}
 
 		[Test]

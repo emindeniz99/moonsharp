@@ -29,7 +29,7 @@ scope.addEventListener("message", async (e: MessageEvent) => {
         result = runtime.version;
         break;
       case "createContext": {
-        const c = runtime.createContext();
+        const c = runtime.createContext(args[0]);
         contexts.set(c.id, c);
         result = c.id;
         break;

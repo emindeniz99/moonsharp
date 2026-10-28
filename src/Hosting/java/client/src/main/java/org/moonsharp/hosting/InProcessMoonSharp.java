@@ -14,9 +14,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Thread safety: any thread may call any method. Each context has a lock on the .NET side, so calls
  * on one context run one at a time; for parallel calls give each thread its own context.
  *
- * <p>What the process boundary of {@link MoonSharpWorker} protected against now reaches the JVM: a .NET
- * stack overflow or a fatal runtime error ends the JVM, and a script that never returns cannot be
- * stopped (interrupting the Java thread has no effect while it runs .NET code). See docs/hosting.md.
+ * <p>What the process boundary of {@link MoonSharpWorker} protected against now reaches the JVM. Recursion
+ * through CLR callbacks is a Lua error ("C stack overflow"), but a fatal .NET error ends the JVM, and a
+ * script that never returns holds its thread (interrupting the Java thread has no effect while it runs
+ * .NET code) unless its context has a limit: create contexts with {@link ContextOptions} limits, and cap
+ * the .NET heap with DOTNET_GCHeapHardLimit. See docs/hosting.md, "Java: in process".
  *
  * <p>The .NET runtime cannot be unloaded: {@link #close()} drops this instance's contexts, and the
  * runtime stays loaded until the JVM exits. Only one backend can be loaded per process.
@@ -59,10 +61,10 @@ public final class InProcessMoonSharp implements MoonSharpHost {
     }
 
     @Override
-    public void create(String context, boolean int64) {
+    public void create(String context, ContextOptions options) {
         contexts.compute(context, (n, old) -> {
             if (old != null) NativeBridge.contextDispose(old);
-            return newContext(int64 ? NativeBridge.CONTEXT_INT64 : 0);
+            return newContext(options);
         });
     }
 
@@ -116,11 +118,12 @@ public final class InProcessMoonSharp implements MoonSharpHost {
 
     /** The native id of a context, created on first use. Package-private for the benchmark. */
     long context(String name) {
-        return contexts.computeIfAbsent(name, n -> newContext(0));
+        return contexts.computeIfAbsent(name, n -> newContext(ContextOptions.DEFAULT));
     }
 
-    private static long newContext(int options) {
-        long id = NativeBridge.contextCreate(options);
+    private static long newContext(ContextOptions options) {
+        long id = NativeBridge.contextCreate(options.int64() ? NativeBridge.CONTEXT_INT64 : 0,
+            options.instructionLimit(), options.timeLimitMs());
         if (id == 0) throw new IllegalStateException("MoonSharp could not create a script context");
         return id;
     }

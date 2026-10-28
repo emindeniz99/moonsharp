@@ -8,7 +8,7 @@ same results:
 | .NET (CLI, servers, tests) | in process | `MoonSharp.Hosting.ScriptHost`, `moonsharp-host` CLI |
 | Browser | .NET WebAssembly in the page or a Web Worker | `src/Hosting/browser`, TypeScript API `moonsharp.ts` |
 | Java / Spring Boot | a persistent `moonsharp-host worker` process per worker slot (default) | `src/Hosting/java`, `MoonSharpWorker`, `MoonSharpPool` |
-| Java, in process (experimental, Linux x64) | CoreCLR or a NativeAOT library loaded into the JVM through JNI | `InProcessMoonSharp`, `src/Hosting/native` |
+| Java, in process (Linux x64, with limits) | CoreCLR or a NativeAOT library loaded into the JVM through JNI | `InProcessMoonSharp`, `src/Hosting/native` |
 
 All three run the same interpreter assembly and the same `ScriptHost` class.
 Only the transport differs. The shared fixtures in `src/Hosting/fixtures` prove
@@ -57,6 +57,7 @@ Every call takes and returns JSON text. A result is an envelope:
 - `input`: the arguments are not valid for the contract (bad JSON, an integer beyond 2^53).
 - `output`: the result cannot be expressed as JSON (a function, a cycle, NaN).
 - `host`: an unknown module or function, or an exception from host code.
+- `interrupted`: the call ran past the context's instruction or time limit (see "Limits" below).
 
 ### Operations
 
@@ -67,7 +68,7 @@ Every call takes and returns JSON text. A result is an envelope:
 | `invoke(moduleId, function, argsJson)` | Call a function of a loaded module. The compiled function is cached. |
 | `run(chunk, source, inputJson)` | Compile and run once. If the chunk returns a function, call it with the input. |
 | `unload(moduleId)`, `dispose(context)` | Free a module or a whole context. |
-| `create(context, int64)` | Create a context, replacing one of that name. Contexts are also created on first use; `create` is for options. With `int64` the context has the `int64` and `uint64` modules ([int64.md](int64.md)). |
+| `create(context, options)` | Create a context, replacing one of that name. Contexts are also created on first use, without limits; `create` is for options. With `int64` the context has the `int64` and `uint64` modules ([int64.md](int64.md)); `instructionLimit` and `timeLimitMs` limit each call (see "Limits"). |
 
 A context is one `Script` (one Lua state). Globals and modules are per context.
 Every transport creates it through `ScriptHost.Create(int64)`, with
@@ -76,6 +77,52 @@ int64 value to the host is an `output` error for now; return
 `tostring(x)` or `json.serialize` it.
 A context is not thread-safe: the browser has one thread per runtime, and the
 Java pool gives each worker process its own contexts.
+
+### Limits
+
+A context can stop a call that runs too long. Both limits are off (0) unless
+`create` sets them, and each applies to every call on its own:
+
+| Option | Stops a call after | Same on every host |
+|---|---|---|
+| `instructionLimit` | that many VM instructions | yes: the count does not depend on the machine |
+| `timeLimitMs` | that many milliseconds | the outcome, not the moment |
+
+The VM checks both every 10,000 instructions
+(`ScriptOptions.InterruptHandler`), so a call stops at the first check past
+the limit. The call then returns an `interrupted` error that names the chunk
+and line where it stopped:
+
+```json
+{ "ok": false, "error": { "kind": "interrupted", "message": "instruction limit of 1000000 exceeded",
+                          "chunk": "rules", "line": 7, "stack": ["M.spin rules:(7,2-15)"] }, "output": "" }
+```
+
+`pcall`, `xpcall` and `coroutine.resume` cannot catch it, so a script cannot
+keep running after its budget is spent, and the context stays usable for the
+next call. A call is one entry into Lua: `load` runs the module body, `invoke`
+the function, and `run` the chunk and then, with its own budget, the function
+the chunk returns. The time limit covers the whole operation.
+
+What the limits do not stop: a single long library call is not interrupted,
+because the check runs between VM instructions. `string.rep('a', 2e7):gsub('a',
+'b')` runs for 2.5 s in one call, and a 100 ms limit stops the script only
+after it returns. Memory is not limited either.
+
+Which limit to choose: an instruction limit is deterministic, so a script
+that passes in tests passes in production on any machine, but the count per
+statement changes when the compiler does: a numeric `for` loop that adds to a
+local costs 2 instructions per iteration since the fused loop opcode (10
+before). 1,000,000 instructions of that loop take 7.5 ms on the machine in
+"Status" (warm worker, median of 30); library calls cost more time per
+instruction. A time limit bounds latency whatever the
+script does between checks, and a context can set both.
+
+The stack guard needs no option: recursion that passes through C# code (a
+`gsub` replacement function, a `table.sort` comparator, a C# callback that
+calls Lua) fails with a `runtime` error "C stack overflow" after 200 nested
+calls, or earlier when the thread's stack runs low, and `pcall` catches it as
+in Lua 5.2. The `limits` suite in the corpus checks both on every host.
 
 ### Value mapping
 
@@ -125,15 +172,16 @@ reply per line on stdout, in order:
 ```
 
 `args` may also be sent as text in `argsJson`, and `input` (for `run`) as
-`inputJson`. `{"id":3,"op":"create","context":"c2","int64":true}` creates a
-context with options. Run several workers for parallel
+`inputJson`.
+`{"id":3,"op":"create","context":"c2","int64":true,"instructionLimit":1000000,"timeLimitMs":100}`
+creates a context with options. Run several workers for parallel
 calls: `MoonSharpPool` keeps a fixed set, loads every module into each of them,
 and replaces a worker that dies.
 
-The worker is the default. The next section describes an in-process
-alternative and why the worker stays the default.
+The worker is the default. The next section describes the in-process
+alternative, when to use it and why the worker stays the default.
 
-## Java: in process (experimental)
+## Java: in process
 
 `InProcessMoonSharp` runs MoonSharp inside the JVM, without a pipe. It has the
 same Java API as `MoonSharpWorker` (both implement `MoonSharpHost`), returns the
@@ -218,17 +266,44 @@ contexts, but the .NET runtime stays loaded until the JVM exits.
 
 ### What changes when MoonSharp shares the JVM
 
-Measured with `CrashProbe` (test sources), which runs each case in a child JVM:
+Measured with `CrashProbe` (test sources), which runs each case in a child JVM,
+on 2026-10-28 with Temurin 17.0.20.1, .NET 8.0.32 and this branch (the native
+stack guard and the limits in "The contract"), after merging `next` with the
+fused loop opcodes; the run before that merge gave the same outcomes. The JVM's threads have the
+default 1 MB stack unless the case says otherwise.
 
 | Case | Worker | In process, CoreCLR | In process, NativeAOT |
 |---|---|---|---|
 | .NET exception that is not a Lua error (`string.rep('x', 2^31)`) | `host` error envelope | same | same |
 | Deep Lua recursion (`local function f(n) return 1 + f(n + 1) end`) | `runtime` error "stack overflow"; the context keeps working | same | same |
-| Recursion through a CLR callback (`string.gsub(s, '.', f)` where `f` calls `gsub` again) | the worker dies with "Stack overflow"; Java gets `WorkerException`, a pool starts a new worker | **the JVM dies** (SIGABRT, exit 134, "Stack overflow" on stderr, no `hs_err` file) | **the JVM dies** (SIGSEGV, exit 139, no message) |
-| Script that never returns, then `Thread.interrupt()` | the thread stays blocked; `close()` kills the worker and frees it | the thread keeps running; only ending the JVM stops it | same as CoreCLR |
+| Recursion through a CLR callback (`string.gsub(s, '.', f)` where `f` calls `gsub` again), on a 1 MB and an 8 MB Java thread | `runtime` error "C stack overflow"; the context keeps working | same | same |
+| The same through a `table.sort` comparator | same | same | same |
+| Script that never returns, no limits, then `Thread.interrupt()` | the thread stays blocked; `close()` kills the worker and frees it | the thread keeps running; only ending the JVM stops it | same as CoreCLR |
+| The same script with a 100 ms time limit | `interrupted` error after 115 ms; the context keeps working | after 121 ms | after 126 ms |
+| The same script with a 1,000,000 instruction limit | `interrupted` error after 26 ms | after 33 ms | after 22 ms |
+| One long library call under a 100 ms time limit (`gsub` over 20 million characters) | returns normally after 2.6 s: the limit is checked only between VM instructions | after 2.9 s | after 3.4 s |
+| Allocation without bound, no limits, .NET heap capped at 256 MB (`DOTNET_GCHeapHardLimit=10000000`) | `host` error `System.OutOfMemoryException` after 1.2 s; the context keeps working | same, after 1.5 s | same, after 1.4 s |
+| The same without a heap cap | not run (the worker process grows, not the JVM) | not run | the JVM process grew to 2.6 GB in 12 s before the probe stopped it |
 | SIGTERM / SIGINT to the JVM | shutdown hooks run (exit 143 / 130) | shutdown hooks run, because the shim restores the JVM's SIGTERM handler (see below) | shutdown hooks run |
 | SIGQUIT (thread dump) | works | works | works |
 | Java `NullPointerException`s after .NET is loaded (the JVM raises them from SIGSEGV) | work | work (CoreCLR's handler passes signals it does not own to the JVM's) | work |
+
+`InProcessBehaviourTest` also runs the `gsub` recursion on a Java thread with a
+256 KB stack: `RuntimeHelpers.EnsureSufficientExecutionStack` sees the JVM
+thread's real stack bounds on both backends, and the call fails with "C stack
+overflow" before the 200-level limit.
+
+Before the stack guard (measured on this machine with Java 21 and .NET 8.0.33),
+the `gsub` recursion killed the worker process (Java got a `WorkerException` and
+the pool started a new worker) and ended the whole JVM in process: SIGABRT,
+exit 134 with CoreCLR, SIGSEGV, exit 139 with NativeAOT, with no `hs_err` file.
+
+`DOTNET_GCHeapHardLimit` is read as hexadecimal. CoreCLR also accepts a `0x`
+prefix; NativeAOT ignores the setting with one, which is how the uncapped
+NativeAOT row above was found. In a container with a memory limit, .NET caps
+its heap at 75 % of that limit by default
+([GC settings](https://learn.microsoft.com/en-us/dotnet/core/runtime-config/garbage-collector#heap-hard-limit)),
+and in process that limit also has to hold the Java heap.
 
 **Signals.** CoreCLR installs handlers for SIGSEGV, SIGBUS, SIGFPE, SIGILL,
 SIGTRAP, SIGINT, SIGQUIT, SIGTERM and SIGRTMIN, and ignores SIGPIPE. Its SIGTERM
@@ -387,7 +462,7 @@ Reading the numbers:
   the JVM to 175 MB, against 232 MB for the JVM plus one worker. Every extra
   worker costs another 125–180 MB, an extra in-process context about 15 MB.
 
-### Recommendation: keep the worker as the default
+### Recommendation: in process is a supported option, the worker stays the default
 
 In process is about 9 times faster per call once warm (4.3–5.2 µs against
 43–46 µs at the median in the typical runs; CoreCLR's first 50,000 calls take
@@ -395,49 +470,49 @@ In process is about 9 times faster per call once warm (4.3–5.2 µs against
 one worker per thread on 4 threads, and about 10 times higher than the pooled
 setup `MoonSharpPool` gives (8 client threads on 4 workers: 25–36 k calls/s).
 NativeAOT starts in 38 ms against 223 ms, and in process uses less memory as
-soon as more than one worker would be needed. But it removes the process
-boundary, and the probes above show what that boundary is for:
+soon as more than one worker would be needed.
 
-1. A script can end the JVM. Recursion through a CLR callback such as
-   `string.gsub` with a function replacement overflows the .NET stack, which no
-   .NET code can catch. In the worker that costs one process, which the pool
-   replaces; in process it ends the whole Java service, without an `hs_err` log
-   for NativeAOT. In-process calls also run on the Java thread's stack (1 MB by
-   default, against the usual 8 MB of the worker's main thread), so the limit
-   is lower.
-2. A script that never returns cannot be stopped. `ScriptHost` has no
-   execution budget (MoonSharp can preempt only scripts that run as coroutines,
-   through `Coroutine.AutoYieldCounter`), and `Thread.interrupt()` does not
-   reach .NET code. A worker can be killed.
-3. Packaging: Linux x64 only so far, one native library per platform, and for
-   CoreCLR a .NET runtime on the server that the JVM finds through
-   `DOTNET_ROOT`.
+The two ways a script could end or hang the JVM are now closed (table above).
+Recursion through a CLR callback is a Lua error on both backends, also on a
+Java thread with a 256 KB stack, where it used to end the JVM. A context with a
+limit returns an `interrupted` error where an endless loop used to hold the
+Java thread until the JVM exited. In-process hosting is therefore a supported
+option on Linux x64, no longer an experiment, under these conditions:
 
-For most callers, 45 µs per call is already small next to the rest of a
+1. Create every context with a time limit, an instruction limit or both
+   (`ContextOptions`, see "Limits"). Without a limit, a script that never
+   returns still holds its Java thread for good.
+2. Cap the .NET heap with `DOTNET_GCHeapHardLimit` (hexadecimal, without `0x`
+   for NativeAOT), set before the JVM starts. Without a cap, a script that
+   allocates without bound grows the JVM process until the OS ends it; with
+   one, it gets a `host` error and the JVM lives on. The cap covers every
+   context in the process.
+3. Accept what the limits do not stop: a single long library call holds its
+   thread until it returns (2.6–3.4 s for one `gsub` over 20 million
+   characters above, with a 100 ms limit).
+
+Prefer the NativeAOT backend there: no .NET install, 38 ms start, full speed
+from the first call and the smallest memory. Prefer CoreCLR when scripts call
+registered C# types: under NativeAOT, a conversion to a collection of a value
+type the app never instantiates has no native code
+([ROADMAP.md](ROADMAP.md), "Next: CLR interop").
+
+The worker stays the default, and this branch does not change it:
+
+- It contains the failures nobody has probed yet. A bug in the interpreter or
+  the runtime that ends .NET, such as a stack overflow on a path the guard does
+  not cover, costs one worker, which the pool replaces; in process it costs the
+  service. After the probes above no such case is known.
+- Memory stays per process. A worker can be limited and watched on its own
+  (cgroups, RSS); in process one .NET heap serves every context, so one
+  script's allocation can make another context's call fail.
+- It runs wherever .NET 8 runs. In process is built and tested on Linux x64
+  only, needs one native library per platform and, for CoreCLR, a .NET runtime
+  that the JVM finds through `DOTNET_ROOT`.
+
+For most callers 45 µs per call is already small next to the rest of a
 request. Use `InProcessMoonSharp` where latency or throughput matters and the
-scripts are trusted not to recurse without bound or loop forever. Prefer the
-NativeAOT backend there: no .NET install, 38 ms start, full speed from the
-first call and the smallest memory, as long as the scripts use only the JSON
-contract (CLR interop is partly broken under NativeAOT, see above). Prefer the
-CoreCLR backend when scripts need CLR interop.
-
-Making in process the default would need two changes in MoonSharp, after which
-this comparison should be repeated:
-
-- a stack guard on the CLR recursion paths (`Processor.Call`, callbacks from
-  `gsub`, `sort`, metamethods), so the overflow becomes a Lua error. This now
-  exists: at most 200 nested entries into the VM per thread (Lua 5.2's limit,
-  also applied to the parser and `json`), backed by
-  `RuntimeHelpers.EnsureSufficientExecutionStack()`. In a .NET process the
-  `gsub` case above ends in a "C stack overflow" error that `pcall` catches.
-  The crash table above predates it; the JVM probe has not been rerun;
-- an execution budget (instruction count or cancellation) for plain calls, so a
-  runaway script returns an error instead of holding the thread. This now
-  exists as `ScriptOptions.InterruptHandler`: called every 10,000 instructions
-  with the count so far, it can stop the script with
-  `ScriptInterruptedException`, which `pcall` cannot catch. The hosting layer
-  does not use it yet (it needs an error kind for it), and a single long library
-  call such as `string.rep` is not interrupted.
+three conditions above hold.
 
 ## Modules
 
@@ -474,17 +549,79 @@ changes with the MoonSharp version.
 
 ## Browser notes
 
-- The build publishes untrimmed `MoonSharp.Interpreter`
-  (`TrimmerRootAssembly`). MoonSharp registers its standard library through
-  reflection, and trimming removes those methods: `string`, `table` and
-  `require` come back nil.
+- The build trims `MoonSharp.Interpreter` like any other assembly. MoonSharp
+  registers its standard library through reflection; the interpreter's
+  embedded `ILLink.Descriptors.xml` keeps those methods, which trimming would
+  otherwise remove (`string`, `table` and `require` came back nil). The whole
+  corpus passes on the trimmed build in all three browsers.
 - The worker script listens with `addEventListener("message")`. The .NET runtime
   replaces `self.onmessage` inside a Web Worker, so a handler assigned to
   `onmessage` never runs.
 - Pass 64-bit IDs as strings. For raw JSON text use `invoke(module, fn, { json })`
   and `runJson(chunk, source, inputJson)`.
 - `runtime.createContext({ int64: true })` creates a context with the int64 and
-  uint64 modules.
+  uint64 modules; `instructionLimit` and `timeLimitMs` set the limits. A script
+  on the page's main thread blocks the page until it returns, so set a limit
+  there, or run it in the Web Worker (`WorkerClient.createContext(options)`).
+  The playground uses a 5 s time limit.
+
+## Browser budget
+
+The owner's target: the first load takes under 5 s on a mid-range phone over
+slow 4G (ROADMAP.md, decisions). `src/Hosting/browser/budget.json` turns it into
+numbers, and `test/budget.mjs` measures the published page in headless Chromium
+with an empty cache (CI runs it last in `hosting.yml` and writes the table to
+the job summary):
+
+- **Bytes**: every file the page fetches before the runtime is ready (19 files),
+  counted as the `.br` file `dotnet publish` writes next to it, which is what a
+  production server sends.
+- **Desktop start**: navigation to a usable runtime (`window.moonsharp`), median
+  of 5 runs.
+- **Phone model**: 9 round trips of 150 ms (DNS, TCP, TLS and the page's chain
+  of dependent requests) + bytes at 1.6 Mbit/s + 4 × desktop start. 150 ms,
+  1.6 Mbit/s and the 4× CPU factor for a mid-tier phone are what Lighthouse and
+  Chrome DevTools call slow 4G
+  ([Lighthouse throttling](https://github.com/GoogleChrome/lighthouse/blob/main/docs/throttling.md)).
+
+Measured on 2026-10-28 in headless Chromium 153, the build before this branch
+(`7bb1550`) and after it in alternating rounds, 3 rounds of 5 cold loads each,
+on a shared 4-core VM (load average 6–8):
+
+| Measurement | Before | After | Enforced budget |
+|---|---|---|---|
+| Bytes, brotli | 1,948,563 | 1,774,807 | 1,850,000 |
+| Bytes, raw | 6,044,828 | 5,565,590 | |
+| Files | 23 | 19 | |
+| Desktop start, median of 5, per round | 693, 1,073, 755 ms | 1,111, 845, 671 ms | 1,500 ms |
+| Phone model | 13.4–14.9 s | 12.5–14.3 s | target 5 s, reported only |
+
+The start time did not change measurably; the rounds differ more than the
+builds. The old build fails the byte budget, which is how the check was tested.
+
+**The 5 s target cannot be met with .NET WebAssembly under these assumptions.**
+`dotnet.native.wasm` alone is 976 KB brotli, 4.7 s at 1.6 Mbit/s; with the round
+trips that is 6 s before any assembly arrives or any code runs. Within 5 s the
+model leaves 346 KB brotli for everything, with a 0.5 s desktop start. The
+ROADMAP decision assumed the target was met ("today 1.91 MB brotli, about
+0.6 s start"); under the standard slow 4G it is missed by more than 2×. So CI
+enforces the measured state with a margin (the "Enforced budget" column) and
+reports the phone model against the target without failing on it, until the
+owner picks one of: a faster network assumption (on WebPageTest's "4G" profile,
+9 Mbit/s and 170 ms, the model gives about 6 s with a 0.7 s desktop start), a cached or deferred runtime
+(the playground could render before the runtime starts), or a smaller engine for
+the web.
+
+What this branch removed from the download: `System.Text.RegularExpressions`
+(94 KB brotli), which only `ScriptHost` used to read an error's position and
+which plain string code now replaces, and the trimmer root on
+`MoonSharp.Interpreter` (71 KB brotli across the interpreter and CoreLib;
+`System.ComponentModel.Primitives`, `System.Diagnostics.Process` and
+`netstandard` went with it). What is left: `dotnet.native.wasm` 976 KB,
+`System.Private.CoreLib` 425 KB, `MoonSharp.Interpreter` 127 KB,
+`System.Linq.Expressions` 112 KB (kept by the interpreter's CLR interop) and the
+runtime scripts. Shrinking `dotnet.native.wasm` needs a native relink with the
+`wasm-tools` workload.
 
 ## Status
 
@@ -492,27 +629,24 @@ Measured on 2026-10-28 on a 4-core Intel Xeon 2.1 GHz cloud VM, Ubuntu 24.04.
 
 | Check | Result |
 |---|---|
-| Conformance corpus, 225 cases in 8 suites (2026-10-28, `mise.toml` tools): `dotnet`, `dotnet-bytecode`, .NET with invariant globalization, Chromium 153 main thread, Java 17 worker, CoreCLR 8.0.32 and NativeAOT in process | 225/225 on each; every known-failures file is empty |
+| Conformance corpus, 245 cases in 10 suites (2026-10-28, `mise.toml` tools, branch `feat/hosting-hardening`): `dotnet`, `dotnet-bytecode`, .NET with invariant globalization and with `tr_TR`, Chromium 153, Firefox 155 and WebKit 26.6 (Playwright 1.63, main thread), Java 17 worker, CoreCLR 8.0.32 and NativeAOT in process | 245/245 on each; every known-failures file is empty |
 | Conformance corpus, .NET with `LANG=tr_TR.UTF-8` | all pass since numbers convert to text without the process culture; earlier 223/225 (`1.5 .. ''` gave `1,5`) |
 | Shared fixtures, .NET 8 CLI | 24/24 under `C.UTF-8`, `tr_TR`, `de_DE` and invariant globalization |
 | Shared fixtures, headless Chromium 153 (Playwright 1.63), main thread | 24/24 |
-| Web Worker path, Chromium | pass (eligibility call, 2^53 + 1 rejected) |
+| Web Worker path, Chromium, Firefox and WebKit | pass (eligibility call, 2^53 + 1 rejected, instruction limit) |
 | Shared fixtures, Java 21 through the worker | 24/24, plus 6 worker behaviour tests |
 | Shared fixtures, Java 21, in process through CoreCLR 8.0.33 (hostfxr + JNI) | 24/24, plus 10 in-process behaviour tests |
 | Shared fixtures, Java 21, in process through NativeAOT (.NET 8) | 24/24, plus 10 in-process behaviour tests |
 | MoonSharp unit tests compiled with NativeAOT (first run, before the fixes in "The unit suite under NativeAOT") | 680/732; 49 failures were CLR interop, 3 are descriptor tests that cannot pass when trimmed |
 | Spring Boot 4.1 sample over HTTP | 4/4 |
 | Fixtures on .NET (default culture and invariant globalization), Chromium, the Java worker, CoreCLR and NativeAOT in process, and the Spring Boot sample, rerun with the `mise.toml` tools (SDK 10.0.402, .NET 8.0.32, Temurin 17.0.20.1, Maven 3.10.0, Node 24.22.1, CMake 4.4.4) | all pass |
-| Firefox, Safari/WebKit, iOS Safari | not run (only Chromium is installed here) |
+| iOS Safari, Android Chrome, desktop Safari | not run; Playwright's WebKit build on Linux stands in for Safari's engine, not for Safari on a device |
 | Unity Editor, Android/iOS IL2CPP | not run (no Unity licence or devices here) |
 | Windows/macOS hosts | not run |
 
-Browser download (`dotnet publish`, .NET 10, interpreter mode, no AOT): 18
-files, 5,940,862 bytes raw, 2,343,322 gzip, 1,914,963 brotli. The largest is
-`dotnet.native.wasm` (3.0 MB raw, 977 KB brotli); `MoonSharp.Interpreter` is
-370 KB raw, 132 KB brotli. Runtime start in headless Chromium from a local
-server: about 550–610 ms. Cached `invoke` from JavaScript, including JSON in
-both directions: 78–89 µs per call.
+Browser download: see "Browser budget". Cached `invoke` from JavaScript,
+including JSON in both directions, 20,000 calls after 2,000 warm-up on a shared
+machine: 62–88 µs in Chromium, 117–135 µs in Firefox, 54–89 µs in WebKit.
 
 Java worker (Java 21, .NET 8 worker, eligibility rule from the fixtures):
 
@@ -527,4 +661,4 @@ Most of a hot call is pipe I/O and JSON, not Lua. Reproduce with
 `WorkerBenchmark` in `src/Hosting/java/client/src/test`. The in-process
 variants remove the pipe; their numbers, a re-run of these in the same session
 and the reasons the worker stays the default are under
-"Java: in process (experimental)".
+"Java: in process".

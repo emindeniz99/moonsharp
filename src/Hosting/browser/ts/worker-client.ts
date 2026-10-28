@@ -1,5 +1,5 @@
 // Promise-based client for worker.ts. Same operations as ScriptContext, but asynchronous.
-import type { Args, HostResult } from "./moonsharp.js";
+import type { Args, ContextOptions, HostResult } from "./moonsharp.js";
 
 export class WorkerClient {
   private next = 1;
@@ -29,7 +29,7 @@ export class WorkerClient {
   }
 
   version(): Promise<string> { return this.call("version"); }
-  createContext(): Promise<number> { return this.call("createContext"); }
+  createContext(options: ContextOptions = {}): Promise<number> { return this.call("createContext", options); }
   dispose(context: number): Promise<boolean> { return this.call("dispose", context); }
   validate(context: number, chunk: string, source: string): Promise<HostResult<null>> { return this.call("validate", context, chunk, source); }
   load<T = unknown>(context: number, moduleId: string, source: string): Promise<HostResult<T>> { return this.call("load", context, moduleId, source); }

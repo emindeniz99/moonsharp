@@ -1,0 +1,21 @@
+{
+  "description": "First-load budget for the browser package (docs/hosting.md, 'Browser budget'). test/budget.mjs measures the published page and fails when a measurement exceeds its entry in 'enforced'.",
+  "target": {
+    "firstLoadMs": 5000,
+    "decision": "docs/ROADMAP.md, 2026-10-28: first load under 5 s on a mid-range phone over slow 4G",
+    "network": "Slow 4G as Lighthouse and Chrome DevTools define it: 1.6 Mbit/s down, 150 ms round trip",
+    "throughputKbps": 1638.4,
+    "rttMs": 150,
+    "roundTrips": 9,
+    "roundTripsReason": "DNS, TCP and TLS, then the page's chain of dependent requests: index.html, playground.js, moonsharp.js, dotnet.js, the runtime scripts, then the assemblies and dotnet.native.wasm in parallel",
+    "cpuSlowdown": 4,
+    "cpuSlowdownReason": "Lighthouse's CPU multiplier for a mid-tier phone against the desktop that runs the test",
+    "transfer": "brotli: dotnet publish writes a .br file next to every published file, and a production server sends it",
+    "derivedBudget": "with a 500 ms desktop start (2 s on the phone) and 1.35 s of round trips, 1.65 s of transfer is left: 346,000 brotli bytes"
+  },
+  "enforced": {
+    "brotliBytes": 1850000,
+    "desktopStartMs": 1500,
+    "reason": "The target is out of reach for .NET WebAssembly under these assumptions: dotnet.native.wasm alone is 976 KB brotli, 4.7 s at 1.6 Mbit/s. Until the owner chooses another network assumption or another runtime, CI holds the measured state of 2026-10-28 (1,774,807 bytes; desktop start 0.67-1.11 s, median of 5, on a shared machine at load average 6-8) with a margin for noisy CI runners, so the download and the start cannot grow unnoticed."
+  }
+}

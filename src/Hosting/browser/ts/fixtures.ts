@@ -14,7 +14,7 @@ interface Case {
 export async function runSuite(runtime: MoonSharpRuntime, suiteUrl: string): Promise<SuiteReport> {
   const suite = await (await fetch(suiteUrl)).json();
   const base = new URL(".", new URL(suiteUrl, location.href));
-  const context = runtime.createContext({ int64: suite.context?.int64 ?? false });
+  const context = runtime.createContext(suite.context ?? {});
   const cases: CaseReport[] = [];
 
   try {

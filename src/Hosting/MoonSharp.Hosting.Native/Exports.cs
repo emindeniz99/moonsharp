@@ -36,16 +36,20 @@ namespace MoonSharp.Hosting.Native
 		public const int ContextInt64 = 1;
 
 		/// <summary>
-		/// Creates a script context with the given options (<see cref="ContextInt64"/>, or 0) and returns its
-		/// id (never 0), or 0 if it could not be created.
+		/// Creates a script context with the given options (<see cref="ContextInt64"/>, or 0) and limits for each
+		/// call (<see cref="ScriptHost.InstructionLimit"/>, <see cref="ScriptHost.TimeLimitMs"/>; 0 for none) and
+		/// returns its id (never 0), or 0 if it could not be created.
 		/// </summary>
 		[UnmanagedCallersOnly(EntryPoint = "moonsharp_managed_context_create")]
-		public static long ContextCreate(int options)
+		public static long ContextCreate(int options, long instructionLimit, int timeLimitMs)
 		{
 			try
 			{
 				long id = Interlocked.Increment(ref s_NextId);
-				s_Contexts[id] = ScriptHost.Create((options & ContextInt64) != 0);
+				ScriptHost host = ScriptHost.Create((options & ContextInt64) != 0);
+				host.InstructionLimit = instructionLimit;
+				host.TimeLimitMs = timeLimitMs;
+				s_Contexts[id] = host;
 				return id;
 			}
 			catch

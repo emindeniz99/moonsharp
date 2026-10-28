@@ -249,6 +249,23 @@ in TypeScript. Two signatures changed for it:
 The browser export `CreateContext` takes a boolean; `createContext()` in
 TypeScript keeps working without arguments.
 
+## Host contexts can limit each call
+
+`create` takes an instruction limit and a time limit for each call; a call
+past either returns an error of the new kind `interrupted` (docs/hosting.md,
+"Limits"). Contexts created without them behave as before. Signatures that
+changed:
+
+- C: `moonsharp_context_create(int32_t options)` is now
+  `moonsharp_context_create(int32_t options, int64_t instruction_limit,
+  int32_t time_limit_ms)`; pass 0, 0 for no limits.
+- Java: `MoonSharpHost.create(String, ContextOptions)` is the method to
+  implement; `create(String, boolean)` is now a default method calling it.
+- Browser: the export `CreateContext` takes two more numbers;
+  `createContext(options)` in TypeScript keeps working as before.
+
+Code that switches over error kinds should expect `interrupted`.
+
 ## `moonsharp-host test` checks known failures
 
 `moonsharp-host test` takes suite files or directories and compares the

@@ -8,8 +8,9 @@ and other AOT targets, where every member access otherwise goes through
 `MethodBase.Invoke` with an `object[]` of boxed arguments.
 
 Nothing changes for code that does not use it. The interpreter gains one
-attribute, `MoonSharpUserDataTypes` (512 bytes of the netstandard2.0 Release
-DLL: 396,288 to 396,800 bytes at `2afebc9`).
+attribute, `MoonSharpUserDataTypes`, and nothing else. The netstandard2.0
+Release DLL grows in 512-byte steps: 0 bytes at `fab3ca7` (404,480 both),
+512 bytes at `2afebc9` (396,288 to 396,800).
 
 ## Use
 
@@ -176,7 +177,39 @@ compiler packages). Generated code is C# 7.3.
 
 ## Measurements
 
-MEASUREMENTS
+`src/DevTools/GeneratedInteropBench`, 2026-10-28, commit `e0c1ed4`, Linux x64,
+Intel Xeon 2.1 GHz (4 cores, shared machine), .NET 8.0.33, median of 7 runs of
+one million iterations. `loop` is the same Lua loop without interop; subtract
+it to get the interop part.
+
+| Case | JIT ns | JIT bytes | NativeAOT ns | NativeAOT bytes |
+|---|---:|---:|---:|---:|
+| loop (no interop) | 121.5 | 192 | 132.7 | 192 |
+| `obj:Add(i, 2)`, reflection | 467.3 | 616 | 854.5 | 616 |
+| `obj:Add(i, 2)`, LazyOptimized | 397.6 | 616 | 846.8 | 616 |
+| `obj:Add(i, 2)`, generated | 337.7 | 504 | 425.4 | 504 |
+| `obj.Value`, reflection | 259.9 | 312 | 322.6 | 312 |
+| `obj.Value`, LazyOptimized | 220.8 | 312 | 318.3 | 312 |
+| `obj.Value`, generated | 200.4 | 288 | 229.2 | 288 |
+
+Under NativeAOT, the stand-in for IL2CPP, the interop part of a method call
+drops from 722 to 293 ns (2.5x) and of a property read from 190 to 97 ns
+(2.0x); under the JIT from 346 to 216 ns and from 138 to 79 ns. Each call
+allocates 112 bytes less (no `object[]`, no boxed arguments or result), each
+read 24 bytes less. What remains is MoonSharp's callback path, the same for
+every descriptor: the `CallbackArguments`, the result `DynValue` and the
+loop's own number values.
+
+Code size, for `Calc` in the benchmark (19 declared members, plus the
+accessor and `object` methods reflection also exposes):
+
+| | without generator | with generator | difference |
+|---|---:|---:|---:|
+| IL assembly | 10,240 B | 16,896 B | +6,656 B |
+| NativeAOT executable | 4,509,424 B | 4,529,952 B | +20,528 B |
+
+That is about 1 KB of native code per member on x64 NativeAOT; IL2CPP will
+differ, and only a Unity player build can measure it.
 
 ## Follow-ups
 

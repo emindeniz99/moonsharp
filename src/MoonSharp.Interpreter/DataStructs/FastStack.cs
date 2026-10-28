@@ -27,18 +27,35 @@ namespace MoonSharp.Interpreter.DataStructs
 
 		public T Push(T item)
 		{
-			m_Storage[m_HeadIdx++] = item;
+			T[] storage = m_Storage;
+			int head = m_HeadIdx;
+
+			// The unsigned compare also lets the JIT drop its own bounds check on the store below.
+			if ((uint)head >= (uint)storage.Length)
+				ThrowStackOverflow();
+
+			storage[head] = item;
+			m_HeadIdx = head + 1;
 			return item;
 		}
 
 		public void Expand(int size)
 		{
+			if (size > m_Storage.Length - m_HeadIdx)
+				ThrowStackOverflow();
+
 			m_HeadIdx += size;
 		}
 
+		private static void ThrowStackOverflow()
+		{
+			throw new ScriptRuntimeException("stack overflow");
+		}
+
+		// Clears the range [from, to), so a full stack can be cleared without indexing past its end.
 		private void Zero(int from, int to)
 		{
-			Array.Clear(m_Storage, from, to - from + 1);
+			Array.Clear(m_Storage, from, to - from);
 		}
 
 		private void Zero(int index)
@@ -59,7 +76,8 @@ namespace MoonSharp.Interpreter.DataStructs
 
 		public void CropAtCount(int p)
 		{
-			RemoveLast(Count - p);
+			if (Count > p)
+				RemoveLast(Count - p);
 		}
 
 		public void RemoveLast( int cnt = 1)

@@ -74,6 +74,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			EnterProcessor();
 
+			int valueStackBase = m_ValueStack.Count;
+			int executionStackBase = m_ExecutionStack.Count;
+
 			try
 			{
 				var stopwatch = this.m_Script.PerformanceStats.StartStopwatch(Diagnostics.PerformanceCounter.Execution);
@@ -84,6 +87,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 				{
 					int entrypoint = PushClrToScriptStackFrame(CallStackItemFlags.CallEntryPoint, function, args);
 					return Processing_Loop(entrypoint);
+				}
+				catch
+				{
+					// Unwinding stops at the entry point frame and leaves the function, its arguments and
+					// whatever the failing instruction pushed. Drop them, or every failed call shrinks the stack.
+					m_ValueStack.CropAtCount(valueStackBase);
+					m_ExecutionStack.CropAtCount(executionStackBase);
+					throw;
 				}
 				finally
 				{

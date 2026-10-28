@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -251,6 +251,26 @@ namespace MoonSharp.Interpreter
 		/// </exception>
 		public void Dump(DynValue function, Stream stream)
 		{
+			Dump(function, stream, true);
+		}
+
+		/// <summary>
+		/// Dumps on the specified stream.
+		/// </summary>
+		/// <param name="function">The function.</param>
+		/// <param name="stream">The stream.</param>
+		/// <param name="includeSourceLocations">If true, the dump keeps each instruction's source location, so
+		/// errors and the debugger report real line numbers. If false, the dump is smaller and every
+		/// location loads as line 0, as in dumps from older MoonSharp versions.</param>
+		/// <exception cref="System.ArgumentException">
+		/// function arg is not a function!
+		/// or
+		/// stream is readonly!
+		/// or
+		/// function arg has upvalues other than _ENV
+		/// </exception>
+		public void Dump(DynValue function, Stream stream, bool includeSourceLocations)
+		{
 			this.CheckScriptOwnership(function);
 
 			if (function.Type != DataType.Function)
@@ -265,7 +285,7 @@ namespace MoonSharp.Interpreter
 				throw new ArgumentException("function arg has upvalues other than _ENV");
 
 			UndisposableStream outStream = new UndisposableStream(stream);
-			m_MainProcessor.Dump(outStream, function.Function.EntryPointByteCodeLocation, upvaluesType == Closure.UpvaluesType.Environment);
+			m_MainProcessor.Dump(outStream, function.Function.EntryPointByteCodeLocation, upvaluesType == Closure.UpvaluesType.Environment, includeSourceLocations);
 		}
 
 

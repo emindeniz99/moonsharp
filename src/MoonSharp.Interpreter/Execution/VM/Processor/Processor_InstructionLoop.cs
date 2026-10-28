@@ -1095,7 +1095,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 			else if (l.Type == DataType.String && r.Type == DataType.String)
 			{
-				m_ValueStack.Push(DynValue.NewBoolean(l.String.CompareTo(r.String) < 0));
+				m_ValueStack.Push(DynValue.NewBoolean(string.CompareOrdinal(l.String, r.String) < 0));
 			}
 			else
 			{
@@ -1123,7 +1123,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			else if (l.Type == DataType.String && r.Type == DataType.String)
 			{
 				m_ValueStack.Push(DynValue.False);
-				m_ValueStack.Push(DynValue.NewBoolean(l.String.CompareTo(r.String) <= 0));
+				m_ValueStack.Push(DynValue.NewBoolean(string.CompareOrdinal(l.String, r.String) <= 0));
 			}
 			else
 			{

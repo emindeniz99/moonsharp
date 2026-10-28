@@ -414,7 +414,7 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 					}
 					else if (l.Type == DataType.String && r.Type == DataType.String)
 					{
-						return (l.String.CompareTo(r.String) < 0);
+						return (string.CompareOrdinal(l.String, r.String) < 0);
 					}
 					else
 					{
@@ -427,7 +427,7 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 					}
 					else if (l.Type == DataType.String && r.Type == DataType.String)
 					{
-						return (l.String.CompareTo(r.String) <= 0);
+						return (string.CompareOrdinal(l.String, r.String) <= 0);
 					}
 					else
 					{

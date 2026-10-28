@@ -63,6 +63,7 @@ README
 
   generate_unity_metas_shallow "$CORE_OUT_DIR/Runtime" "org.moonsharp.moonsharp"
   generate_unity_metas_shallow "$CORE_OUT_DIR" "org.moonsharp.moonsharp"
+  upm_add_source_generator "$CORE_OUT_DIR/Runtime" "org.moonsharp.moonsharp"
 
   echo "Staged dev package: $CORE_OUT_DIR"
 }

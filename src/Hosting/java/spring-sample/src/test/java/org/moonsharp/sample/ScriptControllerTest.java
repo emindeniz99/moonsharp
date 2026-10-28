@@ -3,15 +3,15 @@ package org.moonsharp.sample;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 import org.moonsharp.hosting.Json;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -25,15 +25,19 @@ class ScriptControllerTest {
         registry.add("moonsharp.scripts-dir", () -> System.getProperty("moonsharp.fixtures") + "/scripts");
     }
 
-    @Autowired
-    TestRestTemplate http;
+    @Value("${local.server.port}")
+    int port;
+
+    final HttpClient http = HttpClient.newHttpClient();
 
     JsonNode post(String path, String body, int expectedStatus) throws Exception {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        ResponseEntity<String> r = http.postForEntity(path, new HttpEntity<>(body, headers), String.class);
-        assertEquals(expectedStatus, r.getStatusCode().value(), r.getBody());
-        return Json.MAPPER.readTree(r.getBody());
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build();
+        HttpResponse<String> r = http.send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(expectedStatus, r.statusCode(), r.body());
+        return Json.MAPPER.readTree(r.body());
     }
 
     @Test

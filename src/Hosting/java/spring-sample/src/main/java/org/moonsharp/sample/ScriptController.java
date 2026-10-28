@@ -1,6 +1,6 @@
 package org.moonsharp.sample;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import org.moonsharp.hosting.HostResult;
 import org.moonsharp.hosting.Json;
 import org.moonsharp.hosting.MoonSharpPool;
@@ -23,10 +23,12 @@ public class ScriptController {
     }
 
     @PostMapping(path = "/scripts/{module}/{function}", consumes = "application/json", produces = "application/json")
-    public ResponseEntity<JsonNode> invoke(@PathVariable("module") String module, @PathVariable("function") String function, @RequestBody String argsJson) {
-        // The body is passed on as text, so large integers reach the host unrounded.
+    public ResponseEntity<String> invoke(@PathVariable("module") String module, @PathVariable("function") String function, @RequestBody String argsJson)
+            throws JsonProcessingException {
+        // Request and response stay JSON text, written by the client's exact-number mapper, so large
+        // integers are never rounded and the sample does not depend on Spring's own Jackson version.
         HostResult r = pool.invokeJson(module, function, argsJson);
-        JsonNode body = Json.MAPPER.valueToTree(r);
-        return r.ok() ? ResponseEntity.ok(body) : ResponseEntity.unprocessableEntity().body(body);
+        String body = Json.MAPPER.writeValueAsString(r);
+        return r.ok() ? ResponseEntity.ok(body) : ResponseEntity.unprocessableContent().body(body);
     }
 }

@@ -40,21 +40,6 @@ keys 1..n (`77c8662`).
 
 ## Decisions for the owner
 
-- **#293, #294: overload scores.** A Lua number weighs the same (99) for every
-  integer type and `float`, so `F(1.5)` calls `F(int)` when that overload comes
-  first. Scoring a fractional number lower for integer parameters fixes it, but
-  the overload cache keys on argument types only, so the cache would also have to
-  record whether a number is integral, a check on every cached call. #294 asks
-  that an exact match beat a custom converter (both 100); lowering the converter
-  weight changes which overload hosts with number converters get. The website
-  calls the heuristic "dark magic" and asks for calibration reports.
-- **#175 (PR #336): static members of base classes.** `BindingFlags.FlattenHierarchy`
-  makes `Derived.StaticBase()` work as in C#, but also adds `object.Equals(a, b)`,
-  `ReferenceEquals` and `Enum`'s statics to every descriptor, which changes
-  member lists, Hardwire output and generated LuaCATS definitions. Options: flatten
-  everything, flatten except the framework base types, or keep it.
-- **#274: automatic registration.** With `InteropRegistrationPolicy.Automatic`,
-  lists and dictionaries become userdata instead of the documented tables.
 - **#181: per-script registries.** Useful to run scripts with different trust
   levels in one process; it replaces the static `UserData` API.
 - **PR #321: Unity defines.** The `#if UNITY_5` paths are dead on Unity 2017 and
@@ -84,8 +69,8 @@ keys 1..n (`77c8662`).
 | [#300](https://github.com/moonsharp-devs/moonsharp/issues/300) | Support to Lua 5.3, especially integers | feature | feature: partly done | Opt-in `int64`/`uint64` values ([int64.md](int64.md)); a number subtype is a roadmap decision for after the struct-value step |
 | [#298](https://github.com/moonsharp-devs/moonsharp/issues/298) | Post reference document as html | docs | out of scope | Upstream website |
 | [#297](https://github.com/moonsharp-devs/moonsharp/issues/297) | Moonsharp VS Code debugger launch.json documentation incorrect | docs | out of scope | VS Code extension, unchanged in the fork; upstream [PR #347](https://github.com/moonsharp-devs/moonsharp/pull/347) |
-| [#294](https://github.com/moonsharp-devs/moonsharp/issues/294) | Shouldn't EXACT_MATCH score higher than CUSTOM_CONVERTER_MATCH? | bug | needs owner | Both weights are 100 (`ScriptToClrConversions.cs`). Lowering the converter weight makes exact matches win, but also changes which overload a number picks when a host registered a number converter. See below |
-| [#293](https://github.com/moonsharp-devs/moonsharp/issues/293) | Docs say heuristic should resolve float/int overloads properly; actually does not | bug | needs owner | Reproduces: with `F(int)` and `F(float)`, `F(1.5)` calls `F(int)` (both weigh 99). See below |
+| [#294](https://github.com/moonsharp-devs/moonsharp/issues/294) | Shouldn't EXACT_MATCH score higher than CUSTOM_CONVERTER_MATCH? | bug | fixed | Branch `fix/interop-decisions`: exact matches weigh 101, converters 100, everything else 99 or less; `Issue294_ExactMatchBeatsCustomConverter` |
+| [#293](https://github.com/moonsharp-devs/moonsharp/issues/293) | Docs say heuristic should resolve float/int overloads properly; actually does not | bug | fixed | Branch `fix/interop-decisions`: a fractional number weighs 98 for integer parameters, and the overload cache keys on whole vs fractional; `Issue293_FractionalNumberPicksTheFloatingOverload` |
 | [#291](https://github.com/moonsharp-devs/moonsharp/issues/291) | System.NullReferenceException on registering DynamicMethod | bug | fixed | `c86a064`; `Issue291_CompiledExpressionDelegateIsCallable` |
 | [#288](https://github.com/moonsharp-devs/moonsharp/issues/288) | CSharp.lua error | bug | does not reproduce | No reproduction given; `require('Core.Sys')` through `LUA_PATH` with a dotted directory resolves |
 | [#287](https://github.com/moonsharp-devs/moonsharp/issues/287) | Empty tuples are incorrectly treated as nil | bug | waits: VM core | Reproduces: `select('#', table.unpack({}, 1, 0))` is 1. Ignored test `UpstreamIssueTests.Issue287_EmptyUnpackReturnsNoValues` |
@@ -94,7 +79,7 @@ keys 1..n (`77c8662`).
 | [#282](https://github.com/moonsharp-devs/moonsharp/issues/282) | JSON parse error for "\/" | duplicate | does not reproduce | Fixed upstream in 714c265, before the fork base |
 | [#279](https://github.com/moonsharp-devs/moonsharp/issues/279) | [Help] Doubt about using a moon function as a parameter | question | answered | Answered in the thread (store the `DynValue`/`Closure`, call it later). Not in our docs |
 | [#275](https://github.com/moonsharp-devs/moonsharp/issues/275) | string.format('%s', nil) throws an exception. | bug | waits: string library | Reproduces for nil and tables. Ignored test `UpstreamIssueTests.Issue275_FormatPercentSAcceptsAnyValue` |
-| [#274](https://github.com/moonsharp-devs/moonsharp/issues/274) | CLR types don't get converted correctly when allowing auto-registration of userdata | bug | needs owner | Reproduces: with `InteropRegistrationPolicy.Automatic`, `List<int>` and `Dictionary<,>` become userdata instead of tables. The fork's mobile hosts register types explicitly, so the choice matters only for automatic hosts |
+| [#274](https://github.com/moonsharp-devs/moonsharp/issues/274) | CLR types don't get converted correctly when allowing auto-registration of userdata | bug | fixed | Branch `fix/interop-decisions`: lists and dictionaries are not registered automatically, so they become tables; explicit registration still gives userdata. `Issue274_AutomaticRegistrationKeepsListsAndDictionariesAsTables` |
 | [#270](https://github.com/moonsharp-devs/moonsharp/issues/270) | Json is not in indent | enhancement | feature: not planned | No roadmap item |
 | [#265](https://github.com/moonsharp-devs/moonsharp/issues/265) | Sync Unity code files Powershell script version | enhancement | out of scope | Unity packaging goes through `tools/upm` |
 | [#263](https://github.com/moonsharp-devs/moonsharp/issues/263) | unassigned local variable can sometimes hold values other than nil | bug | fixed | `local x` compiles as `local x = nil`; `UpstreamIssueTests.Issue263_LocalWithoutValueIsNil` |
@@ -135,7 +120,7 @@ keys 1..n (`77c8662`).
 | [#183](https://github.com/moonsharp-devs/moonsharp/issues/183) | Proxy operator overloads | feature | feature: not planned | No roadmap item |
 | [#181](https://github.com/moonsharp-devs/moonsharp/issues/181) | Non-global TypeDescriptorRegistry and ExtensionMethodsRegistry | feature | needs owner | Per-script registration would let one process run scripts with different trust levels; it changes the static `UserData` API |
 | [#180](https://github.com/moonsharp-devs/moonsharp/issues/180) | JsonTableConverter.JsonToTable can't handle escaped forward slash | bug | does not reproduce | Fixed upstream in 714c265, before the fork base |
-| [#175](https://github.com/moonsharp-devs/moonsharp/issues/175) | Inheritance for static objects | question | needs owner | Reproduces: `CreateStatic<Derived>()` does not see `Base`'s static methods. See below |
+| [#175](https://github.com/moonsharp-devs/moonsharp/issues/175) | Inheritance for static objects | question | fixed | Branch `fix/interop-decisions`: base classes' statics are added, except those declared in the core library; `Issue175_DerivedTypeSeesStaticMembersOfBaseClasses`, parity probe and LuaCATS sample |
 | [#169](https://github.com/moonsharp-devs/moonsharp/issues/169) | Winrt (Windows Store App) not working with version 2.0 | bug | out of scope | Windows Store 8.1 and PCL builds are gone |
 | [#161](https://github.com/moonsharp-devs/moonsharp/issues/161) | io.write() does not print standard console | bug | fixed | `d02864b`; `Issue161_StandardOutputIsWrittenWithoutFlush` |
 | [#160](https://github.com/moonsharp-devs/moonsharp/issues/160) | TableTestReverseSafer example does not work | docs | out of scope | Upstream website sample |

@@ -260,8 +260,9 @@ namespace MoonSharp.Interpreter.Interop.UserDataRegistries
 		/// </summary>
 		/// <param name="type">The CLR type for which the descriptor is desired.</param>
 		/// <param name="searchInterfaces">if set to <c>true</c> interfaces are used in the search.</param>
+		/// <param name="allowAutoRegistration">if set to <c>false</c>, the registration policy is not asked to register the type.</param>
 		/// <returns></returns>
-		internal static IUserDataDescriptor GetDescriptorForType(Type type, bool searchInterfaces)
+		internal static IUserDataDescriptor GetDescriptorForType(Type type, bool searchInterfaces, bool allowAutoRegistration = true)
 		{
 			lock (s_Lock)
 			{
@@ -271,7 +272,7 @@ namespace MoonSharp.Interpreter.Interop.UserDataRegistries
 				if (s_TypeRegistry.TryGetValue(type, out typeDescriptor))
 					return typeDescriptor;
 
-				if (RegistrationPolicy.AllowTypeAutoRegistration(type))
+				if (allowAutoRegistration && RegistrationPolicy.AllowTypeAutoRegistration(type))
 				{
 					// no autoreg of delegates
 					if (!Framework.Do.IsAssignableFrom((typeof(Delegate)), type))

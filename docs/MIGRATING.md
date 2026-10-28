@@ -594,3 +594,21 @@ so `type(v)` failed with "bad argument #1 to 'type' (value expected)".
 [#258](https://github.com/moonsharp-devs/moonsharp/issues/258)).
 
 **Affected:** scripts that read a variable declared without a value and got the leftover value.
+
+## A fractional number picks a floating-point overload
+
+**Before:** a Lua number weighed the same for every integer parameter and for
+`float`, so with overloads `F(int)` and `F(float)`, `F(1.5)` called `F(int)`
+when that overload sorted first, and the fraction was lost.
+
+**After:** a number with a fractional part (or NaN) weighs less for an
+integer parameter than for `float`, `double` or `decimal`, so `F(1.5)` calls
+`F(float)`. A whole number such as `F(2)` picks the same overload as before,
+and a fractional number still converts to an integer parameter when no
+floating-point overload exists. The overload cache records whether each
+number argument is whole, so a cached choice for `F(2)` is not reused for
+`F(1.5)`
+([upstream #293](https://github.com/moonsharp-devs/moonsharp/issues/293)).
+
+**Affected:** hosts with integer and `float` overloads of one method whose
+scripts pass fractional numbers.

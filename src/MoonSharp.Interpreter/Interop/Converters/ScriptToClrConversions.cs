@@ -21,6 +21,7 @@ namespace MoonSharp.Interpreter.Interop.Converters
 		internal const int WEIGHT_USERDATA_TO_STRING = 5;
 		internal const int WEIGHT_TABLE_CONVERSION = 90;
 		internal const int WEIGHT_NUMBER_DOWNCAST = 99;
+		internal const int WEIGHT_FRACTION_TO_INTEGER = 98;
 		internal const int WEIGHT_NO_MATCH = 0;
 		internal const int WEIGHT_NO_EXTRA_PARAMS_BONUS = 100;
 		internal const int WEIGHT_EXTRA_PARAMS_MALUS = 2;
@@ -272,7 +273,7 @@ namespace MoonSharp.Interpreter.Interop.Converters
 						return WEIGHT_NUMBER_TO_ENUM;
 					}
 					if (NumericConversions.IsNumericType(desiredType))
-						return GetNumericTypeWeight(desiredType);
+						return GetNumericTypeWeight(desiredType, value.Number);
 					if (stringSubType != StringConversions.StringSubtype.None)
 						return WEIGHT_NUMBER_TO_STRING;
 					break;
@@ -322,12 +323,27 @@ namespace MoonSharp.Interpreter.Interop.Converters
 			return WEIGHT_NO_MATCH;
 		}
 
-		private static int GetNumericTypeWeight(Type desiredType)
+		/// <summary>
+		/// A fractional number weighs less for an integral type than for float, so F(1.5) does not
+		/// pick F(int) over F(float) and lose the fraction (upstream #293).
+		/// </summary>
+		private static int GetNumericTypeWeight(Type desiredType, double number)
 		{
 			if (desiredType == typeof(double) || desiredType == typeof(decimal))
 				return WEIGHT_EXACT_MATCH;
-			else
+			else if (desiredType == typeof(float) || !IsFractional(number))
 				return WEIGHT_NUMBER_DOWNCAST;
+			else
+				return WEIGHT_FRACTION_TO_INTEGER;
+		}
+
+		/// <summary>
+		/// Whether a number has a fractional part (NaN counts as one). Overload resolution weighs
+		/// such numbers differently, so its cache keys on this too.
+		/// </summary>
+		internal static bool IsFractional(double number)
+		{
+			return number != Math.Floor(number);
 		}
 
 		/// <summary>

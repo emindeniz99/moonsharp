@@ -34,6 +34,7 @@ namespace MoonSharp.Interpreter.Interop
 			public IOverloadableMemberDescriptor Method;
 			public List<DataType> ArgsDataType;
 			public List<Type> ArgsUserDataType;
+			public List<bool> ArgsFractional;
 			public int HitIndexAtLastHit;
 		}
 
@@ -237,7 +238,7 @@ namespace MoonSharp.Interpreter.Interop
 			{
 				if (m_Cache[i] == null)
 				{
-					found = new OverloadCacheItem() { ArgsDataType = new List<DataType>(), ArgsUserDataType = new List<Type>() };
+					found = new OverloadCacheItem() { ArgsDataType = new List<DataType>(), ArgsUserDataType = new List<Type>(), ArgsFractional = new List<bool>() };
 					m_Cache[i] = found;
 					break;
 				}
@@ -252,7 +253,7 @@ namespace MoonSharp.Interpreter.Interop
 			{
 				// overflow..
 				m_Cache = new OverloadCacheItem[CACHE_SIZE];
-				found = new OverloadCacheItem() { ArgsDataType = new List<DataType>(), ArgsUserDataType = new List<Type>() };
+				found = new OverloadCacheItem() { ArgsDataType = new List<DataType>(), ArgsUserDataType = new List<Type>(), ArgsFractional = new List<bool>() };
 				m_Cache[0] = found;
 				m_CacheHits = 0;
 			}
@@ -261,11 +262,13 @@ namespace MoonSharp.Interpreter.Interop
 			found.HitIndexAtLastHit = ++m_CacheHits;
 			found.ArgsDataType.Clear();
 			found.ArgsUserDataType.Clear();
+			found.ArgsFractional.Clear();
 			found.HasObject = hasObject;
 
 			for (int i = 0; i < args.Count; i++)
 			{
 				found.ArgsDataType.Add(args[i].Type);
+				found.ArgsFractional.Add(args[i].Type == DataType.Number && ScriptToClrConversions.IsFractional(args[i].Number));
 
 				if (args[i].Type == DataType.UserData)
 				{
@@ -288,12 +291,19 @@ namespace MoonSharp.Interpreter.Interop
 
 			for (int i = 0; i < args.Count; i++)
 			{
-				if (args[i].Type != overloadCacheItem.ArgsDataType[i])
+				DynValue arg = args[i];
+
+				if (arg.Type != overloadCacheItem.ArgsDataType[i])
 					return false;
 
-				if (args[i].Type == DataType.UserData)
+				if (arg.Type == DataType.Number)
 				{
-					if (args[i].UserData.Descriptor.Type != overloadCacheItem.ArgsUserDataType[i])
+					if (ScriptToClrConversions.IsFractional(arg.Number) != overloadCacheItem.ArgsFractional[i])
+						return false;
+				}
+				else if (arg.Type == DataType.UserData)
+				{
+					if (arg.UserData.Descriptor.Type != overloadCacheItem.ArgsUserDataType[i])
 						return false;
 				}
 			}

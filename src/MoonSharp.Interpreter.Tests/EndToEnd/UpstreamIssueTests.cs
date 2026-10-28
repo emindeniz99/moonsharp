@@ -521,5 +521,31 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				Directory.Delete(dir, true);
 			}
 		}
+
+		public class Scaler
+		{
+			public string Scale(int x) { return "int " + x; }
+			public string Scale(float x) { return "float " + x.ToString(CultureInfo.InvariantCulture); }
+		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/293: with F(int) and F(float), F(1.5)
+		// called F(int) and the fraction was lost, because a Lua number weighed the same for
+		// both. A whole number keeps the old choice. The calls alternate so that a cached
+		// choice for one kind of number is not reused for the other.
+		[Test]
+		public void Issue293_FractionalNumberPicksTheFloatingOverload()
+		{
+			UserData.RegisterType<Scaler>();
+
+			Script s = new Script();
+			s.Globals["o"] = new Scaler();
+
+			DynValue r = s.DoString("return o.Scale(2), o.Scale(1.5), o.Scale(3), o.Scale(0.25)");
+
+			Assert.AreEqual("int 2", r.Tuple[0].String);
+			Assert.AreEqual("float 1.5", r.Tuple[1].String);
+			Assert.AreEqual("int 3", r.Tuple[2].String);
+			Assert.AreEqual("float 0.25", r.Tuple[3].String);
+		}
 	}
 }

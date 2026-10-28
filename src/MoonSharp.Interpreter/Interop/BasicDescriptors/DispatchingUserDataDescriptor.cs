@@ -15,7 +15,6 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 	/// </summary>
 	public abstract class DispatchingUserDataDescriptor : IUserDataDescriptor, IOptimizableDescriptor
 	{
-		private int m_ExtMethodsVersion = 0;
 		private Dictionary<string, IMemberDescriptor> m_MetaMembers = new Dictionary<string, IMemberDescriptor>();
 		private Dictionary<string, IMemberDescriptor> m_Members = new Dictionary<string, IMemberDescriptor>();
 
@@ -285,10 +284,10 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 			DynValue v = TryIndex(script, obj, index.String);
 			if (v == null) v = TryIndexFuzzy(script, obj, index.String);
 
-			if (v == null && m_ExtMethodsVersion < UserData.GetExtensionMethodsChangeVersion())
+			// Every miss looks for extension methods: a miss is an error or a member seen for the first
+			// time, and a found extension method becomes a member, so later reads do not get here.
+			if (v == null)
 			{
-				m_ExtMethodsVersion = UserData.GetExtensionMethodsChangeVersion();
-
 				v = TryIndexOnExtMethod(script, obj, index.String);
 				if (v == null && (Script.GlobalOptions.FuzzySymbolMatching & FuzzySymbolMatchingBehavior.UpperFirstLetter) == FuzzySymbolMatchingBehavior.UpperFirstLetter) v = TryIndexOnExtMethod(script, obj, UpperFirstLetter(index.String));
 				if (v == null && (Script.GlobalOptions.FuzzySymbolMatching & FuzzySymbolMatchingBehavior.Camelify) == FuzzySymbolMatchingBehavior.Camelify) v = TryIndexOnExtMethod(script, obj, Camelify(index.String));

@@ -136,6 +136,15 @@ namespace MoonSharp.Interpreter.Interop
 		}
 
 		/// <summary>
+		/// Gets a copy of the overloads a call resolves against, without extension methods. Tools that
+		/// describe the API to script authors (the LuaCATS generator) read the signatures from here.
+		/// </summary>
+		public IOverloadableMemberDescriptor[] Overloads
+		{
+			get { return m_Overloads.ToArray(); }
+		}
+
+		/// <summary>
 		/// Performs the overloaded call.
 		/// </summary>
 		/// <param name="script">The script.</param>
@@ -251,6 +260,7 @@ namespace MoonSharp.Interpreter.Interop
 			found.Method = bestOverload;
 			found.HitIndexAtLastHit = ++m_CacheHits;
 			found.ArgsDataType.Clear();
+			found.ArgsUserDataType.Clear();
 			found.HasObject = hasObject;
 
 			for (int i = 0; i < args.Count; i++)
@@ -428,7 +438,8 @@ namespace MoonSharp.Interpreter.Interop
 
 		void IOptimizableDescriptor.Optimize()
 		{
-			foreach (var d in m_Overloads.OfType<IOptimizableDescriptor>())
+			// A copy: this can run on a background thread while the first call sorts the list.
+			foreach (var d in m_Overloads.ToArray().OfType<IOptimizableDescriptor>())
 				d.Optimize();
 		}
 

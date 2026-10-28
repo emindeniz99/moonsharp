@@ -47,15 +47,16 @@ dotnet run -c Release --project src/DevTools/Benchmarks -- workloads 7
 
 `int64_math` is left out (it needs Lua 5.3 integers). `table_sort_52` copies
 with a loop because Lua 5.2 has no `table.move`; its seed arithmetic exceeds
-2^53, so its check value differs from Lua 5.3+.
+2^53, so its check value differs from Lua 5.3+. `table_insert_len_10k` and
+`table_remove_readd_10k` are MoonSharp-only: they track table operations whose
+cost used to grow with the table size.
 
 The same mode also runs cases that flag_bench does not have: calls across the
 C#/Lua boundary in both directions (`cs_to_lua_call3`, `lua_to_cs_call1`),
 CLR method and property access (`clr_interop` in the default access mode,
 `clr_interop_reflection` as IL2CPP gets it), pushing a registered enum value
-(`enum_push`) and an instance of an unregistered subclass (`derived_type_push`),
-and two table patterns that are quadratic today (`table_insert_remove_10k`,
-`table_remove_readd`). Name cases after the run count to run only those:
+(`enum_push`) and an instance of an unregistered subclass (`derived_type_push`).
+Name cases after the run count to run only those:
 
 ```sh
 dotnet run -c Release --project src/DevTools/Benchmarks -- workloads 7 function_call fib_recursive

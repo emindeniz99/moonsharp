@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Reflection;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using MoonSharp.Interpreter.Compatibility;
 using MoonSharp.Interpreter.Interop;
 using MoonSharp.Interpreter.Interop.BasicDescriptors;
 using MoonSharp.Interpreter.Interop.RegistrationPolicies;
@@ -38,7 +40,84 @@ namespace MoonSharp.Interpreter
 		/// </summary>
 		public IUserDataDescriptor Descriptor { get; private set; }
 
+		// The last bound method callbacks read from this userdata (see DispatchingUserDataDescriptor.IndexUserData).
+		// Entries are immutable, so a userdata shared between threads never shows a torn one.
+		private BoundMember m_BoundMembers;
 
+		private sealed class BoundMember
+		{
+			public readonly Script Script;
+			public readonly string Name;
+			public readonly int Version;
+			public readonly DynValue Value;
+			public readonly BoundMember Previous;
+
+			public BoundMember(Script script, string name, int version, DynValue value, BoundMember previous)
+			{
+				Script = script;
+				Name = name;
+				Version = version;
+				Value = value;
+				Previous = previous;
+			}
+		}
+
+		internal DynValue FindBoundMember(Script script, string name, int version)
+		{
+			for (BoundMember e = m_BoundMembers; e != null; e = e.Previous)
+			{
+				if (e.Version == version && e.Script == script && string.Equals(e.Name, name))
+					return e.Value;
+			}
+
+			return null;
+		}
+
+		// Keeps the two most recent entries: enough for code that alternates two methods on one object.
+		internal void StoreBoundMember(Script script, string name, int version, DynValue value)
+		{
+			BoundMember last = m_BoundMembers;
+			BoundMember keep = (last != null && last.Version == version) ? new BoundMember(last.Script, last.Name, last.Version, last.Value, null) : null;
+			m_BoundMembers = new BoundMember(script, name, version, value, keep);
+		}
+
+
+
+		// Types whose Equals(object) is Object.Equals, that is reference equality.
+		private static readonly Dictionary<Type, bool> s_ReferenceEqualityTypes = new Dictionary<Type, bool>();
+
+		/// <summary>
+		/// A hash code consistent with DynValue.Equals for userdata, which requires the same descriptor
+		/// and objects that are Equals. An object compared by reference hashes by identity; any other
+		/// object hashes by its descriptor only, because its Equals may follow state that changes while
+		/// the value is a table key.
+		/// </summary>
+		internal int GetHashCodeForEquals()
+		{
+			object o = Object;
+
+			if (o != null && UsesReferenceEquality(o.GetType()))
+				return RuntimeHelpers.GetHashCode(o);
+
+			return RuntimeHelpers.GetHashCode(Descriptor);
+		}
+
+		private static bool UsesReferenceEquality(Type t)
+		{
+			lock (s_ReferenceEqualityTypes)
+			{
+				bool result;
+
+				if (!s_ReferenceEqualityTypes.TryGetValue(t, out result))
+				{
+					MethodInfo equals = Framework.Do.GetMethod(t, "Equals", new Type[] { typeof(object) });
+					result = equals != null && equals.DeclaringType == typeof(object);
+					s_ReferenceEqualityTypes[t] = result;
+				}
+
+				return result;
+			}
+		}
 
 		static UserData()
 		{
@@ -228,6 +307,15 @@ namespace MoonSharp.Interpreter
 					return CreateStatic((Type)o);
 
 				return null;
+			}
+
+			// A named enum value reuses the read-only value its descriptor already holds.
+			var enumDescr = descr as StandardEnumUserDataDescriptor;
+			if (enumDescr != null)
+			{
+				DynValue named = enumDescr.FindNamedValue(o);
+				if (named != null)
+					return named;
 			}
 
 			return Create(o, descr);

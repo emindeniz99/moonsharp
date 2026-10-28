@@ -1,0 +1,31 @@
+# Development tools for building and testing MoonSharp and src/Hosting. Run
+# `mise install` in the repository root first. Each version is an exact
+# release that was older than seven days when it was pinned.
+#
+# Not managed here, install them from the distribution instead:
+# - clang and zlib1g-dev, for the NativeAOT library (`sudo apt-get install
+#   clang zlib1g-dev`, as hosting.yml does). mise offers clang only as
+#   conda:clang, which links against its own sysroot and fails with
+#   "cannot find -lz" (tried with conda:clang 23.1.2 on 2026-10-28).
+# - Mono, for the net45 test runner; it is not in the mise registry.
+[tools]
+# The JNI shim in src/Hosting/native.
+cmake = "4.4.4"
+# The SDK builds both the net8.0 projects and the net10.0 browser package.
+# The net8.0 test runners, the host CLI and the JVM's in-process CoreCLR path
+# run on the .NET 8 runtime, installed into the same DOTNET_ROOT.
+dotnet = ["10.0.402", { version = "8.0.32", runtime = "dotnet" }]
+# src/Hosting/java targets Java 17 (maven.compiler.release), the lowest
+# version the client supports. Temurin 17.0.20.1+1.
+java = "temurin-17.0.20+101"
+maven = "3.10.0"
+# The browser package (TypeScript, Playwright) and the npm packaging of the
+# UPM packages and the VS Code extension.
+node = "24.22.1"
+
+[settings]
+# Off on purpose, also against a global setting: an isolated SDK has its own
+# DOTNET_ROOT and does not see the .NET 8 runtime, so net8.0 programs fail to
+# start ("You must install or update .NET"). The shared root may also hold
+# other projects' SDKs; without a global.json the newest one builds here.
+dotnet.isolated = false

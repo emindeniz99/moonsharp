@@ -19,7 +19,7 @@
 #include <hostfxr.h>
 #include <nethost.h>
 
-typedef int64_t (*context_create_fn)(void);
+typedef int64_t (*context_create_fn)(int32_t);
 typedef int32_t (*context_dispose_fn)(int64_t);
 typedef uint8_t *(*call_fn)(int64_t, int32_t, const uint8_t *, int32_t, const uint8_t *, int32_t,
                             const uint8_t *, int32_t, int32_t *);
@@ -187,9 +187,9 @@ const char *moonsharp_open_aot(const char *library_path)
  * successful open (the Java side does: NativeBridge opens inside a synchronized method), so these plain
  * reads see the pointers. Before an open they are NULL and the functions fail softly.
  */
-int64_t moonsharp_context_create(void)
+int64_t moonsharp_context_create(int32_t options)
 {
-    return api_context_create != NULL ? api_context_create() : 0;
+    return api_context_create != NULL ? api_context_create(options) : 0;
 }
 
 int32_t moonsharp_context_dispose(int64_t context)

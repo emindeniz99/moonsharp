@@ -1243,7 +1243,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 				{
 					if (!isMultiIndex)
 					{
-						if (!obj.Table.Get(idx).IsNil())
+						// Without a metatable there is no __newindex to find, so skip the lookup of the old value.
+						if (obj.Table.MetaTable == null || !obj.Table.Get(idx).IsNil())
 						{
 							obj.Table.Set(idx, value);
 							return instructionPtr;
@@ -1346,7 +1347,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 				{
 					UserData ud = obj.UserData;
 
-					var v = ud.Descriptor.Index(this.GetScript(), ud.Object, originalIdx, isNameIndex);
+					var dispatching = ud.Descriptor as Interop.BasicDescriptors.DispatchingUserDataDescriptor;
+					var v = (dispatching != null)
+						? dispatching.IndexUserData(this.GetScript(), ud, originalIdx, isNameIndex)
+						: ud.Descriptor.Index(this.GetScript(), ud.Object, originalIdx, isNameIndex);
 
 					if (v == null)
 					{

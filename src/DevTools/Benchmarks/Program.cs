@@ -20,6 +20,12 @@ namespace MoonSharp.Benchmarks
 			if (args.Length > 0 && args[0] == "alloc")
 				return AllocTypeProbe.Run(args.Skip(1).ToArray());
 
+			if (args.Length > 0 && args[0] == "interop")
+				return InteropWorkloads.Run(args.Skip(1).ToArray());
+
+			if (args.Length > 0 && args[0] == "ab-interop")
+				return InteropWorkloads.RunAb(args.Skip(1).ToArray());
+
 			BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
 			return 0;
 		}

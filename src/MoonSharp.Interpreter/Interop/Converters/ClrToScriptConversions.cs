@@ -28,7 +28,7 @@ namespace MoonSharp.Interpreter.Interop.Converters
 			if (obj is string || obj is StringBuilder || obj is char)
 				return DynValue.NewString(obj.ToString());
 
-			if (NumericConversions.NumericTypes.Contains(t))
+			if (NumericConversions.IsNumericType(t))
 				return DynValue.NewNumber(NumericConversions.TypeToDouble(t, obj));
 
 			if (obj is Table)
@@ -70,7 +70,7 @@ namespace MoonSharp.Interpreter.Interop.Converters
 			if (obj is Closure)
 				return DynValue.NewClosure((Closure)obj);
 
-			if (NumericConversions.NumericTypes.Contains(t))
+			if (NumericConversions.IsNumericType(t))
 			{
 				if (script != null && script.Options.ExactInt64Interop)
 				{

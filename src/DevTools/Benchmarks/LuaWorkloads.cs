@@ -75,6 +75,10 @@ namespace MoonSharp.Benchmarks
 			Lua("gc_small_tables", 500 * K, "return function(n) local keep, s = {}, 0 for i = 1, n do local t = { i, i + 1, x = i } keep[i % 128 + 1] = t s = s + t[2] end return s end", "125000750000", null),
 			Lua("oop_inherit", 1000 * K, "local Base = {} Base.__index = Base function Base:get() return self.v end\nlocal Derived = setmetatable({}, Base) Derived.__index = Derived\nlocal o = setmetatable({ v = 3 }, Derived)\nreturn function(n) local s = 0 for i = 1, n do s = s + o:get() end return s end", "3000000", null),
 
+			// MoonSharp-only cases (not in flag_bench.c): table operations that were quadratic in the table size.
+			Lua("table_insert_len_10k", 10, "return function(n) local s = 0 for r = 1, n do local t = {} for i = 1, 10000 do table.insert(t, i) end s = s + #t end return s end", "100000", "MoonSharp-only; one iteration = 10k table.insert then #t"),
+			Lua("table_remove_readd_10k", 5 * K, "local t, keys = {}, {} for i = 1, 10000 do t[i] = i end for i = 1, 64 do keys[i] = 'k' .. i t[keys[i]] = i end\nreturn function(n) local s, j = 0, 1 for i = 1, n do local v = table.remove(t) t[#t + 1] = v local k = keys[j] t[k] = nil t[k] = i j = j % 64 + 1 s = s + #t end return s end", "50000000", "MoonSharp-only; delete/reinsert churn on a 10k-entry table"),
+
 			// ---- host boundary and interop (not in flag_bench) ----
 
 			// C# -> Lua: Script.Call on a compiled function with 3 number arguments and 1 number result.
@@ -112,10 +116,6 @@ namespace MoonSharp.Benchmarks
 			Host("derived_type_push", 1000 * K, "1000000", "unregistered subclass of a registered type", script => InteropLoop(script, InteropAccessMode.Reflection,
 				"return function(n) local c = 0 for i = 1, n do if obj.Child then c = c + 1 end end return c end")),
 
-			// ---- table paths with super-linear costs (one iteration = one whole cycle) ----
-
-			Lua("table_insert_remove_10k", 2, "return function(n) local c = 0 for k = 1, n do local t = {} for i = 1, 10000 do table.insert(t, i) end for i = 1, 10000 do table.remove(t) end c = c + #t end return c end", "0", "one iteration = 10k table.insert + 10k table.remove"),
-			Lua("table_remove_readd", 1 * K, "local t = {} for i = 1, 10000 do t[i] = i end\nreturn function(n) for i = 1, n do local v = t[#t] t[#t] = nil t[#t + 1] = v end return #t end", "10000", "10k-element array: remove the last element, then append it again"),
 		};
 
 		public enum Mode { A, B }

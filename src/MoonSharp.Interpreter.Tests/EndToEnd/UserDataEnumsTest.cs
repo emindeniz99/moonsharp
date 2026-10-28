@@ -173,6 +173,15 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
+		public void Interop_Enum_Flags_ResultIsEnumValue()
+		{
+			// Results of the flags functions are MyFlags values, not bare numbers in a userdata.
+			RunTestOverload("tostring(MyFlags.flagsOr(MyFlags.Uno, MyFlags.Due))", "Uno, Due");
+			RunTestOverload("tostring(MyFlags.flagsOr(MyFlags.Uno, MyFlags.Quattro) == MyFlags.Cinque)", "true");
+			RunTestOverload("tostring(MyFlags.flagsAnd(MyFlags.Cinque, MyFlags.Quattro) == MyFlags.Quattro)", "true");
+		}
+
+		[Test]
 		public void Interop_Enum_Read()
 		{
 			RunTestOverload("o:MyMethod(o:get())", "[Quattro]");

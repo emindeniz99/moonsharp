@@ -128,16 +128,21 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		// ---------------------------------------------------------------------------------------------
 		// Budgets. Lower a row when a change removes allocations from that workload.
 
+		// For loops that allocate nothing per iteration. Not 0: a one-off allocation in the measured
+		// calls (a stack growing, a cache filling) shows as a fraction of a byte; any per-iteration
+		// allocation is at least 24 bytes.
+		const double NoAllocation = 1;
+
 		[Test]
 		public void AllocationBudget_EmptyLoop()
 		{
-			AssertLuaBudget("empty_loop", "return function(n) for i = 1, n do end end", 0);
+			AssertLuaBudget("empty_loop", "return function(n) for i = 1, n do end end", NoAllocation);
 		}
 
 		[Test]
 		public void AllocationBudget_FunctionCall()
 		{
-			AssertLuaBudget("function_call", "local function f(a) return a + 1 end\nreturn function(n) local x = 0 for i = 1, n do x = f(x) end return x end", 0);
+			AssertLuaBudget("function_call", "local function f(a) return a + 1 end\nreturn function(n) local x = 0 for i = 1, n do x = f(x) end return x end", NoAllocation);
 		}
 
 		[Test]
@@ -149,7 +154,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void AllocationBudget_TableArrayRead()
 		{
-			AssertLuaBudget("table_array_read", "local t = {} for i = 1, 1024 do t[i] = i end\nreturn function(n) local s, j = 0, 1 for i = 1, n do s = s + t[j] j = j + 1 if j > 1024 then j = 1 end end return s end", 0);
+			AssertLuaBudget("table_array_read", "local t = {} for i = 1, 1024 do t[i] = i end\nreturn function(n) local s, j = 0, 1 for i = 1, n do s = s + t[j] j = j + 1 if j > 1024 then j = 1 end end return s end", NoAllocation);
 		}
 
 		[Test]
@@ -161,13 +166,13 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void AllocationBudget_IntMath()
 		{
-			AssertLuaBudget("int_math", "return function(n) local x = 1 for i = 1, n do x = (x * 31 + i) % 1000003 end return x end", 0);
+			AssertLuaBudget("int_math", "return function(n) local x = 1 for i = 1, n do x = (x * 31 + i) % 1000003 end return x end", NoAllocation);
 		}
 
 		[Test]
 		public void AllocationBudget_FloatMath()
 		{
-			AssertLuaBudget("float_math", "return function(n) local x, y = 0.5, 0.25 for i = 1, n do x = x * 0.5 + y * 0.25 y = y * 0.5 + x / 3.0 + 0.001 end return x + y end", 0);
+			AssertLuaBudget("float_math", "return function(n) local x, y = 0.5, 0.25 for i = 1, n do x = x * 0.5 + y * 0.25 y = y * 0.5 + x / 3.0 + 0.001 end return x + y end", NoAllocation);
 		}
 
 		[Test]
@@ -180,7 +185,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		public void AllocationBudget_FibRecursive()
 		{
 			// One iteration is fib(12): 465 Lua calls.
-			AssertLuaBudget("fib_recursive", "local function fib(n) if n < 2 then return n end return fib(n - 1) + fib(n - 2) end\nreturn function(n) local s = 0 for i = 1, n do s = s + fib(12) end return s end", 0, 40);
+			AssertLuaBudget("fib_recursive", "local function fib(n) if n < 2 then return n end return fib(n - 1) + fib(n - 2) end\nreturn function(n) local s = 0 for i = 1, n do s = s + fib(12) end return s end", NoAllocation, 40);
 		}
 
 		[Test]

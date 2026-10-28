@@ -52,9 +52,14 @@ using MoonSharp.Interpreter.Interop.LuaStateInterop;
 using lua_Integer = System.Int32;
 using ptrdiff_t = System.Int32;
 
-namespace MoonSharp.Interpreter.CoreLib.StringLib
+namespace MoonSharp.Interpreter.Tests.EndToEnd
 {
-	internal class KopiLua_StringLib : LuaBase
+	/// <summary>
+	/// The KopiLua pattern matcher (string.find, match, gmatch, gsub) that MoonSharp used before
+	/// LuaPatterns, kept verbatim as a test oracle (KopiLua_StringLib from the interpreter at a3f40d2).
+	/// The interpreter no longer contains it; StringPatternTests compares the new matcher against it.
+	/// </summary>
+	internal class KopiLuaPatternOracle : LuaBase
 	{
 		public const int LUA_MAXCAPTURES = 32;
 

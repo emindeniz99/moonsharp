@@ -319,15 +319,9 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual("progress 50%", Encoding.UTF8.GetString(output.ToArray()));
 		}
 
-		// ---------------------------------------------------------------------------------------
-		// Bugs that reproduce in code owned by work running in parallel. Each test fails today and
-		// is ignored until that work picks it up; remove the Ignore with the fix.
-		// ---------------------------------------------------------------------------------------
-
 		// https://github.com/moonsharp-devs/moonsharp/issues/318: trimming a string longer than a
 		// few dozen characters with the common '^%s*(.-)%s*$' idiom failed with "pattern too complex".
 		[Test]
-		[Ignore("waits for string library work: https://github.com/moonsharp-devs/moonsharp/issues/318")]
 		public void Issue318_TrimIdiomWorksOnLongStrings()
 		{
 			Script s = new Script();
@@ -340,7 +334,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		// https://github.com/moonsharp-devs/moonsharp/issues/187 (upstream PR #184): patterns compared
 		// only the low byte of each UTF-16 unit, so '\n' (0x0A) also matched U+4E0A and the reverse.
 		[Test]
-		[Ignore("waits for string library work: https://github.com/moonsharp-devs/moonsharp/issues/187")]
 		public void Issue187_PatternsCompareWholeCharacters()
 		{
 			Script s = new Script();
@@ -355,7 +348,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		// https://github.com/moonsharp-devs/moonsharp/issues/134: %p used Char.IsPunctuation, which
 		// leaves out symbols C's ispunct counts ('=', '+', '$', '<', '|', '~', '^', '`').
 		[Test]
-		[Ignore("waits for string library work: https://github.com/moonsharp-devs/moonsharp/issues/134")]
 		public void Issue134_PunctuationClassMatchesAsciiPunctuation()
 		{
 			Script s = new Script();
@@ -364,6 +356,11 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 			Assert.AreEqual("abc", r.Tuple[0].String);
 		}
+
+		// ---------------------------------------------------------------------------------------
+		// Bugs that reproduce in code owned by work running in parallel. Each test fails today and
+		// is ignored until that work picks it up; remove the Ignore with the fix.
+		// ---------------------------------------------------------------------------------------
 
 		// https://github.com/moonsharp-devs/moonsharp/issues/275 (upstream PR #280): Lua 5.2 formats
 		// any value with %s through tostring; MoonSharp rejected nil and tables.

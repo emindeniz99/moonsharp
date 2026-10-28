@@ -41,6 +41,7 @@ chat or a pull request.
 | standing | Safe C# only: no `unsafe`, no `System.Runtime.CompilerServices.Unsafe`. Public Unity mechanisms only: no libil2cpp patches. | Bugs must stay exceptions, not memory corruption. The `Unsafe` package also fails to load in some Unity 6 setups ([Lua-CSharp#337](https://github.com/nuskey8/Lua-CSharp/issues/337)). |
 | 2026-10-28 | Work collects on the `next` branch and lands on `master` in batches with `git merge --no-ff`, after the full unit suite and the fixtures pass locally. Pull requests are optional. CI runs on pushes to `master` (not for docs-only changes), and a red `master` is fixed forward first. | Fewer round trips and fewer CI runs. CI does not run on branches, so local checks come first. |
 | 2026-10-28 | The development toolchain is pinned in `mise.toml` (.NET SDK 10 with the .NET 8 runtime, Java 17, Maven, Node 24, CMake), following the shared stack's toolchain rules; CI installs it with `jdx/mise-action`. clang and zlib come from apt. | Local and CI builds use the same exact versions instead of whatever a machine or runner image carries. mise offers clang only through conda, whose sysroot fails the NativeAOT link (`cannot find -lz`). |
+| 2026-10-28 | The userdata source generator references Microsoft.CodeAnalysis 3.8 and implements `ISourceGenerator`; generated descriptors register only when the host calls `GeneratedUserData.RegisterAll()` or `CreateDescriptor`. | The 2021.3 and 2022.3 manuals require 3.8, a generator built for a newer compiler does not load in an older one, and two builds would both run in newer editors. Explicit registration follows the mobile decision above. See [source-generator.md](source-generator.md). |
 | standing | Every performance change carries A/B numbers from `src/DevTools/Benchmarks`; every fix carries a test that fails without it. | See [upstream.md](upstream.md). |
 
 ## Platform targets
@@ -58,7 +59,7 @@ What Unity 2021.3 support means for the code:
 
 - The interpreter targets `netstandard2.0` and `net45`; new code must build for both.
 - No code generation at run time on IL2CPP: no `Reflection.Emit`, no compiled expression trees on AOT paths.
-- Any Roslyn source generator must load in Unity 2021.3's compiler. Check the supported Roslyn version before building one.
+- A Roslyn source generator must load in every supported line's compiler: `MoonSharp.SourceGenerator` references Microsoft.CodeAnalysis 3.8 for that reason ([source-generator.md](source-generator.md#roslyn-version)).
 - Code that Unity compiles (the package, the test sources) must stay within C# 9, the newest version Unity 2021.3 to Unity 6 support.
 - The UPM manifest declares `"unity": "2021.3"`.
 
@@ -80,6 +81,7 @@ What Unity 2021.3 support means for the code:
 | branch `feat/conformance-corpus` | Cross-host conformance corpus: 225 cases in 8 suites (numbers, strings, patterns, tables, errors, JSON, int64, logic) run by the .NET CLI (also from precompiled bytecode and under a decimal-comma culture), Chromium and the three Java transports, each checked against its own known-failures file in both directions. `moonsharp-host compile` writes bytecode with source locations; every transport can create int64 contexts. See [src/Hosting/fixtures/README.md](../src/Hosting/fixtures/README.md). |
 | branch `feat/exact-int64` | Exact 64-bit integers: opt-in `int64`/`uint64` values (`CoreModules.Int64`), CLR `long`/`ulong` in both directions (`ScriptOptions.ExactInt64Interop` for CLR to Lua), exact JSON on request. See [int64.md](int64.md). |
 | branch `feat/luacats-generator` | LuaCATS definitions generated from the registry and globals of a configured `Script` (`src/Tools/MoonSharp.LuaCats`, `moonsharp-luacats` CLI with `--check`), checked with lua-language-server 3.19.1 in a new workflow. Explicit registration for mobile hosts documented and tested; no runtime change was needed. See [luacats.md](luacats.md) and [registration.md](registration.md). |
+| branch `feat/source-generator` | A Roslyn source generator writes userdata descriptors at compile time for `[MoonSharpUserData]` types and types listed with `[assembly: MoonSharpUserDataTypes]`: typed argument and result conversion, one `switch` per type, structs changed in place, per-member reflection fallback with a diagnostic, explicit registration (`GeneratedUserData.RegisterAll()`). Shipped in the UPM package. Results and error texts match reflection in the parity suite, and 20 interop fixtures pass on generated descriptors. See [source-generator.md](source-generator.md). |
 
 ## In progress
 
@@ -112,7 +114,6 @@ After step 4: the checkpoint in the decisions table.
 - Choose argument converters once per parameter, not per call.
 - Hash userdata by identity so userdata keys do not all collide.
 - Call Lua from C# with typed arguments and no boxing.
-- A Roslyn source generator that emits the descriptors Hardwire produces today, at compile time. IL2CPP needs no run-time code generation, and members are found with a `switch`.
 
 - Found with the NativeAOT suite, not fixed:
   - `CallbackFunction.FromDelegate` caches descriptors in a `ConditionalWeakTable` keyed by `Delegate.Method`. NativeAOT returns a new `MethodInfo` on every read (measured: `ReferenceEquals(d.Method, d.Method)` is false), so the cache never hits there and each conversion builds a descriptor. Key it by equality. IL2CPP not measured.
@@ -155,6 +156,7 @@ After step 4: the checkpoint in the decisions table.
   - typed host global functions: a global set from a delegate is declared `fun(...): any`, because a `CallbackFunction` keeps no signature;
   - `T?` for C# nullable reference annotations (only `Nullable<T>` is read today);
   - move the lua-language-server pin to 3.19.2 once its release digests have been read.
+- Source generator follow-ups ([source-generator.md](source-generator.md#follow-ups)): run it in the Unity matrix (needs the secrets); overload dispatch with precomputed checks when no custom converter is registered; a typed call convention for generated members once the VM has one; a `link.xml` fragment for the members it binds by reflection.
 - Convert script functions to delegate parameters (`Action<T>`, `Func<T>`). Today only `Closure` and `ScriptFunctionDelegate` parameters take a function, unless the host adds a custom converter; the LuaCATS generator reports such parameters.
 - The Teal vs TypeScriptToLua trial from the decisions table.
 - A Debug Adapter Protocol server, so any editor can debug scripts.

@@ -66,6 +66,7 @@ Install options:
 README
 
   generate_unity_metas_recursive "$CORE_OUT_DIR" "org.moonsharp.moonsharp"
+  upm_add_source_generator "$CORE_OUT_DIR/Runtime" "org.moonsharp.moonsharp"
 
   echo "Staged: $CORE_OUT_DIR"
 }

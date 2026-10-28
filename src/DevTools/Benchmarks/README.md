@@ -47,7 +47,9 @@ dotnet run -c Release --project src/DevTools/Benchmarks -- workloads 7
 
 `int64_math` is left out (it needs Lua 5.3 integers). `table_sort_52` copies
 with a loop because Lua 5.2 has no `table.move`; its seed arithmetic exceeds
-2^53, so its check value differs from Lua 5.3+.
+2^53, so its check value differs from Lua 5.3+. `table_insert_len_10k` and
+`table_remove_readd_10k` are MoonSharp-only: they track table operations whose
+cost used to grow with the table size.
 
 ## Notes
 

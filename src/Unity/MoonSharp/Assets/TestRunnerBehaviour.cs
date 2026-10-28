@@ -177,6 +177,7 @@ public class TestRunnerBehaviour : MonoBehaviour
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.SimpleTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.StringLibTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.StructAssignmentTechnique),
+            typeof(MoonSharp.Interpreter.Tests.EndToEnd.TableStorageTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.TableTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.TailCallTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.UserDataEnumsTests),

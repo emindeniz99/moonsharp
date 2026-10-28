@@ -14,9 +14,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Thread safety: any thread may call any method. Each context has a lock on the .NET side, so calls
  * on one context run one at a time; for parallel calls give each thread its own context.
  *
- * <p>What the process boundary of {@link MoonSharpWorker} protected against now reaches the JVM: a .NET
- * stack overflow or a fatal runtime error ends the JVM, and a script that never returns cannot be
- * stopped (interrupting the Java thread has no effect while it runs .NET code). See docs/hosting.md.
+ * <p>What the process boundary of {@link MoonSharpWorker} protected against now reaches the JVM. Recursion
+ * through CLR callbacks is a Lua error ("C stack overflow"), but a fatal .NET error ends the JVM, and a
+ * script that never returns holds its thread (interrupting the Java thread has no effect while it runs
+ * .NET code) unless its context has a limit: create contexts with {@link ContextOptions} limits, and cap
+ * the .NET heap with DOTNET_GCHeapHardLimit. See docs/hosting.md, "Java: in process".
  *
  * <p>The .NET runtime cannot be unloaded: {@link #close()} drops this instance's contexts, and the
  * runtime stays loaded until the JVM exits. Only one backend can be loaded per process.

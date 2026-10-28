@@ -52,7 +52,7 @@ chat or a pull request.
 | .NET 8 / .NET 10 | Tested in CI (unit tests, fixtures). |
 | Browser (.NET 10 WebAssembly) | Chromium tested in CI with Playwright. Firefox and WebKit not tested. |
 | Java 17+ (worker process) | Tested in CI, with a Spring Boot 4 sample. |
-| Java in-process (hostfxr or NativeAOT) | Experimental, Linux x64: fixtures pass with CoreCLR and NativeAOT on branch `feat/jvm-in-process`. The worker stays the default ([hosting.md](hosting.md)). |
+| Java in-process (hostfxr or NativeAOT) | Supported option, Linux x64, with per-call limits and a capped .NET heap: fixtures pass with CoreCLR and NativeAOT, and recursion through callbacks and endless loops come back as errors instead of ending or holding the JVM. The worker stays the default ([hosting.md](hosting.md), "Java: in process"). |
 | NativeAOT (.NET 8), as a stand-in for IL2CPP | The unit suite runs in CI (`nativeaot-unit` in `ci.yml`): all tests pass, none on the known-failures list. How well it predicts IL2CPP is unmeasured ([hosting.md](hosting.md), "The unit suite under NativeAOT"). |
 | Unity 2021.3 / 2022.3 / 6 LTS, Mono and IL2CPP | **Not run yet.** `.github/workflows/unity.yml` runs the suite in the editor and in a Linux IL2CPP player on 2021.3.45f2, 2022.3.62f3 and 6000.0.85f1 once the licence secrets exist. Without Unity: the test bed compiles with each line's own compiler and references, and its assemblies pass the suite on .NET. |
 
@@ -85,6 +85,7 @@ What Unity 2021.3 support means for the code:
 | branch `perf/table-array-part` | Tables store integer keys 1..n in an array part and every other key in one compact hash part kept in insertion order, so `pairs` and JSON keep their order (decision above). Every dead key is forgotten at the next insert and hosts no longer see keys set to nil; upstream #308, #315 and PR #179 fixed. Against `next` with struct values (A/B, 21 rounds): `table_array_insert` 0.51, `record_build_read` 0.62, `gc_small_tables` 0.69, `table_sort_52` 0.74 (allocation 60 KB to 19 KB), `table_insert_len_10k` 0.79, `hash_delete_reinsert` 0.83, reads and `pairs` 0.93-1.02. Retained bytes per table: `{}` 264 to 136, 4 string keys 975 to 455, 16 array items 2407 to 287. See [MIGRATING.md](MIGRATING.md). |
 | branch `feat/luacats-generator` | LuaCATS definitions generated from the registry and globals of a configured `Script` (`src/Tools/MoonSharp.LuaCats`, `moonsharp-luacats` CLI with `--check`), checked with lua-language-server 3.19.1 in a new workflow. Explicit registration for mobile hosts documented and tested; no runtime change was needed. See [luacats.md](luacats.md) and [registration.md](registration.md). |
 | branch `feat/source-generator` | A Roslyn source generator writes userdata descriptors at compile time for `[MoonSharpUserData]` types and types listed with `[assembly: MoonSharpUserDataTypes]`: typed argument and result conversion, one `switch` per type, structs changed in place, per-member reflection fallback with a diagnostic, explicit registration (`GeneratedUserData.RegisterAll()`). Shipped in the UPM package. Results and error texts match reflection in the parity suite, and 20 interop fixtures pass on generated descriptors. See [source-generator.md](source-generator.md). |
+| branch `feat/hosting-hardening` | Per-call instruction and time limits in the hosting contract (`instructionLimit`, `timeLimitMs`, error kind `interrupted`) on the CLI worker, the browser and Web Worker API, the Java worker, pool and both in-process backends; `limits` and `time-limit` corpus suites (244 cases on every host). The JVM crash probes rerun: recursion through `gsub` or `sort` callbacks is a "C stack overflow" error on CoreCLR and NativeAOT in process (it used to end the JVM), an endless loop with a limit returns `interrupted` in 15–126 ms, and an allocation without bound is a `host` error once `DOTNET_GCHeapHardLimit` caps the .NET heap. In process becomes a supported option; the worker stays the default ([hosting.md](hosting.md)). |
 | branch `fix/interop-decisions` | The owner's interop decisions: a fractional number picks a floating-point overload and the overload cache tells whole from fractional numbers ([#293](https://github.com/moonsharp-devs/moonsharp/issues/293); `overload_call` interop workload B/A 0.95 to 0.98 against `next` after the struct-value merge, inside noise); an exact type match beats a custom converter ([#294](https://github.com/moonsharp-devs/moonsharp/issues/294)); derived types expose their base classes' static members, except those declared in the core library ([#175](https://github.com/moonsharp-devs/moonsharp/issues/175)); lists and dictionaries become tables under automatic registration ([#274](https://github.com/moonsharp-devs/moonsharp/issues/274)). `MoonSharp.Interpreter.dll` (netstandard2.0 Release) 416,256 to 417,792 bytes (+1,536). The source generator follows the #175 rule. See [MIGRATING.md](MIGRATING.md). |
 
 ## In progress
@@ -93,7 +94,6 @@ What Unity 2021.3 support means for the code:
 |---|---|
 | Measured comparison with Lua-CSharp on the same workloads | report pending |
 | Comparison of other engines (Lua-CSharp, Luau, Jint, xLua, xlua-ng, WattleScript, UniLua and others) and a profile of MoonSharp | to be published under `docs/research/` |
-| In-process JVM hosting | branch `feat/jvm-in-process` |
 
 ## Next: the VM, in order
 
@@ -143,6 +143,7 @@ register VM (option C, PLAN B5) is due.
   an enclosing `for` reads them as its own counters and fails with "stack overflow" (reproduced on
   `next`; found while testing the struct values).
 
+- An `__index` function that indexes its own table (`__index = function(t, k) return t[k] end`) runs forever without growing any stack, where Lua 5.2 raises "C stack overflow"; found with the hosting limits, which now stop it (corpus case `limits / an __index function that indexes its own table is interrupted`).
 - Run the official Lua 5.2 test suite and track failures.
 - Name the variable in runtime errors ("attempt to call a nil value (global 'foo')").
 - A `Script` keeps every chunk it compiles, so a long-lived `Script` that compiles in a loop grows without bound.
@@ -172,7 +173,11 @@ register VM (option C, PLAN B5) is due.
 - Run the bytecode leg of the corpus on the browser and Java hosts too (they accept the base64 dump text today; only the .NET runner compiles).
 - The JSON contract for int64 results (the decision above): today a context with int64 returns them as an `output` error.
 - Publish per-host corpus results over time, as JsonLogic's compat tables do.
-- In-process JVM hosting as the default: the native stack guard and the execution budget (`ScriptOptions.InterruptHandler`) now exist; the hosting layer needs an error kind for an interrupted script, then a new measurement against the worker.
+- Hosting limits follow-ups ([hosting.md](hosting.md), "Limits"):
+  - a single long library call (`gsub`, `rep`, `sort` without a comparator) is not interrupted: one `gsub` over 20 million characters ran 2.8–3.3 s under a 100 ms limit. Checking the limit inside the long string and table loops would need the VM-core files;
+  - no memory limit per context: in process one capped .NET heap serves every context;
+  - cancelling a running call from another thread (for example a Java `Future.cancel` reaching the context), on top of the time limit;
+  - in-process builds for macOS and Windows, which the default would need.
 - Browser: AOT-compiled WebAssembly against the interpreter build; Firefox and WebKit tests.
 - From upstream feature requests ([upstream-issues.md](upstream-issues.md)):
   - convert Lua functions to `Action` and `Func<...>` parameters (upstream #186), with the typed calls from C# to Lua above;

@@ -16,6 +16,11 @@ namespace MoonSharp.Interpreter.Execution
 		// after an error the context is dropped, so nothing needs to.
 		public int SyntaxDepth;
 
+		// Values the loops around the statement being parsed keep on the value stack, within the current
+		// function: 3 per numeric for (limit, step, counter), 1 per generic for (its iterator state). A goto
+		// that leaves loops pops the difference (GotoStatement).
+		public int LoopStackValues;
+
 		public void EnterSyntaxLevel()
 		{
 			if (++SyntaxDepth > VM.Processor.MAX_NATIVE_NESTING)

@@ -16,6 +16,7 @@ namespace MoonSharp.Interpreter.Tree.Statements
 
 		List<GotoStatement> m_Gotos = new List<GotoStatement>();
 		RuntimeScopeBlock m_StackFrame;
+		int m_LoopStackValues;
 
 
 		public LabelStatement(ScriptLoadingContext lcontext)
@@ -27,6 +28,7 @@ namespace MoonSharp.Interpreter.Tree.Statements
 
 			SourceRef = NameToken.GetSourceRef();
 			Label = NameToken.Text;
+			m_LoopStackValues = lcontext.LoopStackValues;
 
 			lcontext.Scope.DefineLabel(this);
 		}
@@ -40,6 +42,7 @@ namespace MoonSharp.Interpreter.Tree.Statements
 		internal void RegisterGoto(GotoStatement gotostat)
 		{
 			m_Gotos.Add(gotostat);
+			gotostat.SetLabelLoopStackValues(m_LoopStackValues);
 		}
 
 

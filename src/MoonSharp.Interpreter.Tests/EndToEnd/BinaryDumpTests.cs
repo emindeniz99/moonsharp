@@ -369,9 +369,10 @@ return y;
 			Assert.AreEqual(2.5, divide.Function.Call(5, 2).Number);
 		}
 
-		// A dump without locations is the previous format, byte for byte, for size-sensitive assets.
+		// A dump without locations, for size-sensitive assets, is the dump with locations without the
+		// location table at its end, under its own version (0x153; 0x154 has locations).
 		[Test]
-		public void BinDump_WithoutLocationsWritesPreviousFormat()
+		public void BinDump_WithoutLocationsLeavesOutTheLocationTable()
 		{
 			Script s1 = new Script();
 			DynValue func = s1.DoString(DivideSource);
@@ -382,8 +383,18 @@ return y;
 				s1.Dump(func, withLocations);
 				s1.Dump(func, without, false);
 
-				CollectionAssert.AreEqual(Convert.FromBase64String(DivideDump0x151), without.ToArray());
-				Assert.Greater(withLocations.Length, without.Length);
+				byte[] w = withLocations.ToArray();
+				byte[] wo = without.ToArray();
+
+				// The version follows the 8-byte magic as a marker byte (0x7F) and a 16-bit value.
+				Assert.AreEqual(0x154, (int)BitConverter.ToInt16(w, 9));
+				Assert.AreEqual(0x153, (int)BitConverter.ToInt16(wo, 9));
+				Assert.Greater(w.Length, wo.Length);
+
+				for (int i = 11; i < wo.Length; i++)
+					Assert.AreEqual(w[i], wo[i], "byte " + i);
+
+				Assert.AreEqual(2.5, new Script().LoadStream(new MemoryStream(wo)).Function.Call(5, 2).Number);
 			}
 		}
 

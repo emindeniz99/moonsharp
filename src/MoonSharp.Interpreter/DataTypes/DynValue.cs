@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Runtime.CompilerServices;
 
 namespace MoonSharp.Interpreter
 {
@@ -12,19 +13,36 @@ namespace MoonSharp.Interpreter
 	{
 		static int s_RefIDCounter = 0;
 
-		private int m_RefID = ++s_RefIDCounter;
-		private int m_HashCode = -1;
-
-		private bool m_ReadOnly;
-		private double m_Number;
+		// 40 bytes on 64-bit runtimes: the object, the number, the reference id, the type as a byte and the
+		// read-only flag. The reference id is assigned on first read, so creating a value writes no shared
+		// counter, and the hash code is computed when asked instead of cached.
 		private object m_Object;
-		private DataType m_Type;
+		private double m_Number;
+		private int m_RefID;
+		private byte m_TypeCode;
+		private bool m_ReadOnly;
+
+		private DataType m_Type
+		{
+			get { return (DataType)m_TypeCode; }
+			set { m_TypeCode = (byte)value; }
+		}
 
 
 		/// <summary>
-		/// Gets a unique reference identifier. This is guaranteed to be unique only for dynvalues created in a single thread as it's not thread-safe.
+		/// Gets a unique reference identifier, assigned the first time it is read. This is guaranteed to be
+		/// unique only for dynvalues created in a single thread as it's not thread-safe.
 		/// </summary>
-		public int ReferenceID { get { return m_RefID; } }
+		public int ReferenceID
+		{
+			get
+			{
+				if (m_RefID == 0)
+					m_RefID = ++s_RefIDCounter;
+
+				return m_RefID;
+			}
+		}
 
 		/// <summary>
 		/// Gets the type of the value.
@@ -113,6 +131,96 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
+		/// The VM's struct form of this value (see <see cref="Execution.VM.LuaValue"/>).
+		/// </summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		internal Execution.VM.LuaValue ToLuaValue()
+		{
+			Execution.VM.LuaValue v;
+			v.Type = m_Type;
+			v.Number = m_Number;
+
+			if (m_Type == DataType.Tuple || m_Type == DataType.TailCallRequest || m_Type == DataType.YieldRequest)
+				v.Object = this;
+			else
+				v.Object = m_Object;
+
+			return v;
+		}
+
+		// Read-only instances for the integers -256..4095, the numbers scripts produce most (counters,
+		// indices, small arithmetic), so handing them out of the VM does not allocate. Jint caches its
+		// JsNumber values the same way:
+		// https://github.com/sebastienros/jint/blob/9ec2352c222dff6b7bff806d16b087cf0f1e6384/Jint/Native/JsNumber.cs#L21-L47
+		const int SMALL_INT_MIN = -256;
+		const int SMALL_INT_MAX = 4095;
+		static readonly DynValue[] s_SmallInts = CreateSmallInts();
+
+		static DynValue[] CreateSmallInts()
+		{
+			DynValue[] values = new DynValue[SMALL_INT_MAX - SMALL_INT_MIN + 1];
+
+			for (int i = 0; i < values.Length; i++)
+				values[i] = new DynValue() { m_Number = i + SMALL_INT_MIN, m_Type = DataType.Number, m_ReadOnly = true };
+
+			return values;
+		}
+
+		/// <summary>
+		/// A read-only number value, shared for small integers (not for -0, which must stay -0).
+		/// </summary>
+		internal static DynValue FromNumber(double num)
+		{
+			if (num >= SMALL_INT_MIN && num <= SMALL_INT_MAX)
+			{
+				int i = (int)num;
+
+				if (i == num && (i != 0 || BitConverter.DoubleToInt64Bits(num) == 0))
+					return s_SmallInts[i - SMALL_INT_MIN];
+			}
+
+			return new DynValue() { m_Number = num, m_Type = DataType.Number, m_ReadOnly = true };
+		}
+
+		/// <summary>
+		/// A read-only <see cref="DynValue"/> holding the VM value <paramref name="v"/>.
+		/// </summary>
+		internal static DynValue FromLuaValue(ref Execution.VM.LuaValue v)
+		{
+			switch (v.Type)
+			{
+				case DataType.Nil:
+					return Nil;
+				case DataType.Void:
+					return Void;
+				case DataType.Boolean:
+					return v.Number != 0 ? True : False;
+				case DataType.Number:
+					return FromNumber(v.Number);
+				case DataType.Tuple:
+				case DataType.TailCallRequest:
+				case DataType.YieldRequest:
+					{
+						DynValue d = v.Object as DynValue;
+
+						if (d != null)
+							return d;
+
+						// The generic for's iterator state.
+						Execution.VM.LuaValue[] values = (Execution.VM.LuaValue[])v.Object;
+						DynValue[] tuple = new DynValue[values.Length];
+
+						for (int i = 0; i < values.Length; i++)
+							tuple[i] = values[i].ToDynValue();
+
+						return new DynValue() { m_Object = tuple, m_Type = DataType.Tuple, m_ReadOnly = true };
+					}
+				default:
+					return new DynValue() { m_Object = v.Object, m_Type = v.Type, m_ReadOnly = true };
+			}
+		}
+
+		/// <summary>
 		/// Creates a new writable value initialized to the specified number.
 		/// </summary>
 		public static DynValue NewNumber(double num)
@@ -121,7 +229,6 @@ namespace MoonSharp.Interpreter
 			{
 				m_Number = num,
 				m_Type = DataType.Number,
-				m_HashCode = -1,
 			};
 		}
 
@@ -413,7 +520,6 @@ namespace MoonSharp.Interpreter
 			DynValue v = new DynValue();
 			v.m_Object = this.m_Object;
 			v.m_Number = this.m_Number;
-			v.m_HashCode = this.m_HashCode;
 			v.m_Type = this.m_Type;
 			v.m_ReadOnly = readOnly;
 			return v;
@@ -447,8 +553,14 @@ namespace MoonSharp.Interpreter
 		public static DynValue False { get; private set; }
 
 
+		/// <summary>
+		/// A read-only tuple of no values: the varargs of a call that passes none to '...'.
+		/// </summary>
+		internal static DynValue EmptyTuple { get; private set; }
+
 		static DynValue()
 		{
+			EmptyTuple = new DynValue() { m_Object = new DynValue[0], m_Type = DataType.Tuple, m_ReadOnly = true };
 			Nil = new DynValue() { m_Type = DataType.Nil }.AsReadOnly();
 			Void = new DynValue() { m_Type = DataType.Void }.AsReadOnly();
 			True = DynValue.NewBoolean(true).AsReadOnly();
@@ -574,60 +686,44 @@ namespace MoonSharp.Interpreter
 		/// </returns>
 		public override int GetHashCode()
 		{
-			if (m_HashCode != -1)
-				return m_HashCode;
-
 			int baseValue = ((int)(Type)) << 27;
 
 			switch (Type)
 			{
 				case DataType.Void:
 				case DataType.Nil:
-					m_HashCode = 0;
-					break;
+					return 0;
 				case DataType.Boolean:
-					m_HashCode = Boolean ? 1 : 2;
-					break;
+					return Boolean ? 1 : 2;
 				case DataType.Number:
-					m_HashCode = baseValue ^ Number.GetHashCode();
-					break;
+					return baseValue ^ Number.GetHashCode();
 				case DataType.String:
-					m_HashCode = baseValue ^ String.GetHashCode();
-					break;
+					return baseValue ^ String.GetHashCode();
 				case DataType.Function:
-					m_HashCode = baseValue ^ Function.GetHashCode();
-					break;
+					return baseValue ^ Function.GetHashCode();
 				case DataType.ClrFunction:
-					m_HashCode = baseValue ^ Callback.GetHashCode();
-					break;
+					return baseValue ^ Callback.GetHashCode();
 				case DataType.Table:
-					m_HashCode = baseValue ^ Table.GetHashCode();
-					break;
+					return baseValue ^ Table.GetHashCode();
 				case DataType.Tuple:
 				case DataType.TailCallRequest:
-					m_HashCode = baseValue ^ Tuple.GetHashCode();
-					break;
+					return baseValue ^ Tuple.GetHashCode();
 				case DataType.UserData:
 					{
 						// int64 and uint64 values are immutable and equal by value, so they can hash
 						// by value too. Other userdata never hash by the object's own GetHashCode: their
-						// Equals may depend on mutable state, and this hash is cached.
+						// Equals may depend on mutable state.
 						object o = UserData.Object;
 						if (o is LuaInt64 || o is LuaUInt64)
-							m_HashCode = baseValue ^ o.GetHashCode();
+							return baseValue ^ o.GetHashCode();
 						else
-							m_HashCode = baseValue ^ UserData.GetHashCodeForEquals();
+							return baseValue ^ UserData.GetHashCodeForEquals();
 					}
-					break;
 				case DataType.Thread:
-					m_HashCode = baseValue ^ System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Coroutine);
-					break;
+					return baseValue ^ System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Coroutine);
 				default:
-					m_HashCode = 999;
-					break;
+					return 999;
 			}
-
-			return m_HashCode;
 		}
 
 		/// <summary>
@@ -787,7 +883,6 @@ namespace MoonSharp.Interpreter
 			this.m_Number = value.m_Number;
 			this.m_Object = value.m_Object;
 			this.m_Type = value.Type;
-			this.m_HashCode = -1;
 		}
 
 

@@ -67,10 +67,12 @@ namespace MoonSharp.Interpreter.Tree.Statements
 			m_Start.Compile(bc);
 			bc.Emit_ToNum(1);
 
+			// The block's slots are cleared once here; every iteration ends with Emit_Leave, which closes
+			// and clears them again, so the next iteration starts with a fresh local.
+			bc.Emit_Enter(m_StackFrame);
+
 			int start = bc.GetJumpPointForNextInstruction();
 			var jumpend = bc.Emit_Jump(OpCode.JFor, -1);
-			bc.Emit_Enter(m_StackFrame);
-			//bc.Emit_SymStorN(m_VarName);
 
 			bc.Emit_Store(m_VarName, 0, 0);
 

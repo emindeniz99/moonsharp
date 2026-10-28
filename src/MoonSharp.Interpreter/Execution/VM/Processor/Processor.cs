@@ -11,14 +11,16 @@ namespace MoonSharp.Interpreter.Execution.VM
 	{
 		// Maximum stack depths. The stacks start small and grow on demand, so an idle Script or
 		// coroutine does not hold two arrays of this size.
+		// Slots are 24-byte structs (values) and frames are structs too, so the initial arrays stay small:
+		// 64 values and 8 frames are 1.5 KB and about 0.6 KB, as much as 256 and 64 references were.
 		const int STACK_SIZE = 131072;
-		const int INITIAL_VALUE_STACK_SIZE = 256;
-		const int INITIAL_EXECUTION_STACK_SIZE = 64;
+		const int INITIAL_VALUE_STACK_SIZE = 64;
+		const int INITIAL_EXECUTION_STACK_SIZE = 8;
 
 		ByteCode m_RootChunk;
 
-		FastStack<DynValue> m_ValueStack;
-		FastStack<CallStackItem> m_ExecutionStack;
+		ValueStack m_ValueStack;
+		CallStack m_ExecutionStack;
 		List<Processor> m_CoroutinesStack;
 
 		Table m_GlobalTable;
@@ -29,11 +31,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 		int m_SavedInstructionPtr = -1;
 		DebugContext m_Debug;
 
+		// Open upvalues of this processor's stack, sorted by stack index, highest first (lfunc.c's openupval).
+		Upvalue m_OpenUpvalues;
+
 
 		public Processor(Script script, Table globalContext, ByteCode byteCode)
 		{
-			m_ValueStack = new FastStack<DynValue>(INITIAL_VALUE_STACK_SIZE, STACK_SIZE);
-			m_ExecutionStack = new FastStack<CallStackItem>(INITIAL_EXECUTION_STACK_SIZE, STACK_SIZE);
+			m_ValueStack = new ValueStack(INITIAL_VALUE_STACK_SIZE, STACK_SIZE);
+			m_ExecutionStack = new CallStack(INITIAL_EXECUTION_STACK_SIZE, STACK_SIZE);
 			m_CoroutinesStack = new List<Processor>();
 
 			m_Debug = new DebugContext();
@@ -46,8 +51,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private Processor(Processor parentProcessor)
 		{
-			m_ValueStack = new FastStack<DynValue>(INITIAL_VALUE_STACK_SIZE, STACK_SIZE);
-			m_ExecutionStack = new FastStack<CallStackItem>(INITIAL_EXECUTION_STACK_SIZE, STACK_SIZE);
+			m_ValueStack = new ValueStack(INITIAL_VALUE_STACK_SIZE, STACK_SIZE);
+			m_ExecutionStack = new CallStack(INITIAL_EXECUTION_STACK_SIZE, STACK_SIZE);
 			m_Debug = parentProcessor.m_Debug;
 			m_RootChunk = parentProcessor.m_RootChunk;
 			m_GlobalTable = parentProcessor.m_GlobalTable;
@@ -104,6 +109,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 					// shrinks the stack. A finally block, not catch and rethrow: see Processing_Loop.
 					if (!completed)
 					{
+						CloseUpvalues(valueStackBase);
 						m_ValueStack.CropAtCount(valueStackBase);
 						m_ExecutionStack.CropAtCount(executionStackBase);
 					}
@@ -126,7 +132,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		private int PushClrToScriptStackFrame(CallStackItemFlags flags, DynValue function, DynValue[] args)
 		{
 			if (function == null)
-				function = m_ValueStack.Peek();
+				function = m_ValueStack.Peek().ToDynValue();
 			else
 				m_ValueStack.Push(function);  // func val
 
@@ -135,16 +141,15 @@ namespace MoonSharp.Interpreter.Execution.VM
 			for (int i = 0; i < args.Length; i++)
 				m_ValueStack.Push(args[i]);
 
-			m_ExecutionStack.Push(new CallStackItem()
-			{
-				BasePointer = m_ValueStack.Count,
-				ArgCount = args.Length,
-				Debug_EntryPoint = function.Function.EntryPointByteCodeLocation,
-				ReturnAddress = -1,
-				ClosureScope = function.Function.ClosureContext,
-				CallingSourceRef = SourceRef.GetClrLocation(),
-				Flags = flags
-			});
+			ref CallStackItem frame = ref m_ExecutionStack.Push();
+			frame.BasePointer = m_ValueStack.Count;
+			frame.ArgCount = args.Length;
+			frame.Debug_EntryPoint = function.Function.EntryPointByteCodeLocation;
+			frame.ReturnAddress = -1;
+			frame.Function = function.Function;
+			frame.Upvalues = function.Function.Upvalues;
+			frame.CallingSourceRef = SourceRef.GetClrLocation();
+			frame.Flags = flags;
 
 			return function.Function.EntryPointByteCodeLocation;
 		}
@@ -233,6 +238,53 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 
 			t_NativeNesting++;
+		}
+
+		/// <summary>
+		/// Returns the open upvalue for the value stack slot at <paramref name="index"/>, creating it if no
+		/// closure captured that slot yet, so closures that capture one variable share one upvalue.
+		/// </summary>
+		private Upvalue FindUpvalue(int index)
+		{
+			Upvalue previous = null;
+			Upvalue current = m_OpenUpvalues;
+
+			while (current != null && current.Index > index)
+			{
+				previous = current;
+				current = current.NextOpen;
+			}
+
+			if (current != null && current.Index == index)
+				return current;
+
+			Upvalue created = new Upvalue(m_ValueStack, index) { NextOpen = current };
+
+			if (previous == null)
+				m_OpenUpvalues = created;
+			else
+				previous.NextOpen = created;
+
+			return created;
+		}
+
+		/// <summary>
+		/// Closes the open upvalues of the value stack slots at <paramref name="level"/> and above: their
+		/// variables go out of scope, so the upvalues keep the values from now on.
+		/// </summary>
+		private void CloseUpvalues(int level)
+		{
+			Upvalue u = m_OpenUpvalues;
+
+			while (u != null && u.Index >= level)
+			{
+				Upvalue next = u.NextOpen;
+				u.Close();
+				u.NextOpen = null;
+				u = next;
+			}
+
+			m_OpenUpvalues = u;
 		}
 
 		internal SourceRef GetCoroutineSuspendedLocation()

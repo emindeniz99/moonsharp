@@ -5,9 +5,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 	{
 		internal Table GetMetatable(DynValue value)
 		{
+			return GetMetatable(value.ToLuaValue());
+		}
+
+		internal Table GetMetatable(LuaValue value)
+		{
 			if (value.Type == DataType.Table)
 			{
-				return value.Table.MetaTable;
+				return ((Table)value.Object).MetaTable;
 			}
 			else if (value.Type.CanHaveTypeMetatables())
 			{
@@ -20,6 +25,11 @@ namespace MoonSharp.Interpreter.Execution.VM
 		}
 
 		internal DynValue GetBinaryMetamethod(DynValue op1, DynValue op2, string eventName)
+		{
+			return GetBinaryMetamethod(op1.ToLuaValue(), op2.ToLuaValue(), eventName);
+		}
+
+		internal DynValue GetBinaryMetamethod(LuaValue op1, LuaValue op2, string eventName)
 		{
 			var op1_MetaTable = GetMetatable(op1);
 			if (op1_MetaTable != null)
@@ -39,8 +49,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			if (op1.Type == DataType.UserData)
 			{
-				DynValue meta = op1.UserData.Descriptor.MetaIndex(this.m_Script,
-					op1.UserData.Object, eventName);
+				UserData ud = (UserData)op1.Object;
+				DynValue meta = ud.Descriptor.MetaIndex(this.m_Script, ud.Object, eventName);
 
 				if (meta != null)
 					return meta;
@@ -48,8 +58,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			if (op2.Type == DataType.UserData)
 			{
-				DynValue meta = op2.UserData.Descriptor.MetaIndex(this.m_Script,
-					op2.UserData.Object, eventName);
+				UserData ud = (UserData)op2.Object;
+				DynValue meta = ud.Descriptor.MetaIndex(this.m_Script, ud.Object, eventName);
 
 				if (meta != null)
 					return meta;
@@ -60,9 +70,15 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		internal DynValue GetMetamethod(DynValue value, string metamethod)
 		{
+			return GetMetamethod(value.ToLuaValue(), metamethod);
+		}
+
+		internal DynValue GetMetamethod(LuaValue value, string metamethod)
+		{
 			if (value.Type == DataType.UserData)
 			{
-				DynValue v = value.UserData.Descriptor.MetaIndex(m_Script, value.UserData.Object, metamethod);
+				UserData ud = (UserData)value.Object;
+				DynValue v = ud.Descriptor.MetaIndex(m_Script, ud.Object, metamethod);
 				if (v != null)
 					return v;
 			}
@@ -71,7 +87,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		}
 
 
-		internal DynValue GetMetamethodRaw(DynValue value, string metamethod)
+		internal DynValue GetMetamethodRaw(LuaValue value, string metamethod)
 		{
 			var metatable = GetMetatable(value);
 

@@ -80,6 +80,7 @@ What Unity 2021.3 support means for the code:
 | branch `ci/unity-matrix` | Unity CI matrix (`.github/workflows/unity.yml`): 2021.3, 2022.3 and 6000.0, editor (Mono) and Linux IL2CPP player, each compared test by test with the .NET run. The test sources compile without NUnit (`src/TestRunners/EmbeddedTestRunner`, run on every push) and the fixtures are found by reflection, so no list can miss one. Exceptions from reflection calls keep their type. The UPM package requires 2021.3. |
 | branch `feat/conformance-corpus` | Cross-host conformance corpus: 225 cases in 8 suites (numbers, strings, patterns, tables, errors, JSON, int64, logic) run by the .NET CLI (also from precompiled bytecode and under a decimal-comma culture), Chromium and the three Java transports, each checked against its own known-failures file in both directions. `moonsharp-host compile` writes bytecode with source locations; every transport can create int64 contexts. See [src/Hosting/fixtures/README.md](../src/Hosting/fixtures/README.md). |
 | branch `feat/exact-int64` | Exact 64-bit integers: opt-in `int64`/`uint64` values (`CoreModules.Int64`), CLR `long`/`ulong` in both directions (`ScriptOptions.ExactInt64Interop` for CLR to Lua), exact JSON on request. See [int64.md](int64.md). |
+| branch `perf/struct-values` | Struct call frames in a growable array; locals in a window of the value stack; Lua-style open/closed upvalues (closed on block exit, return, errors and coroutine recycling); values as an internal 24-byte struct (`LuaValue`) on the stack, in locals and upvalues, with `DynValue` (now 40 bytes) created only where a value leaves the VM. Zero bytes per iteration for empty_loop, function_call, int_math, float_math, fib and table_array_read (were 48 to 576). A/B against `next`, median of 21 interleaved rounds: Fib20 0.62x time, SumLoop100K 0.53x, CallEligibility 0.90x, StringFormatMix1K 1.10x (arguments of C# functions are now materialised). `Closure.SetUpvalue` added; see [MIGRATING.md](MIGRATING.md). |
 | branch `feat/luacats-generator` | LuaCATS definitions generated from the registry and globals of a configured `Script` (`src/Tools/MoonSharp.LuaCats`, `moonsharp-luacats` CLI with `--check`), checked with lua-language-server 3.19.1 in a new workflow. Explicit registration for mobile hosts documented and tested; no runtime change was needed. See [luacats.md](luacats.md) and [registration.md](registration.md). |
 | branch `feat/source-generator` | A Roslyn source generator writes userdata descriptors at compile time for `[MoonSharpUserData]` types and types listed with `[assembly: MoonSharpUserDataTypes]`: typed argument and result conversion, one `switch` per type, structs changed in place, per-member reflection fallback with a diagnostic, explicit registration (`GeneratedUserData.RegisterAll()`). Shipped in the UPM package. Results and error texts match reflection in the parity suite, and 20 interop fixtures pass on generated descriptors. See [source-generator.md](source-generator.md). |
 
@@ -97,15 +98,24 @@ What Unity 2021.3 support means for the code:
 Today MoonSharp runs the benchmark workloads 10 to 20 times slower than native
 Lua 5.5.1 ([comparison-xlua-ng.md](comparison-xlua-ng.md)).
 
-1. **Cheap fixes.** Create closures without LINQ, add a number-number fast path for arithmetic, dispatch from an instruction array, share one empty argument array.
-2. **Upvalue cells.** A closure today captures the local's `DynValue` object itself, which is why `DynValue` must stay a mutable class. Give captured locals their own cell. Every later step needs this.
-3. **Struct call frames.** No heap allocation per call; locals live in a window of the value stack.
-4. **Internal struct values.** The VM, tables and closures hold a struct; `DynValue` stays the public type and is created only at the API boundary.
-5. **Table array part** with a cached length; the `pairs` order follows the owner's decision.
-6. **Zero-copy calls into the standard library.** Arguments are read from the stack and results written back, with no per-call argument list.
-7. **Compiler and dispatch.** Constant operands, fused compare-and-branch, superinstructions, inline caches for field and global access, a cache for absent metamethods, one counter for the debugger and the instruction budget.
+Done: cheap fixes, upvalue cells, struct call frames and internal struct values (see the Done table).
 
-After step 4: the checkpoint in the decisions table.
+1. **Table array part** with a cached length; the `pairs` order follows the owner's decision. Tables
+   should also store `LuaValue`: the VM reaches tables only through `TableGet` and `TableSet` in
+   `Processor_InstructionLoop.cs`, which today create a `DynValue` for every value stored (the 40 bytes
+   left in method_call and table_hash_set_get). Table needs internal `Get`/`Set` taking `LuaValue`
+   keys and values, and `InitNextArrayKeys` taking a `LuaValue`.
+2. **Zero-copy calls into the standard library.** Arguments are read from the stack and results written back, with no per-call argument list. Today each call to a C# function builds a `DynValue[]` and a `DynValue` per string or non-small number argument (StringFormatMix1K 1.10x after the struct values).
+3. **Compiler and dispatch.** Constant operands, fused compare-and-branch (today `a < b` runs `Less`, `ToBool`, `Jf`; `<=` pushes a marker for `CNot`), superinstructions, inline caches for field and global access, a cache for absent metamethods, one counter for the debugger and the instruction budget, the calling location of a frame looked up only when asked.
+
+Checkpoint after the struct values, against Lua-CSharp 0.5.8 on the same workloads (ns per
+iteration; Lua-CSharp from the research run, MoonSharp from `workloads 7` on `perf/struct-values`
+5d7e42d; one shared 4-core VM, so about 10% noise): empty_loop 34.2 vs 5.0 (6.8x), function_call
+171 vs 81.6 (2.1x), method_call 415 vs 167 (2.5x), int_math 106 vs 33.1 (3.2x), float_math 190 vs
+42.6 (4.5x), fib_recursive 80.1 vs 40.8 us (2.0x), closure_create_call 268 vs 180 (1.5x). Loops and
+arithmetic stay more than 2x behind: what is left there is instruction count (a stack VM runs 5
+instructions for an empty `for` iteration, Lua-CSharp's register VM one), so the decision on a
+register VM (option C, PLAN B5) is due.
 
 ## Next: CLR interop
 
@@ -122,6 +132,10 @@ After step 4: the checkpoint in the decisions table.
   - The trimming attributes are declared inside the interpreter for netstandard2.0. If a Unity class library declares them publicly, Unity's compiler warns CS0436; check in the Unity matrix, and whether UnityLinker reads the annotations at higher stripping levels.
 
 ## Next: correctness and diagnostics
+
+- A `goto` out of a numeric or generic `for` leaves the loop's control values on the value stack, so
+  an enclosing `for` reads them as its own counters and fails with "stack overflow" (reproduced on
+  `next`; found while testing the struct values).
 
 - Run the official Lua 5.2 test suite and track failures.
 - Name the variable in runtime errors ("attempt to call a nil value (global 'foo')").

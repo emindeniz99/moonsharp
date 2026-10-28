@@ -2,13 +2,14 @@ package org.moonsharp.hosting;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import org.junit.jupiter.api.Assumptions;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.Map;
 
-/** Test helpers shared by the Java tests: locating the worker and comparing fixture results. */
+/** Test helpers shared by the Java tests: locating the worker and native builds, and comparing fixture results. */
 final class Fixtures {
     private Fixtures() { }
 
@@ -18,6 +19,29 @@ final class Fixtures {
             throw new IllegalStateException("moonsharp-host.dll not found at " + dll
                 + ". Build it first: dotnet build -c Release src/Hosting/MoonSharp.Hosting.Cli");
         return dll;
+    }
+
+    /** libmoonsharp_jni.so, or a skipped test when it has not been built (a failure with -Dmoonsharp.inprocess.required=true). */
+    static Path jniLibrary() {
+        return nativeArtifact("moonsharp.jni.lib", "cmake -S src/Hosting/native -B src/Hosting/native/build && cmake --build src/Hosting/native/build");
+    }
+
+    static Path nativeAssembly() {
+        return nativeArtifact("moonsharp.native.dll", "dotnet build -c Release src/Hosting/MoonSharp.Hosting.Native");
+    }
+
+    static Path aotLibrary() {
+        return nativeArtifact("moonsharp.aot.lib", "dotnet publish -c Release -r linux-x64 -p:NativeAot=true src/Hosting/MoonSharp.Hosting.Native");
+    }
+
+    private static Path nativeArtifact(String property, String build) {
+        String path = System.getProperty(property);
+        if (path != null && Files.isRegularFile(Path.of(path))) return Path.of(path);
+
+        String message = property + " not found at " + path + ". Build it first: " + build;
+        if (Boolean.getBoolean("moonsharp.inprocess.required")) throw new IllegalStateException(message);
+        Assumptions.abort(message);
+        return null;
     }
 
     static Path fixtures() {

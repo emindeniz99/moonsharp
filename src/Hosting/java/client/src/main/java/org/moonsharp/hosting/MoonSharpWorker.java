@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit;
  * Requests and replies are single lines of JSON on stdin/stdout. Calls are serialized: use
  * {@link MoonSharpPool} to run scripts in parallel.
  */
-public final class MoonSharpWorker implements AutoCloseable {
+public final class MoonSharpWorker implements MoonSharpHost {
     private final Process process;
     private final BufferedWriter in;
     private final BufferedReader out;
@@ -85,6 +85,11 @@ public final class MoonSharpWorker implements AutoCloseable {
 
     public boolean isAlive() {
         return process.isAlive();
+    }
+
+    /** The worker's process id, for monitoring (memory, CPU). */
+    public long pid() {
+        return process.pid();
     }
 
     private ObjectNode op(String op, String context) {

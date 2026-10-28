@@ -176,7 +176,13 @@ namespace MoonSharp.Interpreter.Interop.UserDataRegistries
 
 						if (accessMode == InteropAccessMode.BackgroundOptimized)
 						{
-							ThreadPool.QueueUserWorkItem(o => ((IOptimizableDescriptor)udd).Optimize());
+							ThreadPool.QueueUserWorkItem(o =>
+							{
+								// Best effort: an exception on a pool thread would end the process, and members
+								// that are not optimized keep working through reflection.
+								try { ((IOptimizableDescriptor)udd).Optimize(); }
+								catch (Exception) { }
+							});
 						}
 
 						return PerformRegistration(type, udd, oldDescriptor);

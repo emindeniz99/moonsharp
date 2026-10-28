@@ -429,7 +429,8 @@ namespace MoonSharp.Interpreter.Interop
 
 		void IOptimizableDescriptor.Optimize()
 		{
-			foreach (var d in m_Overloads.OfType<IOptimizableDescriptor>())
+			// A copy: this can run on a background thread while the first call sorts the list.
+			foreach (var d in m_Overloads.ToArray().OfType<IOptimizableDescriptor>())
 				d.Optimize();
 		}
 

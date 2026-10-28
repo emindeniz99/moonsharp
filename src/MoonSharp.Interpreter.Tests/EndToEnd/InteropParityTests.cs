@@ -115,5 +115,32 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		{
 			Assert.AreEqual(Expected, RunProbe(InteropAccessMode.Hardwired));
 		}
+
+		/// <summary>
+		/// The background optimizer walks the overload list while the first call sorts it. That race
+		/// threw on a thread-pool thread, which ends the process.
+		/// </summary>
+		[Test]
+		public void Interop_Parity_BackgroundOptimizationRacesFirstCall()
+		{
+			try
+			{
+				for (int i = 0; i < 300; i++)
+				{
+					UserData.UnregisterType<ParityClass>();
+					UserData.RegisterType<ParityClass>(InteropAccessMode.BackgroundOptimized);
+					Script s = new Script();
+					s.Globals["obj"] = new ParityClass();
+					Assert.AreEqual("i1sx", s.DoString("return obj:Over(1) .. obj:Over('x')").String);
+				}
+
+				// Let the last optimizations finish while the test is still running.
+				System.Threading.Thread.Sleep(200);
+			}
+			finally
+			{
+				UserData.UnregisterType<ParityClass>();
+			}
+		}
 	}
 }

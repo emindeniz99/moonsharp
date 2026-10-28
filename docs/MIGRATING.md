@@ -120,3 +120,13 @@ and a script referenced only by them can be collected. Affected: hosts
 that relied on a script staying alive only because one of its functions
 handled an event of an object nobody else referenced (such an event could
 never fire again anyway).
+
+## Background optimization no longer ends the process
+
+With `InteropAccessMode.BackgroundOptimized`, the thread-pool work item
+that compiles adapters walked a type's overload list while the first
+script call sorted it. The resulting exception was unhandled on a pool
+thread, which ends the process. The work item now walks copies of the
+lists and ignores a failure: members it did not optimize keep running
+through reflection, as they do before it finishes. Affected: hosts using
+`BackgroundOptimized` with overloaded methods.

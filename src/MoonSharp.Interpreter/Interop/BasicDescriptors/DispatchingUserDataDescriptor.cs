@@ -557,10 +557,11 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 
 		void IOptimizableDescriptor.Optimize()
 		{
-			foreach (var m in this.m_MetaMembers.Values.OfType<IOptimizableDescriptor>())
+			// Copies: this can run on a background thread while scripts add members (extension methods).
+			foreach (var m in this.m_MetaMembers.Values.ToArray().OfType<IOptimizableDescriptor>())
 				m.Optimize();
 
-			foreach (var m in this.m_Members.Values.OfType<IOptimizableDescriptor>())
+			foreach (var m in this.m_Members.Values.ToArray().OfType<IOptimizableDescriptor>())
 				m.Optimize();
 		}
 

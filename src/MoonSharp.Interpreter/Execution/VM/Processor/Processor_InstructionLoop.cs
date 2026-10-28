@@ -957,7 +957,11 @@ namespace MoonSharp.Interpreter.Execution.VM
 			if (fn.Type == DataType.ClrFunction)
 			{
 				CallbackFunction callback = (CallbackFunction)fn.Object;
-				DynValue[] args = CreateArgsListForFunctionCall(argsCount);
+
+				if (callback.BuiltinId != 0 && TryFastCall(callback.BuiltinId, argsCount))
+					return instructionPtr;
+
+				DynValue[] args = (callback.ReadsArgumentsInPlace && argsCount > 0) ? null : CreateArgsListForFunctionCall(argsCount);
 
 				// instructionPtr - 1: instructionPtr already points to the next instruction at this moment
 				// but we need the current instruction here
@@ -971,8 +975,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 				frame.Handlers = CallStackItemHandlers.Create(continuation, handler, unwindHandler);
 				frame.Flags = flags;
 
-				var ret = callback.Invoke(new ScriptExecutionContext(this, callback, sref), args,
-					isMethodCall: thisCall);
+				var ctx = new ScriptExecutionContext(this, callback, sref);
+				var ret = args == null
+					? callback.InvokeOnStack(ctx, m_ValueStack, m_ValueStack.Count - argsCount, argsCount, thisCall)
+					: callback.Invoke(ctx, args, isMethodCall: thisCall);
 				m_ValueStack.RemoveLast(argsCount + 1);
 				m_ValueStack.Push(ret);
 
@@ -997,7 +1003,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 
 			// fallback to __call metamethod
-			var m = GetMetamethod(fn, "__call");
+			var m = GetMetamethod(fn, "__call", MetaCall);
 
 			if (m != null && m.IsNotNil())
 			{
@@ -1152,7 +1158,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				if (!lc.HasValue || !rc.HasValue)
 				{
 					m_ValueStack.RemoveLast(2);
-					int ip = Internal_InvokeBinaryMetaMethod(ls, rs, ArithmeticEvent(i.OpCode), instructionPtr);
+					int ip = Internal_InvokeBinaryMetaMethod(ls, rs, ArithmeticEvent(i.OpCode), ArithmeticBit(i.OpCode), instructionPtr);
 					if (ip >= 0) return ip;
 					else throw ScriptRuntimeException.ArithmeticOnNonNumber(ls.ToDynValue(), rs.ToDynValue());
 				}
@@ -1192,6 +1198,19 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 		}
 
+		private static int ArithmeticBit(OpCode op)
+		{
+			switch (op)
+			{
+				case OpCode.Add: return MetaAdd;
+				case OpCode.Sub: return MetaSub;
+				case OpCode.Mul: return MetaMul;
+				case OpCode.Div: return MetaDiv;
+				case OpCode.Mod: return MetaMod;
+				default: return MetaPow;
+			}
+		}
+
 		/// <summary>
 		/// Lua 5.2 modulo (manual 3.4.1): a - floor(a/b)*b, so the result has the sign of the divisor.
 		/// </summary>
@@ -1220,7 +1239,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 			else
 			{
-				int ip = Internal_InvokeUnaryMetaMethod(r, "__unm", instructionPtr);
+				int ip = Internal_InvokeUnaryMetaMethod(r, "__unm", MetaUnm, instructionPtr);
 				if (ip >= 0) return ip;
 				else throw ScriptRuntimeException.ArithmeticOnNonNumber(r.ToDynValue());
 			}
@@ -1249,7 +1268,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			// then if they are userdatas, attempt meta
 			if (l.Type == DataType.UserData || r.Type == DataType.UserData)
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__eq", instructionPtr);
+				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__eq", MetaEq, instructionPtr);
 				if (ip >= 0) return ip;
 			}
 
@@ -1267,7 +1286,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			// then attempt metatables for tables
 			if ((l.Type == DataType.Table) && (GetMetatable(l) != null) && (GetMetatable(l) == GetMetatable(r)))
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__eq", instructionPtr);
+				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__eq", MetaEq, instructionPtr);
 				if (ip >= 0) return ip;
 			}
 
@@ -1303,7 +1322,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 			else
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(ls, rs, "__lt", instructionPtr);
+				int ip = Internal_InvokeBinaryMetaMethod(ls, rs, "__lt", MetaLt, instructionPtr);
 				if (ip < 0)
 					throw ScriptRuntimeException.CompareInvalidType(ls.ToDynValue(), rs.ToDynValue());
 				else
@@ -1330,10 +1349,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 			else
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__le", instructionPtr, LuaValue.False);
+				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__le", MetaLe, instructionPtr, LuaValue.False);
 				if (ip < 0)
 				{
-					ip = Internal_InvokeBinaryMetaMethod(r, l, "__lt", instructionPtr, LuaValue.True);
+					ip = Internal_InvokeBinaryMetaMethod(r, l, "__lt", MetaLt, instructionPtr, LuaValue.True);
 
 					if (ip < 0)
 						throw ScriptRuntimeException.CompareInvalidType(l.ToDynValue(), r.ToDynValue());
@@ -1355,7 +1374,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				m_ValueStack.Push(LuaValue.FromNumber(((string)r.Object).Length));
 			else
 			{
-				int ip = Internal_InvokeUnaryMetaMethod(r, "__len", instructionPtr);
+				int ip = Internal_InvokeUnaryMetaMethod(r, "__len", MetaLen, instructionPtr);
 				if (ip >= 0)
 					return ip;
 				else if (r.Type == DataType.Table)
@@ -1383,7 +1402,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 			else
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__concat", instructionPtr);
+				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__concat", MetaConcat, instructionPtr);
 				if (ip >= 0) return ip;
 				else throw ScriptRuntimeException.ConcatOnNonString(l.ToDynValue(), r.ToDynValue());
 			}
@@ -1477,6 +1496,31 @@ namespace MoonSharp.Interpreter.Execution.VM
 			LuaValue value = GetStoreValue(i);
 			DynValue h = null;
 
+			// A constant string key stored into a table: write the cached entry in place, or find it and
+			// cache it. A new key goes straight in when there is no metatable, else the general path runs.
+			if (obj.Type == DataType.Table && idx.Type == DataType.String && i.Value != null && !isMultiIndex && value.IsNotNil())
+			{
+				Table table = (Table)obj.Object;
+				FieldCache cache = i.Cache ?? (i.Cache = new FieldCache((string)idx.Object));
+				DynValue v = value.ToDynValue();
+
+				if (cache.TrySet(table, v))
+					return instructionPtr;
+
+				int e = cache.FindLive(table);
+
+				if (e >= 0)
+				{
+					table.SetEntryValue(e, v);
+					return instructionPtr;
+				}
+
+				if (table.MetaTable == null)
+				{
+					cache.Add(table, v);
+					return instructionPtr;
+				}
+			}
 
 			while (nestedMetaOps > 0)
 			{
@@ -1496,7 +1540,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 						}
 					}
 
-					h = GetMetamethodRaw(obj, "__newindex");
+					h = GetMetamethodRaw(obj, "__newindex", MetaNewIndex);
 
 					if (h == null || h.IsNil())
 					{
@@ -1519,7 +1563,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				}
 				else
 				{
-					h = GetMetamethodRaw(obj, "__newindex");
+					h = GetMetamethodRaw(obj, "__newindex", MetaNewIndex);
 
 					if (h == null || h.IsNil())
 						throw ScriptRuntimeException.IndexType(obj.ToDynValue());
@@ -1560,6 +1604,33 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			DynValue h = null;
 
+			// A constant string key read from a table: the cached path, or a lookup through __index tables
+			// that caches it.
+			if (obj.Type == DataType.Table && idx.Type == DataType.String && i.Value != null && !isMultiIndex)
+			{
+				FieldCache cache = i.Cache ?? (i.Cache = new FieldCache((string)idx.Object));
+
+				if (!cache.Disabled)
+				{
+					Table table = (Table)obj.Object;
+					DynValue v = cache.Get(table);
+
+					if (v == null)
+					{
+						v = cache.Lookup(table, out table);
+
+						// an __index the cache does not follow: the general lookup goes on from there
+						if (v == null)
+							obj = LuaValue.FromObject(DataType.Table, table);
+					}
+
+					if (v != null)
+					{
+						m_ValueStack.Push(v);
+						return instructionPtr;
+					}
+				}
+			}
 
 			while (nestedMetaOps > 0)
 			{
@@ -1578,7 +1649,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 						}
 					}
 
-					h = GetMetamethodRaw(obj, "__index");
+					h = GetMetamethodRaw(obj, "__index", MetaIndex);
 
 					if (h == null || h.IsNil())
 					{
@@ -1608,7 +1679,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				}
 				else
 				{
-					h = GetMetamethodRaw(obj, "__index");
+					h = GetMetamethodRaw(obj, "__index", MetaIndex);
 
 					if (h == null || h.IsNil())
 						throw ScriptRuntimeException.IndexType(obj.ToDynValue());

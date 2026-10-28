@@ -774,3 +774,23 @@ types are registered automatically as before
 dictionary methods (`list.Add`, `dict.ContainsKey`) or change the C#
 collection through it. Register the collection type with
 `UserData.RegisterType` to keep the userdata.
+
+## Some library functions run without a call frame
+
+`math.abs`, `ceil`, `floor`, `sqrt`, `sin`, `cos`, `exp`, `max` and `min`,
+`string.len`, `sub` and `byte`, `type`, `select('#', ...)` and
+`table.insert(t, v)` on a table without a metatable run inside the VM when
+their arguments have exactly the types they expect: numbers for `math`, a
+string and numbers for `string`, one value for `type`. They used to push a C#
+call frame and create an execution context and an argument list on every
+call. Any other call (a string where a number is expected, a missing argument,
+a call result as the last argument, a `string.byte` range that is not one
+character) takes the ordinary path, so results and error messages do not
+change.
+
+Such a call does not appear in a call stack while it runs. These functions
+call no script code on the fast path, so no traceback, debugger stop or hook
+can see the difference; the one error they can raise there, `table.insert`
+storing a value owned by another `Script`, has no `insert` frame in its stack. The fast path follows the
+function object, not its name: a script that assigns `math.floor = f` calls
+`f`, and a local copy of the library function keeps the fast path.

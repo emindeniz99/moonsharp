@@ -228,5 +228,66 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual(8, r.Tuple[0].Number);
 			Assert.AreEqual(35, r.Tuple[1].Number);
 		}
+	
+
+		[Test]
+		public void CallPath_LibraryFunctionsReadEveryArgumentShape()
+		{
+			// Library functions read their arguments in place on the value stack: a multiple-return call
+			// as the last argument expands, one in the middle gives its first value, a call with no
+			// results gives no value at the end and nil in the middle, and ':' passes the object first.
+			DynValue r = Run(@"
+				local function two() return 'b', 'c' end
+				local function none() end
+				return string.format('%s%s%s', 'a', two()),
+					string.format('%s%s', two(), 'z'),
+					select('#', none()), select('#', none(), 1),
+					('%d-%d'):format(3, 4),
+					string.format('%s', (two()))");
+
+			Assert.AreEqual("abc", r.Tuple[0].String);
+			Assert.AreEqual("bz", r.Tuple[1].String);
+			Assert.AreEqual(0, r.Tuple[2].Number);
+			Assert.AreEqual(2, r.Tuple[3].Number);
+			Assert.AreEqual("3-4", r.Tuple[4].String);
+			Assert.AreEqual("b", r.Tuple[5].String);
+		}
+
+		[Test]
+		public void CallPath_LibraryArgumentsSurviveStackGrowthDuringTheCall()
+		{
+			// load reads its chunk name and environment after calling the reader. The reader recurses
+			// deep enough to grow the value stack to a new array, so the arguments must be read from
+			// the stack as it is then, not from the array the call started with.
+			DynValue r = Run(@"
+				local function deep(n) if n == 0 then return 0 end return 1 + deep(n - 1) end
+				local parts = { 'return x' }
+				local i = 0
+				local function reader() i = i + 1 deep(3000) return parts[i] end
+				local f = load(reader, '=chunkname', 't', { x = 42 })
+				local j = 0
+				local function reader2() j = j + 1 deep(3000) if j == 1 then return 'error(""boom"")' end end
+				local ok, err = pcall(load(reader2, '=other'))
+				return f(), err");
+
+			Assert.AreEqual(42, r.Tuple[0].Number);
+			StringAssert.StartsWith("=other:", r.Tuple[1].String);
+		}
+
+		[Test]
+		public void CallPath_ReentrantLibraryCallsKeepTheirOwnArguments()
+		{
+			// A library function calling Lua that calls the same library function: each call reads its
+			// own arguments.
+			DynValue r = Run(@"
+				local t = { 3, 1, 2 }
+				local seen = {}
+				table.sort(t, function(a, b) seen[#seen + 1] = string.format('%d<%d', a, b) return a < b end)
+				return table.concat(t, ','), #seen > 0, string.gsub('abc', '%w', function(c) return string.format('[%s]', c) end)");
+
+			Assert.AreEqual("1,2,3", r.Tuple[0].String);
+			Assert.AreEqual(true, r.Tuple[1].Boolean);
+			Assert.AreEqual("[a][b][c]", r.Tuple[2].String);
+		}
 	}
 }

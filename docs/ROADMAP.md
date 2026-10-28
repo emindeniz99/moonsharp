@@ -113,6 +113,7 @@ After step 4: the checkpoint in the decisions table.
 - A `Script` keeps every chunk it compiles, so a long-lived `Script` that compiles in a loop grows without bound.
 - `ScriptOptions(defaults)` does not copy `ColonOperatorClrCallbackBehaviour`.
 - The Unity test runner list misses `ProtectedCallMetamethodTests`, `TonumberTests` and `NewIndexAssignmentTests`.
+- Upstream bugs that reproduce in the string library, the table code, the VM core and the compiler, and `require` ignoring `package.path` and `package.preload`: each has an ignored test in `UpstreamIssueTests.cs` that fails without the `Ignore` (list in [upstream-issues.md](upstream-issues.md)). Remove the `Ignore` with the fix.
 - Found by the conformance corpus; each is a case with a `note`, so a fix updates its expectation. The owner decides which are bugs to fix (in `legacy` too) and which stay as documented differences:
   - Concatenation and `string.format('%s')` format numbers with the process culture: `1.5 .. ''` is `1,5` under `tr_TR` or `de_DE` (`DynValue.CastToString`, `Number.ToString()` without a culture). `known-failures/dotnet-tr-TR.json` lists the two cases.
   - `%` with a negative divisor takes the dividend's sign: `7 % -3` is 1, Lua gives -2.
@@ -132,6 +133,10 @@ After step 4: the checkpoint in the decisions table.
 - Publish per-host corpus results over time, as JsonLogic's compat tables do.
 - In-process JVM hosting as the default: needs the native stack guard above and an execution budget for plain calls, then a new measurement against the worker.
 - Browser: AOT-compiled WebAssembly against the interpreter build; Firefox and WebKit tests.
+- From upstream feature requests ([upstream-issues.md](upstream-issues.md)):
+  - convert Lua functions to `Action` and `Func<...>` parameters (upstream #186), with the typed calls from C# to Lua above;
+  - a `ScriptedImporter` for `.lua` files in the Unity package (upstream #235), with the Unity CI matrix;
+  - send bytecode and source to an attached debugger only when its `GetDebuggerCaps()` asks for them (upstream #261), a two-line check in `Script.cs`.
 - LuaCATS follow-ups:
   - a Unity Editor menu item that runs the generator. The UPM packages have no Editor part yet (`tools/upm` stages `Runtime` only), so it needs an Editor folder, an asmdef and the generator sources in the package;
   - typed host global functions: a global set from a delegate is declared `fun(...): any`, because a `CallbackFunction` keeps no signature;
@@ -149,3 +154,4 @@ After step 4: the checkpoint in the decisions table.
 - Android and iOS devices for IL2CPP player runs.
 - The `pairs` order decision, once the table measurements are in.
 - Approval before any upstream pull request.
+- Upstream bugs that change interop behaviour (details in [upstream-issues.md](upstream-issues.md#decisions-for-the-owner)): overload scores for fractional numbers and custom converters (#293, #294); static members of base classes (#175); tables instead of userdata for lists under automatic registration (#274); per-script type registries (#181).

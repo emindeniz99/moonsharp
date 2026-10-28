@@ -357,3 +357,14 @@ and `\u{41}` were accepted. Strings now use JSON's escapes (`\"`, `\\`,
 as two UTF-16 units), and other escapes are a parse error. Affected:
 hosts that pre-processed JSON to avoid `\u` escapes, and input that
 relied on Lua escapes.
+
+## `json.serialize` writes mixed tables as objects
+
+A table with keys 1..n was written as a JSON array even when it had other
+keys, which were dropped: `{ 10, name = "x" }` became `[10]`. Such a
+table is now an object, with integer keys written as strings
+(`{"1":10,"name":"x"}`), as the host's JSON writer already did. A table
+whose keys are exactly 1..n is still an array, and a table with only
+integer keys that are not 1..n (`{ [3] = "c" }`) is now an object
+instead of `{}`. Affected: scripts that relied on the dropped keys being
+left out.

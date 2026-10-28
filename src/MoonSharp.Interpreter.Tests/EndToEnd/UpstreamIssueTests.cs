@@ -262,5 +262,26 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				Assert.AreEqual(false, s.DoString("return (pcall(json.parse, text))").Boolean, text + " is not JSON");
 			}
 		}
+
+		// Found by the conformance corpus, no upstream issue: json.serialize wrote a table with
+		// keys 1..n as an array even when it also had string keys, and silently dropped them
+		// ({1, name = "x"} became [1]). Such a table is an object; integer keys become strings,
+		// as the host's JSON writer does.
+		[Test]
+		public void Json_SerializeKeepsStringKeysOfMixedTables()
+		{
+			Script s = new Script();
+
+			DynValue r = s.DoString(@"
+				local t = json.parse(json.serialize({ 10, 20, name = 'x' }))
+				local sparse = json.parse(json.serialize({ [3] = 'c' }))
+				return t['1'], t['2'], t.name, sparse['3'], json.serialize({ 1, 2 })");
+
+			Assert.AreEqual(10.0, r.Tuple[0].Number);
+			Assert.AreEqual(20.0, r.Tuple[1].Number);
+			Assert.AreEqual("x", r.Tuple[2].String);
+			Assert.AreEqual("c", r.Tuple[3].String);
+			Assert.AreEqual("[1,2]", r.Tuple[4].String);
+		}
 	}
 }

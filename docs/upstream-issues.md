@@ -39,21 +39,6 @@ keys 1..n (`77c8662`).
 
 ## Decisions for the owner
 
-- **#293, #294: overload scores.** A Lua number weighs the same (99) for every
-  integer type and `float`, so `F(1.5)` calls `F(int)` when that overload comes
-  first. Scoring a fractional number lower for integer parameters fixes it, but
-  the overload cache keys on argument types only, so the cache would also have to
-  record whether a number is integral, a check on every cached call. #294 asks
-  that an exact match beat a custom converter (both 100); lowering the converter
-  weight changes which overload hosts with number converters get. The website
-  calls the heuristic "dark magic" and asks for calibration reports.
-- **#175 (PR #336): static members of base classes.** `BindingFlags.FlattenHierarchy`
-  makes `Derived.StaticBase()` work as in C#, but also adds `object.Equals(a, b)`,
-  `ReferenceEquals` and `Enum`'s statics to every descriptor, which changes
-  member lists, Hardwire output and generated LuaCATS definitions. Options: flatten
-  everything, flatten except the framework base types, or keep it.
-- **#274: automatic registration.** With `InteropRegistrationPolicy.Automatic`,
-  lists and dictionaries become userdata instead of the documented tables.
 - **#181: per-script registries.** Useful to run scripts with different trust
   levels in one process; it replaces the static `UserData` API.
 - **PR #321: Unity defines.** The `#if UNITY_5` paths are dead on Unity 2017 and

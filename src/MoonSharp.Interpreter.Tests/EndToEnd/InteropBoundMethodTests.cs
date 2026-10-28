@@ -25,6 +25,11 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			public int Value { get { return Factor; } }
 		}
 
+		// Its own type, because the test changes the descriptor's members: under a policy that keeps
+		// descriptors across UnregisterType (the console runner's), a changed BoundProbe descriptor
+		// would reach the tests that follow.
+		public class MemberChangeProbe : BoundProbe { }
+
 		[Flags]
 		public enum BoundFlags { None = 0, A = 1, B = 2, C = 4 }
 
@@ -136,9 +141,9 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		{
 			try
 			{
-				var descr = (StandardUserDataDescriptor)UserData.RegisterType<BoundProbe>();
+				var descr = (StandardUserDataDescriptor)UserData.RegisterType<MemberChangeProbe>();
 				Script s = new Script();
-				s.Globals["obj"] = new BoundProbe();
+				s.Globals["obj"] = new MemberChangeProbe();
 
 				// 'scale' resolves to Scale through fuzzy matching, and is kept.
 				Assert.AreEqual(6, s.DoString("return obj:scale(2)").Number);
@@ -155,7 +160,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			}
 			finally
 			{
-				UserData.UnregisterType<BoundProbe>();
+				UserData.UnregisterType<MemberChangeProbe>();
 			}
 		}
 

@@ -99,9 +99,10 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			}
 			finally
 			{
-				UserData.RegistrationPolicy = oldPolicy;
+				// Unregister under the default policy: the runner's policy may keep descriptors.
 				UserData.UnregisterType<Listed.Nested>();
 				UserData.UnregisterType<Listed>();
+				UserData.RegistrationPolicy = oldPolicy;
 			}
 		}
 
@@ -143,7 +144,10 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			}
 			finally
 			{
-				UserData.RegistrationPolicy = oldPolicy;
+				// Unregister under the default policy: the allow-list policy and the runner's policy keep
+				// descriptors on UnregisterType.
+				UserData.RegistrationPolicy = InteropRegistrationPolicy.Default;
+				UserData.UnregisterType<Listed.Nested>();
 				UserData.UnregisterType<Listed>();
 
 				if (!listOfIntWasRegistered)
@@ -153,6 +157,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 					UserData.UnregisterType(typeof(List<>));
 
 				UserData.RegisterType(dynamicWrapper, InteropAccessMode.HideMembers);
+				UserData.RegistrationPolicy = oldPolicy;
 			}
 		}
 	}

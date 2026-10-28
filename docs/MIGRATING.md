@@ -632,6 +632,66 @@ cell, documented as the way to change it (`GetUpvalue(i).Assign(v)`). Every `Dyn
 **Affected:** hosts that call `Assign` on values received from scripts, that change upvalues through
 `GetUpvalue(i).Assign`, or that compare values by reference.
 
+## Keys set to nil are gone for hosts, and every one of them is forgotten
+
+Two dead-key bugs are fixed:
+
+- `Table.Pairs`, `Table.Keys` and `Table.Values` returned keys whose value
+  had been set to nil, as pairs with a nil value. Hosts that convert tables
+  saw fields the script had removed: `json.serialize` wrote `null` for
+  them, and `Dictionary` conversion and the Lua-source serializer kept
+  them. (The host JSON writer already skipped them, see "Host JSON output
+  skips fields set to nil".)
+- A key set to nil is forgotten when the next new key is stored, so it goes
+  to the end of the `pairs` order when it gets a value again. Only the first
+  such key was forgotten; the others kept their old place. Now every one is.
+
+```lua
+local o = { a = 1, b = 2 }; o.b = nil
+print(json.serialize(o))   -- before: {"a":1,"b":null}   now: {"a":1}
+
+local u = {}
+u.a = 1; u.b = 2; u.c = 3
+u.a = nil; u.b = nil
+u.d = 4                    -- forgets a and b (before: only a)
+u.b = 5; u.a = 6
+for k in pairs(u) do io.write(k, ' ') end
+-- before: b c d a   now: c d b a
+```
+
+`pairs` in a script never returned the nil keys and still does not. Affected:
+hosts that enumerate tables (`Table.Pairs`, `Keys`, `Values`,
+`json.serialize`, `Dictionary` conversion, the Lua-source serializer) and
+scripts or snapshot tests that depend on the `pairs` order after clearing
+more than one key.
+
+## Tables have an array part
+
+Tables now keep integer keys 1..n in an array and every other key in one
+hash part, instead of a linked list indexed by three dictionaries. Values,
+`#t` and the `pairs` order stay as they were (insertion order, with the
+dead-key rule above). What a host can see:
+
+- Integer keys below 1 stored with `Table.Set(int, ...)` are the same keys
+  a script uses. They used to live in an index that `t[0]` and `t[-1]` never
+  reached, so a host's `t.Set(0, v)` was invisible to the script, and a
+  later `pairs(t)` failed with "invalid key to 'next'".
+- `Table.Remove(key)` returns false for a key whose value was set to nil.
+  It returned true while the dead key was still stored.
+- `Table.Pairs`, `Keys` and `Values` follow the rules of `next`: clearing
+  fields while enumerating is allowed; whether a key added during the
+  enumeration is visited is not defined.
+
+## `Table.Set` with a null value, multi-key errors and `TablePair.Value`
+
+`Table.Set(key, null)` threw `NullReferenceException`; a null value now
+means nil, as `t[k] = nil` in a script. The error of a multi-key
+`Table.Get`/`Set` whose path breaks now names the key ("Key 'settings'
+did not point to anything") instead of printing "Key '{0}' ...".
+Setting `TablePair.Value` recursed until the process
+ended with a stack overflow; it now sets the pair's value (a copy: the
+table does not change). Affected: hosts that caught those exceptions.
+
 ## A fractional number picks a floating-point overload
 
 **Before:** a Lua number weighed the same for every integer parameter and for

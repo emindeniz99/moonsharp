@@ -179,6 +179,12 @@
       "op": "run", "chunk": "unicode.lua",
       "source": "return { #'ğ', #'👋', string.byte('ğ'), string.unicode('ğ'), string.byte('é') }",
       "expect": [1, 2, 63, 287, 233]
+    },
+    {
+      "name": "a field set to nil is gone from the output (no {\"1\":10,\"2\":20,\"x\":null})",
+      "op": "run", "chunk": "cleared.lua",
+      "source": "local t = { 10, 20 } t.x = 1 t.x = nil local o = { a = 1, b = 2 } o.b = nil return { t, o, json.serialize(o) }",
+      "expect": [[10, 20], { "a": 1 }, "{\"a\":1}"]
     }
   ]
 }

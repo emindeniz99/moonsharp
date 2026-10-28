@@ -20,8 +20,8 @@ again; planned work goes in [ROADMAP.md](ROADMAP.md), and fork-only changes in
 
 | Status | Issues | Pull requests |
 |---|---|---|
-| fixed in the fork | 16 | 5 |
-| reproduces, waits for other work | 10 | 4 |
+| fixed in the fork | 18 | 7 |
+| reproduces, waits for other work | 8 | 2 |
 | needs the owner | 5 | 2 |
 | does not reproduce | 16 | 3 |
 | question, answered | 8 | 0 |
@@ -31,7 +31,8 @@ again; planned work goes in [ROADMAP.md](ROADMAP.md), and fork-only changes in
 
 Fixed on branch `fix/upstream-issues`: #70, #102 (with #305, #328), #161, #173, #219 (with #257),
 #229 (`tonumber`), #286, #291, #307. Fixed on branch `perf/vm-group-a`: #229 (arithmetic),
-#258, #263. Fixed earlier in the fork: #221, #304, #348,
+#258, #263. Fixed on branch `perf/table-array-part`: #308 (with PR #355), #315, PR #179.
+Fixed earlier in the fork: #221, #304, #348,
 and #300 in part (opt-in 64-bit integers). Two JSON bugs found by the
 conformance corpus have no upstream issue: `\u` escapes in `json.parse`
 (`5788be3`) and `json.serialize` dropping string keys of a table that also has
@@ -55,11 +56,11 @@ keys 1..n (`77c8662`).
 | [#319](https://github.com/moonsharp-devs/moonsharp/issues/319) | json.parse fails on negative integers | bug | does not reproduce | `json.parse('{"foo": -1}')` and `'[-1, -2.5e3]'` parse (probe on this branch) |
 | [#318](https://github.com/moonsharp-devs/moonsharp/issues/318) | KopiLua string.gsub() "pattern too complex" error | bug | waits: string library | Reproduces: `'^%s*(.-)%s*$'` on a 300-character string. Ignored test `UpstreamIssueTests.Issue318_TrimIdiomWorksOnLongStrings` |
 | [#317](https://github.com/moonsharp-devs/moonsharp/issues/317) | Unexpected result on string XOR | bug | does not reproduce | The issue's script returns `test1234567890`. Related, not reported: `string.char(300)` gives `?` where Lua raises "value out of range" |
-| [#315](https://github.com/moonsharp-devs/moonsharp/issues/315) | Lua code can set table[0], but C# can't read it | bug | waits: table | Reproduces: `Table.Get(0)` and `Get(-1)` return nil. Ignored test `UpstreamIssueTests.Issue315_TableGetReadsZeroAndNegativeKeys` |
+| [#315](https://github.com/moonsharp-devs/moonsharp/issues/315) | Lua code can set table[0], but C# can't read it | bug | fixed | Branch `perf/table-array-part`: the table rewrite keeps keys below 1 in one place for scripts and `Table.Get(int)`; `Issue315_TableGetReadsZeroAndNegativeKeys` |
 | [#313](https://github.com/moonsharp-devs/moonsharp/issues/313) | Watch Item Location | bug | does not reproduce | `ScriptRuntimeException.CallStack` has a location for every frame of the issue's script |
 | [#312](https://github.com/moonsharp-devs/moonsharp/issues/312) | Feature Request: Increased Error Data | feature | feature: planned | `InterpreterException.CallStack` already gives the frames and locations; naming the variable in runtime errors is on the roadmap |
 | [#310](https://github.com/moonsharp-devs/moonsharp/issues/310) | Can we make a C# method that "Yield requests" but also returns a value to lua? | question | answered | Works: a callback returns `DynValue.NewYieldReq(...)`, and the values passed to the next `Resume` become the call's results (checked on this branch). Not in our docs |
-| [#308](https://github.com/moonsharp-devs/moonsharp/issues/308) | ScriptRuntimeException thrown from Table.ResolveMultipleKeys has incorrectly formatted error message | bug | waits: table | Reproduces (`Key '{0}' did not point to anything`). Ignored test `UpstreamIssueTests.Issue308_MultiKeyGetNamesTheMissingKey`; upstream [PR #355](https://github.com/moonsharp-devs/moonsharp/pull/355) |
+| [#308](https://github.com/moonsharp-devs/moonsharp/issues/308) | ScriptRuntimeException thrown from Table.ResolveMultipleKeys has incorrectly formatted error message | bug | fixed | Branch `perf/table-array-part`: the message names the key; `Issue308_MultiKeyGetNamesTheMissingKey`; upstream [PR #355](https://github.com/moonsharp-devs/moonsharp/pull/355) |
 | [#307](https://github.com/moonsharp-devs/moonsharp/issues/307) | Returning null from callback invoked in CallbackFunction causes NullReferenceException | bug | fixed | `5cf4dfb`; `Issue307_CallbackReturningNullGivesNil` |
 | [#306](https://github.com/moonsharp-devs/moonsharp/issues/306) | Support table constructor/object initializer on created CLR objects | feature | feature: not planned | No roadmap item; `PropertyTableAssigner` already does this for host-side configuration |
 | [#305](https://github.com/moonsharp-devs/moonsharp/issues/305) | Cache issue Userdata.ExtensionType? | bug | fixed | `099a347` (same cause as #102) |
@@ -145,7 +146,7 @@ keys 1..n (`77c8662`).
 
 | Pull request | Title | Type | Status in the fork | Evidence |
 |---|---|---|---|---|
-| [#355](https://github.com/moonsharp-devs/moonsharp/pull/355) | Format the key in Table.ResolveMultipleKeys error messages | bug | waits: table | Same as #308 |
+| [#355](https://github.com/moonsharp-devs/moonsharp/pull/355) | Format the key in Table.ResolveMultipleKeys error messages | bug | fixed | Same as #308 |
 | [#354](https://github.com/moonsharp-devs/moonsharp/pull/354) | Treat a null return from a CLR callback as nil | bug | fixed | `5cf4dfb` (same change) |
 | [#347](https://github.com/moonsharp-devs/moonsharp/pull/347) | Fix debug server launch configuration | docs | out of scope | Same as #297 |
 | [#344](https://github.com/moonsharp-devs/moonsharp/pull/344) | Map generic c# functions of registered types to lua functions | feature | feature: not planned | See [upstream.md](upstream.md); maintainers prefer explicit wrappers |
@@ -162,7 +163,7 @@ keys 1..n (`77c8662`).
 | [#202](https://github.com/moonsharp-devs/moonsharp/pull/202) | m_IsRunningOnAOT doesn't be used | tech debt | out of scope | A compiler warning under IL2CPP defines; waits for the Unity CI matrix |
 | [#191](https://github.com/moonsharp-devs/moonsharp/pull/191) | Make TimeZone changeable | feature | feature: not planned | No roadmap item |
 | [#184](https://github.com/moonsharp-devs/moonsharp/pull/184) | Fix stringlib against non-ascii chars | bug | waits: string library | Same as #187 |
-| [#179](https://github.com/moonsharp-devs/moonsharp/pull/179) | No NullReferenceException when passing null to Table.Set | bug | waits: table | Reproduces. Ignored test `UpstreamIssueTests.PR179_TableSetWithNullRemovesTheKey` |
+| [#179](https://github.com/moonsharp-devs/moonsharp/pull/179) | No NullReferenceException when passing null to Table.Set | bug | fixed | Branch `perf/table-array-part`: a null value is nil; `PR179_TableSetWithNullRemovesTheKey` |
 | [#173](https://github.com/moonsharp-devs/moonsharp/pull/173) | Fixed : call debug.getmetatable maybe cause NullReferenceException | bug | fixed | `ed11539`; `Issue173_DebugGetmetatableReturnsNilWithoutMetatable` |
 | [#146](https://github.com/moonsharp-devs/moonsharp/pull/146) | fixed crash in web browser + unity + webgl | bug | out of scope | Same as #212 |
 | [#132](https://github.com/moonsharp-devs/moonsharp/pull/132) | Table remove by negative fix | bug | does not reproduce | `table.remove(t, -1)` raises "position out of bounds", as Lua 5.2 does |

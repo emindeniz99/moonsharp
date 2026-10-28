@@ -82,6 +82,7 @@ What Unity 2021.3 support means for the code:
 | branch `feat/conformance-corpus` | Cross-host conformance corpus: 225 cases in 8 suites (numbers, strings, patterns, tables, errors, JSON, int64, logic) run by the .NET CLI (also from precompiled bytecode and under a decimal-comma culture), Chromium and the three Java transports, each checked against its own known-failures file in both directions. `moonsharp-host compile` writes bytecode with source locations; every transport can create int64 contexts. See [src/Hosting/fixtures/README.md](../src/Hosting/fixtures/README.md). |
 | branch `feat/exact-int64` | Exact 64-bit integers: opt-in `int64`/`uint64` values (`CoreModules.Int64`), CLR `long`/`ulong` in both directions (`ScriptOptions.ExactInt64Interop` for CLR to Lua), exact JSON on request. See [int64.md](int64.md). |
 | branch `perf/struct-values` | Struct call frames in a growable array; locals in a window of the value stack; Lua-style open/closed upvalues (closed on block exit, return, errors and coroutine recycling); values as an internal 24-byte struct (`LuaValue`) on the stack, in locals and upvalues, with `DynValue` (now 40 bytes) created only where a value leaves the VM. Zero bytes per iteration for empty_loop, function_call, int_math, float_math, fib and table_array_read (were 48 to 576). A/B against `next`, median of 21 interleaved rounds: Fib20 0.62x time, SumLoop100K 0.53x, CallEligibility 0.90x, StringFormatMix1K 1.10x (arguments of C# functions are now materialised). `Closure.SetUpvalue` added; see [MIGRATING.md](MIGRATING.md). |
+| branch `perf/table-array-part` | Tables store integer keys 1..n in an array part and every other key in one compact hash part kept in insertion order, so `pairs` and JSON keep their order (decision above). Every dead key is forgotten at the next insert and hosts no longer see keys set to nil; upstream #308, #315 and PR #179 fixed. Against `next` with struct values (A/B, 21 rounds): `table_array_insert` 0.51, `record_build_read` 0.62, `gc_small_tables` 0.69, `table_sort_52` 0.74 (allocation 60 KB to 19 KB), `table_insert_len_10k` 0.79, `hash_delete_reinsert` 0.83, reads and `pairs` 0.93-1.02. Retained bytes per table: `{}` 264 to 136, 4 string keys 975 to 455, 16 array items 2407 to 287. See [MIGRATING.md](MIGRATING.md). |
 | branch `feat/luacats-generator` | LuaCATS definitions generated from the registry and globals of a configured `Script` (`src/Tools/MoonSharp.LuaCats`, `moonsharp-luacats` CLI with `--check`), checked with lua-language-server 3.19.1 in a new workflow. Explicit registration for mobile hosts documented and tested; no runtime change was needed. See [luacats.md](luacats.md) and [registration.md](registration.md). |
 | branch `feat/source-generator` | A Roslyn source generator writes userdata descriptors at compile time for `[MoonSharpUserData]` types and types listed with `[assembly: MoonSharpUserDataTypes]`: typed argument and result conversion, one `switch` per type, structs changed in place, per-member reflection fallback with a diagnostic, explicit registration (`GeneratedUserData.RegisterAll()`). Shipped in the UPM package. Results and error texts match reflection in the parity suite, and 20 interop fixtures pass on generated descriptors. See [source-generator.md](source-generator.md). |
 | branch `fix/interop-decisions` | The owner's interop decisions: a fractional number picks a floating-point overload and the overload cache tells whole from fractional numbers ([#293](https://github.com/moonsharp-devs/moonsharp/issues/293); `overload_call` interop workload B/A 0.95 to 0.98 against `next` after the struct-value merge, inside noise); an exact type match beats a custom converter ([#294](https://github.com/moonsharp-devs/moonsharp/issues/294)); derived types expose their base classes' static members, except those declared in the core library ([#175](https://github.com/moonsharp-devs/moonsharp/issues/175)); lists and dictionaries become tables under automatic registration ([#274](https://github.com/moonsharp-devs/moonsharp/issues/274)). `MoonSharp.Interpreter.dll` (netstandard2.0 Release) 411,136 to 412,672 bytes (+1,536). The source generator follows the #175 rule. See [MIGRATING.md](MIGRATING.md). |
@@ -90,7 +91,6 @@ What Unity 2021.3 support means for the code:
 
 | Work | Where |
 |---|---|
-| Table array part and the choice of `pairs` order | branch `spike/table-order` |
 | Measured comparison with Lua-CSharp on the same workloads | report pending |
 | Comparison of other engines (Lua-CSharp, Luau, Jint, xLua, xlua-ng, WattleScript, UniLua and others) and a profile of MoonSharp | to be published under `docs/research/` |
 | In-process JVM hosting | branch `feat/jvm-in-process` |
@@ -102,11 +102,15 @@ Lua 5.5.1 ([comparison-xlua-ng.md](comparison-xlua-ng.md)).
 
 Done: cheap fixes, upvalue cells, struct call frames and internal struct values (see the Done table).
 
-1. **Table array part** with a cached length; the `pairs` order follows the owner's decision. Tables
-   should also store `LuaValue`: the VM reaches tables only through `TableGet` and `TableSet` in
+1. **Tables store `LuaValue`.** The array part and the ordered hash part are done (Done table). Tables
+   should now store `LuaValue`: the VM reaches tables only through `TableGet` and `TableSet` in
    `Processor_InstructionLoop.cs`, which today create a `DynValue` for every value stored (the 40 bytes
    left in method_call and table_hash_set_get). Table needs internal `Get`/`Set` taking `LuaValue`
-   keys and values, and `InitNextArrayKeys` taking a `LuaValue`.
+   keys and values, and `InitNextArrayKeys` taking a `LuaValue`. All storage is inside `Table.cs`: the array becomes
+   `LuaValue[]` and the hash entries hold `LuaValue` keys and values (56 instead of 24 bytes per entry,
+   but no 40-byte `DynValue` per key and value), with markers for "absent" and "pointer entry" that
+   `DynValue` references give today. The public `DynValue` API then creates a `DynValue` per read, as the
+   VM boundary already does. The model and order tests carry over unchanged.
 2. **Zero-copy calls into the standard library.** Arguments are read from the stack and results written back, with no per-call argument list. Today each call to a C# function builds a `DynValue[]` and a `DynValue` per string or non-small number argument (StringFormatMix1K 1.10x after the struct values).
 3. **Compiler and dispatch.** Constant operands, fused compare-and-branch (today `a < b` runs `Less`, `ToBool`, `Jf`; `<=` pushes a marker for `CNot`), superinstructions, inline caches for field and global access, a cache for absent metamethods, one counter for the debugger and the instruction budget, the calling location of a frame looked up only when asked.
 
@@ -145,7 +149,7 @@ register VM (option C, PLAN B5) is due.
 - `ScriptOptions(defaults)` does not copy `ColonOperatorClrCallbackBehaviour`.
 - Property getters and setters called through reflection (AOT platforms, `InteropAccessMode.Reflection`) still wrap a thrown exception in `TargetInvocationException`; methods no longer do. A setter's own `ArgumentException` is also reported as a type mismatch on the compiled path.
 - `PlatformAutoDetector` and `UnityAssetsScriptLoader` test `UNITY_5`, which Unity 2017 and later no longer define, so the package always takes the reflection path (`IsUnityNative` is false). The Unity test bed checks the default loader; replace the checks with `UNITY_5_3_OR_NEWER` if it fails or once the matrix is green.
-- Upstream bugs that reproduce in the string library, the table code, the VM core and the compiler, and `require` ignoring `package.path` and `package.preload`: each has an ignored test in `UpstreamIssueTests.cs` that fails without the `Ignore` (list in [upstream-issues.md](upstream-issues.md)). Remove the `Ignore` with the fix.
+- Upstream bugs that reproduce in the string library, the VM core and the compiler, and `require` ignoring `package.path` and `package.preload`: each has an ignored test in `UpstreamIssueTests.cs` that fails without the `Ignore` (list in [upstream-issues.md](upstream-issues.md)). Remove the `Ignore` with the fix.
 - Found by the conformance corpus; each is a case with a `note`, so a fix updates its expectation. The owner decides which are bugs to fix (in `legacy` too) and which stay as documented differences:
   - `math.huge` is `Double.MaxValue`, so `math.huge == 1/0` is false.
   - `error(t)` with a table, and `error()`, raise "bad argument #1 to 'error'"; `pcall` never sees the error object.
@@ -155,6 +159,13 @@ register VM (option C, PLAN B5) is due.
   - `tostring` writes shortest round-trip digits, `NaN` and `Infinity`, where Lua 5.2 writes `%.14g`, `nan` and `inf`.
 
 ## Later, and ideas
+
+- Table follow-ups from the array-part work:
+  - the array part never shrinks: a 1M-element array cleared with `t[i] = nil` keeps its 8 MB until `Clear()` or the table dies. Lua shrinks on rehash; re-check the "more than half live" rule when the hash part is rebuilt.
+  - `table.insert`, `table.remove`, `table.sort` and `table.unpack` still go through `Get`/`Set` per element; fast paths over the array part are not measured yet.
+  - `pairs` over array keys creates a key `DynValue` per step (`pairs_mixed_128` 265 to 285 B); this goes away when tables store `LuaValue`.
+  - clearing a key inside a long run that was appended in order (`t[1] = nil` in a 1M sequence, then an insert) turns the rest of the run into pointer entries once, 24 bytes each.
+  - `table_remove_readd_10k` is 1.30x slower in `ab`, where each round is 1,500 iterations right after a forced full GC. Both builds pay a fixed cost of about 2.5 ms per such batch (`collectgarbage('collect')` then 3 x 500 iterations: 2.46 µs per iteration on `next`, 2.64 µs on the branch, against 0.77 and 0.68 µs over 30,000 iterations); each of its operations alone is 3-14% faster on the branch. The cause of the post-GC cost is not known.
 
 - Unity matrix additions, each a cost question: Unity 6000.3 LTS (newest Unity 6 line); the hardwire registration mode (`MyNamespace.MyClass.Initialize()`); Android and iOS IL2CPP players.
 - Run the conformance corpus in the Unity players too, through `ScriptHost`, with `unity-mono` and `unity-il2cpp` known-failures files.
@@ -188,6 +199,5 @@ register VM (option C, PLAN B5) is due.
   4. If "Activate Unity (activation file and authenticator code)" fails with "did not return a licence": the Unity website no longer converts Personal activation files for every account ([game-ci/documentation#408](https://github.com/game-ci/documentation/issues/408)). Activate a Personal licence in Unity Hub on any machine, read the serial from its licence file (Linux `~/.local/share/unity3d/Unity/Unity_lic.ulf`, macOS `/Library/Application Support/Unity/Unity_lic.ulf`, Windows `C:\ProgramData\Unity\Unity_lic.ulf`) with `sed -n 's/.*DeveloperData Value="\([^"]*\)".*/\1/p' Unity_lic.ulf | base64 -d | tail -c +5`, and add it as `UNITY_SERIAL`; the workflow then activates with it and returns the seat at the end.
   5. Each job uploads `unity-<version>-results` (one line per test). A red job lists the tests that failed or did not run; tests that skip themselves on Unity (the three trim-descriptor tests) are listed but allowed.
 - Android and iOS devices for IL2CPP player runs.
-- The `pairs` order decision, once the table measurements are in.
 - Approval before any upstream pull request.
 - Per-script type registries (#181), postponed; details in [upstream-issues.md](upstream-issues.md#decisions-for-the-owner).

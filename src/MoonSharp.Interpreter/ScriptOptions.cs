@@ -115,7 +115,8 @@ namespace MoonSharp.Interpreter
 		/// <see cref="ScriptInterruptedException"/>, which pcall cannot catch, and the script stays usable
 		/// for later calls. The count is the same on every platform, so <c>n =&gt; n &gt;= limit</c> is a
 		/// deterministic budget; a handler can also check a deadline or a CancellationToken.
-		/// Instructions inside a single library call (for example one string.rep) are not counted.
+		/// Long library loops (pattern matching, string.rep, table.concat, table.sort) also call it every
+		/// 10,000 steps, with the count unchanged: their steps are not instructions.
 		/// </summary>
 		public Func<long, bool> InterruptHandler { get; set; }
 

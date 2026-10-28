@@ -28,6 +28,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 			public long NextInterruptCheck;
 			// Calls into the Script that have not returned yet (host calls, callbacks, resumes).
 			public int EntryDepth;
+			// Steps of library loops since the interrupt handler last ran for them (Processor.LibraryWork).
+			public int LibraryWork;
 
 			public void Rearm(int countdown)
 			{

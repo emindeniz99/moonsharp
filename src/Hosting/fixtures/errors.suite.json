@@ -23,6 +23,7 @@
     {"name": "assert with a message", "op": "run", "chunk": "errors.lua", "source": "assert(nil, 'custom')", "expectError": {"kind": "runtime", "messageContains": "errors.lua:(1,6-21): custom", "line": 1}},
     {"name": "assert returns its arguments", "op": "run", "chunk": "errors.lua", "source": "return { assert(1, 2, 3) }", "expect": [1, 2, 3]},
     {"name": "pcall returns false and the message", "op": "run", "chunk": "errors.lua", "source": "return { pcall(error, 'x') }", "expect": [false, "x"]},
+    {"name": "pcall around a function that calls a metamethod", "op": "run", "chunk": "errors.lua", "source": "local o = setmetatable({}, { __tostring = function() return 'obj' end })\nreturn { pcall(tostring, o) }", "expect": [true, "obj"]},
     {"name": "pcall of a table error gets a string", "op": "run", "chunk": "errors.lua", "source": "local ok, e = pcall(error, { c = 1 }) return { ok, type(e), e }", "expect": [false, "string", "bad argument #1 to 'error' (string expected, got table)"], "note": "Lua 5.2: false, table"},
     {"name": "pcall keeps the position in the message", "op": "run", "chunk": "errors.lua", "source": "local ok, e = pcall(function() local a = nil; return a.b end) return e", "expect": "errors.lua:(1,46-56): attempt to index a nil value"},
     {"name": "xpcall calls the handler", "op": "run", "chunk": "errors.lua", "source": "return { xpcall(function() error('y', 0) end, function(m) return 'handled: ' .. m end) }", "expect": [false, "handled: y"]},

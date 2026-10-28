@@ -1,4 +1,4 @@
-using NUnit.Framework;
+﻿using NUnit.Framework;
 
 namespace MoonSharp.Interpreter.Tests.EndToEnd
 {
@@ -53,9 +53,9 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				}
 				return table.concat((function() local s = {} for i = 1, 29 do s[i] = tostring(out[i]) end return s end)(), ',')");
 
-			// select('#', string.byte('', 1)) is 1, not Lua's 0: a C# function's empty result list still
-			// arrives as one value (upstream #287, an ignored test in UpstreamIssueTests); the fast path keeps it.
-			Assert.AreEqual("-3,-2,3,4,7,3,9,2,9,3,ello,ll,hello,,65,67,3,1,nil,function,table,boolean,0,3,2,1,2,el,66", r.String);
+			// The output of lua5.2 for the same table. select('#', string.byte('', 1)) is 0: a C# function's
+			// empty result list is no value (upstream #287), on the fast path too.
+			Assert.AreEqual("-3,-2,3,4,7,3,9,2,9,3,ello,ll,hello,,65,67,3,0,nil,function,table,boolean,0,3,2,1,2,el,66", r.String);
 		}
 
 		[Test]

@@ -1,10 +1,11 @@
 {
   "suite": "time-limit",
-  "description": "The per-call time limit (context.timeLimitMs, ScriptHost.TimeLimitMs). The VM checks the clock every 10,000 instructions, so the outcome is the same on every host; only the time it takes differs.",
+  "description": "The per-call time limit (context.timeLimitMs, ScriptHost.TimeLimitMs). The VM checks the clock every 10,000 instructions, and long library loops (pattern matching, table.sort, table.concat, string.rep) every 10,000 steps, so the outcome is the same on every host; only the time it takes differs.",
   "context": { "timeLimitMs": 100 },
   "cases": [
     {"name": "a short call returns", "op": "run", "chunk": "time.lua", "source": "local n = 0\nfor i = 1, 1000 do n = n + i end\nreturn n", "expect": 500500},
     {"name": "an endless loop is interrupted", "op": "run", "chunk": "time.lua", "source": "while true do end", "expectError": {"kind": "interrupted", "messageContains": "time limit of 100 ms exceeded"}},
+    {"name": "one long library call is interrupted", "op": "run", "chunk": "time.lua", "source": "return (string.rep('a', 2e7):gsub('a', 'b'))", "expectError": {"kind": "interrupted", "messageContains": "time limit of 100 ms exceeded"}},
     {"name": "the context works after an interruption", "op": "run", "chunk": "time.lua", "source": "return 1 + 1", "expect": 2}
   ]
 }

@@ -998,3 +998,94 @@ converter is registered or an extension method of the same name applies.
 
 **Affected:** hosts that register custom converters after scripts have
 called overloaded methods.
+
+## Empty result lists are no values
+
+**Before:** a C# function that returned no values (`DynValue.NewTuple()`
+with no arguments, and so `table.unpack({})`, `string.byte('')`,
+`coroutine.yield()` resumed with nothing) gave one nil:
+`select('#', table.unpack({}))` was 1, `f(1, table.unpack({}))` passed `f`
+two values, `pcall(table.unpack, {})` returned `true, nil`, and a coroutine
+resumed with no values saw one nil from `coroutine.yield()`
+([upstream #287](https://github.com/moonsharp-devs/moonsharp/issues/287),
+[#198](https://github.com/moonsharp-devs/moonsharp/issues/198)). A Lua
+function that returned nothing gave no values already, but `(f())` kept "no
+value" instead of nil, and `return 1, f()` returned two values.
+
+**After:** as in Lua 5.2. `DynValue.NewTuple()` with no values returns
+`DynValue.Void`, the value a function that returns nothing gives; argument
+lists, `return` lists, `pcall`, `coroutine.resume` and `coroutine.yield`
+add no value for it, and parentheses turn it into nil.
+
+**Affected:** hosts that test `DynValue.NewTuple()` or a call's result for
+`DataType.Nil`: test `IsNil()`, which is true for both. Scripts that counted
+the extra nil.
+
+## Tail calls from C# functions keep their continuation
+
+**Before:** a C# function can return a tail call request
+(`DynValue.NewTailCallReq`) with a continuation, a C# function that receives
+the callee's results. The VM ran it when the callee was a Lua function and
+dropped it when the callee was a C# function. Because of that `pcall`
+refused such functions: `pcall(tostring, x)` for an `x` with a `__tostring`
+metamethod failed with "the function passed to pcall cannot be called
+directly by pcall", and so did `pcall(coroutine.yield, ...)`.
+
+**After:** the continuation runs for every callee, also after a C# callee
+yields, and errors before it runs reach the caller's `pcall`. `pcall` and
+`xpcall` take any C# function: `pcall(tostring, x)` returns `true` and the
+text, and `pcall(coroutine.yield, v)` yields `v` and returns `true` and the
+resume values, as in Lua 5.2. A C# `__tostring` now goes through `tostring`'s
+check like a Lua one: a number becomes its text (Lua 5.2 accepts numbers;
+MoonSharp rejected them from Lua functions too before), a table or a boolean
+is the error "'tostring' must return a string".
+
+**Affected:** C# `__tostring` functions that return values other than
+strings, numbers and nil. `Script.Call(pcall, ...)` from C# still hands
+the host the tail call request when the called function has a continuation
+(docs/ROADMAP.md).
+
+## Metamethods nest 200 levels deep and return one value
+
+**Before:** a metamethod written in Lua that triggers itself, such as
+`__index = function(t, k) return t[k] end`, ran forever: once 65,536 frames
+were on the stack, the tail call optimisation reused them. A metamethod's
+results were not adjusted, so `select('#', t.x)` was 0 when `__index`
+returned nothing and 2 when it returned two values.
+
+**After:** as in Lua 5.2, metamethod calls (`__index`, `__newindex`,
+arithmetic, comparison, `__concat`, `__len`, `__unm`) nested 200 deep raise
+"C stack overflow" at the expression that triggered the last one; `pcall`
+catches it and the `Script` stays usable. `__call` is not counted, as in Lua.
+A metamethod's result is one value: nil when it returns nothing.
+
+**Affected:** scripts with metamethod recursion deeper than 200 levels, which
+Lua 5.2 rejects too.
+
+## Stack overflow as a chunk starts has a position
+
+**Before:** an error in the instructions a chunk starts with, the value stack
+overflowing when a module's chunk starts during a cyclic `require`, was
+reported as `bytecode:<n>: stack overflow`.
+
+**After:** it is reported at the chunk's first statement
+(`mod:(1,0-19): stack overflow`).
+
+**Affected:** nobody, unless a host parsed the `bytecode:` text.
+
+## Long library calls can be interrupted
+
+**Before:** `ScriptOptions.InterruptHandler` (and the hosting time limit) ran
+only between VM instructions, so one long library call could not be stopped:
+`string.rep('a', 2e7):gsub('a', 'b')` ran 2.6 s under a 100 ms time limit.
+
+**After:** the pattern functions (`find`, `match`, `gmatch`, `gsub`),
+`string.rep`, `table.concat` and `table.sort` call the handler every 10,000
+steps too (match attempts and backtracking steps, repetitions, elements,
+comparisons). The instruction count the handler receives does not change, so
+an instruction limit stays deterministic and does not stop such a call; a
+time limit or a cancellation does. An interruption inside a `table.sort`
+comparator now stops the script; `table.sort` used to drop it and return a
+half-sorted table.
+
+**Affected:** hosts whose interrupt handler counts its own calls.

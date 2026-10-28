@@ -43,5 +43,64 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 			Assert.AreEqual("painted", r.String);
 		}
+
+		public class Connection
+		{
+			public string Name = "base";
+		}
+
+		public class SecureConnection : Connection
+		{
+			public SecureConnection() { Name = "secure"; }
+		}
+
+		public class Command
+		{
+			public Connection Connection { get; set; }
+			public int Timeout = 10;
+		}
+
+		public class SecureCommand : Command
+		{
+			public new SecureConnection Connection { get; set; }
+			public new int Timeout = 30;
+		}
+
+		public class LegacyCommand : Command
+		{
+			private new int Timeout = 99;
+			public int PrivateTimeout() { return Timeout; }
+		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/286: a type that hides an inherited
+		// property or field with "new" (common in database and UI libraries) could not be
+		// registered at all: "Multiple members named Connection are being added".
+		// Scripts see the member C# code sees through the derived type.
+		[Test]
+		public void Issue286_MembersHiddenWithNewUseTheDerivedMember()
+		{
+			UserData.RegisterType<SecureCommand>();
+			UserData.RegisterType<SecureConnection>();
+
+			Script s = new Script();
+			s.Globals["cmd"] = new SecureCommand() { Connection = new SecureConnection() };
+
+			DynValue r = s.DoString("return cmd.Connection.Name .. ' ' .. cmd.Timeout");
+
+			Assert.AreEqual("secure 30", r.String);
+		}
+
+		// A private "new" member hides nothing from code outside the type, so scripts keep
+		// seeing the inherited public one.
+		[Test]
+		public void Issue286_PrivateNewMemberKeepsTheInheritedOne()
+		{
+			UserData.RegisterType<LegacyCommand>();
+
+			Script s = new Script();
+			s.Globals["cmd"] = new LegacyCommand();
+
+			Assert.AreEqual(10.0, s.DoString("return cmd.Timeout").Number);
+		}
 	}
 }

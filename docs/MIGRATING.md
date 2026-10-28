@@ -140,3 +140,13 @@ field") until another extension class was registered. Every registered
 extension method is now found. Affected: hosts that register extension
 methods for one type from several static classes
 ([upstream #102](https://github.com/moonsharp-devs/moonsharp/issues/102)).
+
+## Types that hide inherited members with `new` can be registered
+
+Registering a type that hides an inherited property, field or event with
+`new` (for example a command type whose `Connection` property returns a
+more derived connection) threw "Multiple members named ... are being
+added". The type now registers and scripts see the member that C# code
+sees through that type: the most derived visible one. Affected: hosts
+that worked around the exception with wrapper types
+([upstream #286](https://github.com/moonsharp-devs/moonsharp/issues/286)).

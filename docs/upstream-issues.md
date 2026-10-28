@@ -20,8 +20,8 @@ again; planned work goes in [ROADMAP.md](ROADMAP.md), and fork-only changes in
 
 | Status | Issues | Pull requests |
 |---|---|---|
-| fixed in the fork | 16 | 6 |
-| reproduces, waits for other work | 10 | 3 |
+| fixed in the fork | 16 | 7 |
+| reproduces, waits for other work | 10 | 2 |
 | needs the owner | 5 | 2 |
 | does not reproduce | 16 | 3 |
 | question, answered | 8 | 0 |
@@ -176,7 +176,7 @@ keys 1..n (`77c8662`).
 | [#202](https://github.com/moonsharp-devs/moonsharp/pull/202) | m_IsRunningOnAOT doesn't be used | tech debt | out of scope | A compiler warning under IL2CPP defines; waits for the Unity CI matrix |
 | [#191](https://github.com/moonsharp-devs/moonsharp/pull/191) | Make TimeZone changeable | feature | feature: not planned | No roadmap item |
 | [#184](https://github.com/moonsharp-devs/moonsharp/pull/184) | Fix stringlib against non-ascii chars | bug | waits: string library | Same as #187 |
-| [#179](https://github.com/moonsharp-devs/moonsharp/pull/179) | No NullReferenceException when passing null to Table.Set | bug | waits: table | Reproduces. Ignored test `UpstreamIssueTests.PR179_TableSetWithNullRemovesTheKey` |
+| [#179](https://github.com/moonsharp-devs/moonsharp/pull/179) | No NullReferenceException when passing null to Table.Set | bug | fixed | Branch `perf/table-array-part`: a null value is nil; `PR179_TableSetWithNullRemovesTheKey` |
 | [#173](https://github.com/moonsharp-devs/moonsharp/pull/173) | Fixed : call debug.getmetatable maybe cause NullReferenceException | bug | fixed | `ed11539`; `Issue173_DebugGetmetatableReturnsNilWithoutMetatable` |
 | [#146](https://github.com/moonsharp-devs/moonsharp/pull/146) | fixed crash in web browser + unity + webgl | bug | out of scope | Same as #212 |
 | [#132](https://github.com/moonsharp-devs/moonsharp/pull/132) | Table remove by negative fix | bug | does not reproduce | `table.remove(t, -1)` raises "position out of bounds", as Lua 5.2 does |

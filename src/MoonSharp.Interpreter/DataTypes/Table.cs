@@ -792,12 +792,13 @@ namespace MoonSharp.Interpreter
 		/// Sets the value associated to the specified key.
 		/// </summary>
 		/// <param name="key">The key.</param>
-		/// <param name="value">The value.</param>
+		/// <param name="value">The value; null is the same as nil.</param>
 		public void Set(string key, DynValue value)
 		{
 			if (key == null)
 				throw ScriptRuntimeException.TableIndexIsNil();
 
+			value = value ?? DynValue.Nil;
 			this.CheckScriptOwnership(value);
 			SetString(key, HashString(key), null, value);
 		}
@@ -806,9 +807,10 @@ namespace MoonSharp.Interpreter
 		/// Sets the value associated to the specified key.
 		/// </summary>
 		/// <param name="key">The key.</param>
-		/// <param name="value">The value.</param>
+		/// <param name="value">The value; null is the same as nil.</param>
 		public void Set(int key, DynValue value)
 		{
+			value = value ?? DynValue.Nil;
 			this.CheckScriptOwnership(value);
 			SetInt(key, value, null);
 		}
@@ -817,7 +819,7 @@ namespace MoonSharp.Interpreter
 		/// Sets the value associated to the specified key.
 		/// </summary>
 		/// <param name="key">The key.</param>
-		/// <param name="value">The value.</param>
+		/// <param name="value">The value; null is the same as nil.</param>
 		public void Set(DynValue key, DynValue value)
 		{
 			if (key.IsNilOrNan())
@@ -827,6 +829,8 @@ namespace MoonSharp.Interpreter
 				else
 					throw ScriptRuntimeException.TableIndexIsNaN();
 			}
+
+			value = value ?? DynValue.Nil;
 
 			if (key.Type == DataType.String)
 			{

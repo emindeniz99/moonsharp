@@ -506,3 +506,11 @@ dead-key rule above). What a host can see:
 - `Table.Pairs`, `Keys` and `Values` follow the rules of `next`: clearing
   fields while enumerating is allowed; whether a key added during the
   enumeration is visited is not defined.
+
+## `Table.Set` with a null value, and multi-key errors
+
+`Table.Set(key, null)` threw `NullReferenceException`; a null value now
+means nil, as `t[k] = nil` in a script. The error of a multi-key
+`Table.Get`/`Set` whose path breaks now names the key ("Key 'settings'
+did not point to anything") instead of printing "Key '{0}' ...".
+Affected: hosts that caught those exceptions.

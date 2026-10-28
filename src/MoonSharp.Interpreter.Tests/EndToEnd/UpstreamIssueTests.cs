@@ -452,7 +452,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		// formatted numbers with the process culture, so 1.5 .. '' was "1,5" under a decimal-comma
 		// culture while tostring(1.5) was "1.5".
 		[Test]
-		[Ignore("waits for VM core work (DynValue.CastToString): https://github.com/moonsharp-devs/moonsharp/pull/327")]
 		public void PR327_ConcatenationIgnoresTheCulture()
 		{
 			CultureInfo old = Thread.CurrentThread.CurrentCulture;

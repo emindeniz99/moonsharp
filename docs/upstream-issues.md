@@ -20,8 +20,8 @@ again; planned work goes in [ROADMAP.md](ROADMAP.md), and fork-only changes in
 
 | Status | Issues | Pull requests |
 |---|---|---|
-| fixed in the fork | 14 | 4 |
-| reproduces, waits for other work | 12 | 5 |
+| fixed in the fork | 14 | 5 |
+| reproduces, waits for other work | 12 | 4 |
 | needs the owner | 5 | 2 |
 | does not reproduce | 16 | 3 |
 | question, answered | 8 | 0 |
@@ -165,7 +165,7 @@ keys 1..n (`77c8662`).
 | [#344](https://github.com/moonsharp-devs/moonsharp/pull/344) | Map generic c# functions of registered types to lua functions | feature | feature: not planned | See [upstream.md](upstream.md); maintainers prefer explicit wrappers |
 | [#336](https://github.com/moonsharp-devs/moonsharp/pull/336) | Fix for #175 (Inheritance for static methods) | bug | needs owner | Same as #175 |
 | [#334](https://github.com/moonsharp-devs/moonsharp/pull/334) | Bitwise operators and floor division operator from Lua 5.3 | feature | feature: not planned | Waits for the integer decision; targets `legacy/2.0` |
-| [#327](https://github.com/moonsharp-devs/moonsharp/pull/327) | DynValue ToString uses InvariantCulture | bug | waits: VM core | Reproduces: `1.5 .. ''` is `1,5` under a decimal-comma culture. Ignored test `UpstreamIssueTests.PR327_ConcatenationIgnoresTheCulture`; also in the corpus's tr-TR known failures |
+| [#327](https://github.com/moonsharp-devs/moonsharp/pull/327) | DynValue ToString uses InvariantCulture | bug | fixed | `00c75be` on `next` (numbers print the same on every runtime); `UpstreamIssueTests.PR327_ConcatenationIgnoresTheCulture` passes |
 | [#324](https://github.com/moonsharp-devs/moonsharp/pull/324) | Fix for #198 (var args are nil when void is passed) | bug | waits: VM core | Same as #198 |
 | [#321](https://github.com/moonsharp-devs/moonsharp/pull/321) | Added compatibility with Unity 2017+ | bug | needs owner | `#if UNITY_5` paths are dead on Unity 2017 and later (also in the fork); enabling them needs the Unity CI matrix |
 | [#316](https://github.com/moonsharp-devs/moonsharp/pull/316) | FIX (net6.0-ios, net6.0-wasm) | bug | does not reproduce | The fork's browser build runs the netstandard2.0 interpreter (fork [PR #8](https://github.com/emindeniz99/moonsharp/pull/8)) |

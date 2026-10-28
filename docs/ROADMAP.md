@@ -118,7 +118,6 @@ After step 4: the checkpoint in the decisions table.
 - `PlatformAutoDetector` and `UnityAssetsScriptLoader` test `UNITY_5`, which Unity 2017 and later no longer define, so the package always takes the reflection path (`IsUnityNative` is false). The Unity test bed checks the default loader; replace the checks with `UNITY_5_3_OR_NEWER` if it fails or once the matrix is green.
 - Upstream bugs that reproduce in the string library, the table code, the VM core and the compiler, and `require` ignoring `package.path` and `package.preload`: each has an ignored test in `UpstreamIssueTests.cs` that fails without the `Ignore` (list in [upstream-issues.md](upstream-issues.md)). Remove the `Ignore` with the fix.
 - Found by the conformance corpus; each is a case with a `note`, so a fix updates its expectation. The owner decides which are bugs to fix (in `legacy` too) and which stay as documented differences:
-  - Concatenation and `string.format('%s')` format numbers with the process culture: `1.5 .. ''` is `1,5` under `tr_TR` or `de_DE` (`DynValue.CastToString`, `Number.ToString()` without a culture). `known-failures/dotnet-tr-TR.json` lists the two cases.
   - `%` with a negative divisor takes the dividend's sign: `7 % -3` is 1, Lua gives -2.
   - `math.huge` is `Double.MaxValue`, so `math.huge == 1/0` is false.
   - `error(t)` with a table, and `error()`, raise "bad argument #1 to 'error'"; `pcall` never sees the error object.

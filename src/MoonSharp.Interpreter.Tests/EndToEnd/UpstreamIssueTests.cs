@@ -403,5 +403,16 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 			Assert.IsTrue(t.Get("name").IsNil());
 		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/287: an empty tuple became one nil, so
+		// table.unpack({}, 1, 0) returned one value instead of none.
+		[Test]
+		[Ignore("waits for VM core work (DynValue.NewTuple): https://github.com/moonsharp-devs/moonsharp/issues/287")]
+		public void Issue287_EmptyUnpackReturnsNoValues()
+		{
+			Script s = new Script();
+
+			Assert.AreEqual(0.0, s.DoString("return select('#', table.unpack({}, 1, 0))").Number);
+		}
 	}
 }

@@ -484,5 +484,29 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual("app.config", r.Tuple[0].String);
 			Assert.AreEqual("string", r.Tuple[1].String);
 		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/332: require ignored package.path and
+		// read only the LUA_PATH global and ScriptLoader.ModulePaths.
+		[Test]
+		[Ignore("waits for module registration work (require): https://github.com/moonsharp-devs/moonsharp/issues/332")]
+		public void Issue332_RequireUsesPackagePath()
+		{
+			string dir = Path.Combine(Path.GetTempPath(), "moonsharp-issue332-" + Guid.NewGuid().ToString("N"));
+			Directory.CreateDirectory(dir);
+
+			try
+			{
+				File.WriteAllText(Path.Combine(dir, "point.lua"), "return { x = 1 }");
+				Script s = new Script();
+				s.Options.ScriptLoader = new FileSystemScriptLoader();
+				s.Globals["dir"] = dir;
+
+				Assert.AreEqual(1.0, s.DoString("package.path = dir .. '/?.lua' return require('point').x").Number);
+			}
+			finally
+			{
+				Directory.Delete(dir, true);
+			}
+		}
 	}
 }

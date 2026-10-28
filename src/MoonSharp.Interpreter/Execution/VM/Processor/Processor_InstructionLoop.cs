@@ -1236,7 +1236,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 				{
 					if (!isMultiIndex)
 					{
-						if (!obj.Table.Get(idx).IsNil())
+						// Without a metatable there is no __newindex to find, so skip the lookup of the old value.
+						if (obj.Table.MetaTable == null || !obj.Table.Get(idx).IsNil())
 						{
 							obj.Table.Set(idx, value);
 							return instructionPtr;

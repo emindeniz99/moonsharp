@@ -86,5 +86,55 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 			Assert.AreEqual("number:1=b,number:9007199254740992=d,number:1.5=f,string:s=h", res);
 		}
+
+		[Test]
+		public void NewIndexRunsForAbsentKeysOnlyWhenTheMetatableIsSetAfterTheFirstStores()
+		{
+			// A table without a metatable skips the __newindex lookup; that shortcut must not stick to
+			// the table once it gets a metatable, nor when the metatable gains __newindex later.
+			string res = Script.RunString(@"
+				local log = {}
+				local t = {}
+				t.a = 1; t[1] = 1
+				local mt = {}
+				setmetatable(t, mt)
+				t.b = 2                       -- metatable without __newindex: raw store
+				mt.__newindex = function(tt, k, v) log[#log + 1] = tostring(k) rawset(tt, k, v * 10) end
+				t.a = 3; t[1] = 3             -- existing keys: raw store, no __newindex
+				t.c = 4; t[2] = 4             -- absent keys: __newindex
+				t.a = nil; t.a = 5            -- a became absent: __newindex again
+				setmetatable(t, nil)
+				t.d = 6                       -- metatable removed: raw store
+				return table.concat(log, ',') .. '|' .. t.a .. ',' .. t.b .. ',' .. t.c .. ',' .. t.d .. ',' .. t[1] .. ',' .. t[2]").String;
+
+			Assert.AreEqual("c,2,a|50,2,40,6,3,40", res);
+		}
+
+		[Test]
+		public void NewIndexTableChainStillStoresIntoTheTargetTable()
+		{
+			string res = Script.RunString(@"
+				local store = {}
+				local t = setmetatable({}, { __newindex = store })
+				t.x = 1
+				return tostring(rawget(t, 'x')) .. ',' .. store.x").String;
+
+			Assert.AreEqual("nil,1", res);
+		}
+
+		[Test]
+		public void StoringWithANilOrNaNKeyStillFailsWithoutAMetatable()
+		{
+			string res = Script.RunString(@"
+				local t = {}
+				local ok1, e1 = pcall(function() t[nil] = 1 end)
+				local ok2, e2 = pcall(function() t[0/0] = 1 end)
+				return tostring(ok1) .. ':' .. e1 .. '|' .. tostring(ok2) .. ':' .. e2").String;
+
+			StringAssert.StartsWith("false:", res);
+			StringAssert.Contains("table index is nil", res);
+			StringAssert.Contains("|false:", res);
+			StringAssert.Contains("table index is NaN", res);
+		}
 	}
 }

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
 using MoonSharp.Interpreter;
 using MoonSharp.Interpreter.Debugging;
 
@@ -24,8 +23,6 @@ namespace MoonSharp.Hosting
 	{
 		/// <summary>Version of the JSON contract. Bump it when a value mapping or the envelope changes.</summary>
 		public const int ContractVersion = 1;
-
-		static readonly Regex s_Location = new Regex(@"^(?<chunk>.*?):\((?<line>\d+),", RegexOptions.CultureInvariant);
 
 		readonly Script m_Script;
 		readonly LuaJson m_Json;
@@ -301,13 +298,7 @@ namespace MoonSharp.Hosting
 				kind = ex is SyntaxErrorException ? "syntax" : ex is ScriptInterruptedException ? "interrupted" : "runtime";
 				message = (ex is ScriptInterruptedException ? m_Interruption : interpreterEx.DecoratedMessage) ?? ex.Message;
 
-				Match m = s_Location.Match(message);
-
-				if (m.Success)
-				{
-					chunk = m.Groups["chunk"].Value;
-					line = int.Parse(m.Groups["line"].Value, CultureInfo.InvariantCulture);
-				}
+				ParseLocation(message, out chunk, out line);
 
 				if (interpreterEx.CallStack != null)
 					foreach (var frame in interpreterEx.CallStack)
@@ -355,6 +346,33 @@ namespace MoonSharp.Hosting
 			sb.Append("]}");
 			AppendOutput(sb);
 			sb.Append('}');
+		}
+
+		/// <summary>
+		/// Reads the position MoonSharp puts in front of a message, "chunk:(line,from-to): text": the chunk is
+		/// everything before the first ":(" that is followed by digits and a comma. Plain code rather than a
+		/// Regex keeps System.Text.RegularExpressions (94 KB brotli) out of the browser download.
+		/// </summary>
+		static void ParseLocation(string message, out string chunk, out int line)
+		{
+			for (int at = message.IndexOf(":(", StringComparison.Ordinal); at >= 0; at = message.IndexOf(":(", at + 1, StringComparison.Ordinal))
+			{
+				int end = at + 2;
+				int value = 0;
+
+				while (end < message.Length && message[end] >= '0' && message[end] <= '9' && end - at < 11)
+					value = value * 10 + (message[end++] - '0');
+
+				if (end > at + 2 && end < message.Length && message[end] == ',')
+				{
+					chunk = message.Substring(0, at);
+					line = value;
+					return;
+				}
+			}
+
+			chunk = null;
+			line = -1;
 		}
 
 		static double ElapsedMs(long start)

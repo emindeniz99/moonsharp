@@ -78,9 +78,11 @@ namespace MoonSharp.Interpreter.Tree.Statements
 			// prepares iterator tuple - stack : iterator-tuple
 			bc.Emit_IterPrep();
 
+			// Cleared once; each iteration ends with Emit_Leave (see ForLoopStatement).
+			bc.Emit_Enter(m_StackFrame);
+
 			// loop start - stack : iterator-tuple
 			int start = bc.GetJumpPointForNextInstruction();
-			bc.Emit_Enter(m_StackFrame);
 
 			// expand the tuple - stack : iterator-tuple, f, var, s
 			bc.Emit_ExpTuple(0);

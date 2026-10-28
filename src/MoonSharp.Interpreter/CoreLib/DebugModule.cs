@@ -121,14 +121,12 @@ namespace MoonSharp.Interpreter.CoreLib
 
 			var fn = args.AsType(0, "getupvalue", DataType.Function, false).Function;
 
-			var closure = fn.ClosureContext;
-
-			if (index < 0 || index >= closure.Count)
+			if (index < 0 || index >= fn.GetUpvaluesCount())
 				return DynValue.Nil;
 
 			return DynValue.NewTuple(
-				DynValue.NewString(closure.Symbols[index]),
-				closure[index]);
+				DynValue.NewString(fn.GetUpvalueName(index)),
+				fn.GetUpvalue(index));
 		}
 
 
@@ -142,12 +140,10 @@ namespace MoonSharp.Interpreter.CoreLib
 
 			var fn = args.AsType(0, "getupvalue", DataType.Function, false).Function;
 
-			var closure = fn.ClosureContext;
-
-			if (index < 0 || index >= closure.Count)
+			if (index < 0 || index >= fn.GetUpvaluesCount())
 				return DynValue.Nil;
 
-			return DynValue.NewNumber(closure[index].ReferenceID);
+			return DynValue.NewNumber(fn.Upvalues[index].Id);
 		}
 
 
@@ -161,14 +157,12 @@ namespace MoonSharp.Interpreter.CoreLib
 
 			var fn = args.AsType(0, "setupvalue", DataType.Function, false).Function;
 
-			var closure = fn.ClosureContext;
-
-			if (index < 0 || index >= closure.Count)
+			if (index < 0 || index >= fn.GetUpvaluesCount())
 				return DynValue.Nil;
 
-			closure[index].Assign(args[2]);
+			fn.SetUpvalue(index, args[2]);
 
-			return DynValue.NewString(closure.Symbols[index]);
+			return DynValue.NewString(fn.GetUpvalueName(index));
 		}
 
 
@@ -183,13 +177,13 @@ namespace MoonSharp.Interpreter.CoreLib
 			Closure c1 = f1.Function;
 			Closure c2 = f2.Function;
 
-			if (n1 < 0 || n1 >= c1.ClosureContext.Count)
+			if (n1 < 0 || n1 >= c1.GetUpvaluesCount())
 				throw ScriptRuntimeException.BadArgument(1, "upvaluejoin", "invalid upvalue index");
 			
-			if (n2 < 0 || n2 >= c2.ClosureContext.Count)
+			if (n2 < 0 || n2 >= c2.GetUpvaluesCount())
 				throw ScriptRuntimeException.BadArgument(3, "upvaluejoin", "invalid upvalue index");
 
-			c2.ClosureContext[n2] = c1.ClosureContext[n1];
+			c2.Upvalues[n2] = c1.Upvalues[n1];
 
 			return DynValue.Void;
 		}

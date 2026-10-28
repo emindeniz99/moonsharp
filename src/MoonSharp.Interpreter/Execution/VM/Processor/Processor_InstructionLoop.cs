@@ -30,6 +30,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			repeat_execution:
 
+			// The running frame's base pointer, where its locals start. Ops that enter or leave a script
+			// function refresh it.
+			int basePointer = CurrentBasePointer();
+
 			try
 			{
 				while (true)
@@ -81,7 +85,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 							ExecSwap(i);
 							break;
 						case OpCode.Literal:
-							m_ValueStack.Push(i.Value);
+							m_ValueStack.Push(i.Value.ToLuaValue());
 							break;
 						case OpCode.Add:
 						case OpCode.Sub:
@@ -89,40 +93,109 @@ namespace MoonSharp.Interpreter.Execution.VM
 						case OpCode.Div:
 						case OpCode.Mod:
 						case OpCode.Power:
-							instructionPtr = ExecArithmetic(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecArithmetic(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.Concat:
-							instructionPtr = ExecConcat(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecConcat(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.Neg:
-							instructionPtr = ExecNeg(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecNeg(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.Eq:
-							instructionPtr = ExecEq(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecEq(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.LessEq:
-							instructionPtr = ExecLessEq(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecLessEq(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.Less:
-							instructionPtr = ExecLess(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecLess(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.Len:
-							instructionPtr = ExecLen(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecLen(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.Call:
 						case OpCode.ThisCall:
 							instructionPtr = Internal_ExecCall(i.NumVal, instructionPtr, null, null, i.OpCode == OpCode.ThisCall, i.Name);
 							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							basePointer = CurrentBasePointer();
 							break;
 						case OpCode.Scalar:
-							m_ValueStack.Push(m_ValueStack.Pop().ToScalar());
+							{
+								ref LuaValue top = ref m_ValueStack.Peek();
+
+								if (top.Type == DataType.Tuple)
+									top = top.ToScalar();
+							}
 							break;
 						case OpCode.Not:
 							ExecNot(i);
@@ -137,7 +210,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 							break;
 						case OpCode.JNil:
 							{
-								DynValue v = m_ValueStack.Pop().ToScalar();
+								LuaValue v = m_ValueStack.Pop().ToScalar();
 
 								if (v.Type == DataType.Nil || v.Type == DataType.Void)
 									instructionPtr = i.NumVal;
@@ -156,7 +229,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 							ExecMkTuple(i);
 							break;
 						case OpCode.Clean:
-							ClearBlockData(i);
+							ClearBlockData(i, basePointer);
 							break;
 						case OpCode.Closure:
 							ExecClosure(i);
@@ -165,7 +238,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 							ExecBeginFn(i);
 							break;
 						case OpCode.ToBool:
-							m_ValueStack.Push(DynValue.FromBoolean(m_ValueStack.Pop().ToScalar().CastToBool()));
+							{
+								ref LuaValue top = ref m_ValueStack.Peek();
+								top = LuaValue.FromBoolean(top.ToScalar().CastToBool());
+							}
 							break;
 						case OpCode.Args:
 							ExecArgs(i);
@@ -175,6 +251,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
 							if (instructionPtr < 0)
 								goto return_to_native_code;
+							basePointer = CurrentBasePointer();
 							break;
 						case OpCode.Incr:
 							ExecIncr(i);
@@ -187,10 +264,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
 							break;
 						case OpCode.NewTable:
-							if (i.NumVal == 0)
-								m_ValueStack.Push(DynValue.NewTable(this.m_Script));
-							else
-								m_ValueStack.Push(DynValue.NewPrimeTable());
+							m_ValueStack.Push(LuaValue.FromObject(DataType.Table, new Table(i.NumVal == 0 ? this.m_Script : null)));
 							break;
 						case OpCode.IterPrep:
 							ExecIterPrep(i);
@@ -202,18 +276,16 @@ namespace MoonSharp.Interpreter.Execution.VM
 							ExecExpTuple(i);
 							break;
 						case OpCode.Local:
-							var scope = m_ExecutionStack.Peek().LocalScope;
-							var index = i.Symbol.i_Index;
-							m_ValueStack.Push(scope[index].AsReadOnly());
+							m_ValueStack.Push(m_ValueStack.Items[basePointer + i.Symbol.i_Index]);
 							break;
 						case OpCode.Upvalue:
-							m_ValueStack.Push(m_ExecutionStack.Peek().ClosureScope[i.Symbol.i_Index].AsReadOnly());
+							m_ValueStack.Push(m_ExecutionStack.Peek().Upvalues[i.Symbol.i_Index].Get());
 							break;
 						case OpCode.StoreUpv:
 							ExecStoreUpv(i);
 							break;
 						case OpCode.StoreLcl:
-							ExecStoreLcl(i);
+							m_ValueStack.Items[basePointer + i.Symbol.i_Index] = GetStoreValue(i);
 							break;
 						case OpCode.TblInitN:
 							ExecTblInitN(i);
@@ -224,14 +296,32 @@ namespace MoonSharp.Interpreter.Execution.VM
 						case OpCode.Index:
 						case OpCode.IndexN:
 						case OpCode.IndexL:
-							instructionPtr = ExecIndex(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecIndex(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.IndexSet:
 						case OpCode.IndexSetN:
 						case OpCode.IndexSetL:
-							instructionPtr = ExecIndexSet(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecIndexSet(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.Invalid:
 							throw new NotImplementedException(string.Format("Invalid opcode : {0}", i.Name));
@@ -242,7 +332,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			yield_to_calling_coroutine:
 
-				DynValue yieldRequest = m_ValueStack.Pop().ToScalar();
+				DynValue yieldRequest = m_ValueStack.Pop().ToScalar().ToDynValue();
 
 				if (m_CanYield)
 					return yieldRequest;
@@ -276,12 +366,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 					// handles it or to this loop's entry point, not past them.
 					for (int i = 0; i < m_ExecutionStack.Count; i++)
 					{
-						var c = m_ExecutionStack.Peek(i);
+						// Copies, not a ref: the message handler runs script code, which can move the frames.
+						CallStackItemHandlers handlers = m_ExecutionStack.Peek(i).Handlers;
+						CallStackItemFlags flags = m_ExecutionStack.Peek(i).Flags;
 
-						if (c.ErrorHandlerBeforeUnwind != null)
-							ex.DecoratedMessage = PerformMessageDecorationBeforeUnwind(c.ErrorHandlerBeforeUnwind, ex.DecoratedMessage, GetCurrentSourceRef(instructionPtr));
+						if (handlers != null && handlers.ErrorHandlerBeforeUnwind != null)
+							ex.DecoratedMessage = PerformMessageDecorationBeforeUnwind(handlers.ErrorHandlerBeforeUnwind, ex.DecoratedMessage, GetCurrentSourceRef(instructionPtr));
 
-						if (c.ErrorHandler != null || (c.Flags & CallStackItemFlags.EntryPoint) != 0)
+						if ((handlers != null && handlers.ErrorHandler != null) || (flags & CallStackItemFlags.EntryPoint) != 0)
 							break;
 					}
 
@@ -328,7 +420,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			return null;
 
 		return_to_native_code:
-			return m_ValueStack.Pop();
+			return m_ValueStack.Pop().ToDynValue();
 
 
 		}
@@ -388,109 +480,119 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 
 
-		private void AssignLocal(SymbolRef symref, DynValue value)
+		/// <summary>
+		/// Stores a value in a local of the running function. The local's slot holds a copy, so a value read
+		/// from the variable earlier does not change when the variable is assigned again.
+		/// </summary>
+		private void AssignLocal(SymbolRef symref, LuaValue value)
 		{
-			var stackframe = m_ExecutionStack.Peek();
-
-			DynValue v = stackframe.LocalScope[symref.i_Index];
-			if (v == null)
-				stackframe.LocalScope[symref.i_Index] = v = DynValue.NewNil();
-
-			v.Assign(value);
-		}
-
-		private void ExecStoreLcl(Instruction i)
-		{
-			DynValue value = GetStoreValue(i);
-			SymbolRef symref = i.Symbol;
-
-			AssignLocal(symref, value);
+			m_ValueStack[m_ExecutionStack.Peek().BasePointer + symref.i_Index] = value;
 		}
 
 		private void ExecStoreUpv(Instruction i)
 		{
-			DynValue value = GetStoreValue(i);
-			SymbolRef symref = i.Symbol;
-
-			var stackframe = m_ExecutionStack.Peek();
-
-			DynValue v = stackframe.ClosureScope[symref.i_Index];
-			if (v == null)
-				stackframe.ClosureScope[symref.i_Index] = v = DynValue.NewNil();
-
-			v.Assign(value);
+			LuaValue value = GetStoreValue(i);
+			m_ExecutionStack.Peek().Upvalues[i.Symbol.i_Index].Set(value);
 		}
 
 		private void ExecSwap(Instruction i)
 		{
-			DynValue v1 = m_ValueStack.Peek(i.NumVal);
-			DynValue v2 = m_ValueStack.Peek(i.NumVal2);
+			ref LuaValue v1 = ref m_ValueStack.Peek(i.NumVal);
+			ref LuaValue v2 = ref m_ValueStack.Peek(i.NumVal2);
 
-			m_ValueStack.Set(i.NumVal, v2);
-			m_ValueStack.Set(i.NumVal2, v1);
+			LuaValue tmp = v1;
+			v1 = v2;
+			v2 = tmp;
 		}
 
 
-		private DynValue GetStoreValue(Instruction i)
+		private LuaValue GetStoreValue(Instruction i)
 		{
 			int stackofs = i.NumVal;
 			int tupleidx = i.NumVal2;
 
-			DynValue v = m_ValueStack.Peek(stackofs);
+			ref LuaValue v = ref m_ValueStack.Peek(stackofs);
 
 			if (v.Type == DataType.Tuple)
-				v = (tupleidx < v.Tuple.Length) ? v.Tuple[tupleidx] : null;
-			else if (tupleidx != 0)
-				v = null;
+			{
+				DynValue[] tuple = v.TupleValue.Tuple;
+				DynValue e = (tupleidx < tuple.Length) ? tuple[tupleidx] : null;
 
-			// A call that returns nothing leaves void; a variable takes nil, as in Lua.
-			return (v == null || v.Type == DataType.Void) ? DynValue.NewNil() : v;
+				// A call that returns nothing leaves void; a variable takes nil, as in Lua.
+				return (e == null || e.Type == DataType.Void) ? LuaValue.Nil : e.ToLuaValue();
+			}
+
+			if (tupleidx != 0 || v.Type == DataType.Void)
+				return LuaValue.Nil;
+
+			return v;
 		}
 
 		private void ExecClosure(Instruction i)
 		{
 			// Fill the upvalue list directly: no LINQ iterator, no intermediate list, no per-closure name array.
 			SymbolRef[] symbols = i.SymbolList;
-			ClosureContext context = null;
+			Upvalue[] upvalues = null;
 
 			if (symbols.Length > 0)
 			{
-				CallStackItem frame = m_ExecutionStack.Peek();
-				context = new ClosureContext(symbols);
+				int basePointer = m_ExecutionStack.Peek().BasePointer;
+				Upvalue[] enclosing = m_ExecutionStack.Peek().Upvalues;
+				upvalues = new Upvalue[symbols.Length];
 
 				for (int k = 0; k < symbols.Length; k++)
-					context.Add(GetUpvalueSymbol(frame, symbols[k]));
+				{
+					SymbolRef s = symbols[k];
+
+					// A local of the running function: share its open upvalue. An upvalue of the running
+					// function: share the same upvalue.
+					if (s.Type == SymbolRefType.Local)
+						upvalues[k] = FindUpvalue(basePointer + s.i_Index);
+					else if (s.Type == SymbolRefType.Upvalue)
+						upvalues[k] = enclosing[s.i_Index];
+					else
+						throw new Exception("unsupported symbol type");
+				}
 			}
 
-			m_ValueStack.Push(DynValue.NewClosure(new Closure(this.m_Script, i.NumVal, context)));
-		}
-
-		private static DynValue GetUpvalueSymbol(CallStackItem frame, SymbolRef s)
-		{
-			if (s.Type == SymbolRefType.Local)
-				return frame.LocalScope[s.i_Index];
-			else if (s.Type == SymbolRefType.Upvalue)
-				return frame.ClosureScope[s.i_Index];
-			else
-				throw new Exception("unsupported symbol type");
+			m_ValueStack.Push(LuaValue.FromObject(DataType.Function, new Closure(this.m_Script, i.NumVal, symbols, upvalues)));
 		}
 
 		private void ExecMkTuple(Instruction i)
 		{
-			Slice<DynValue> slice = new Slice<DynValue>(m_ValueStack, m_ValueStack.Count - i.NumVal, i.NumVal, false);
+			int count = i.NumVal;
+			int first = m_ValueStack.Count - count;
+			DynValue[] values;
 
-			var v = Internal_AdjustTuple(slice);
+			if (count > 0 && m_ValueStack[first + count - 1].Type == DataType.Tuple)
+			{
+				// The last expression is a call or '...': its values extend the list.
+				DynValue[] items = new DynValue[count];
 
-			m_ValueStack.RemoveLast(i.NumVal);
+				for (int k = 0; k < count; k++)
+					items[k] = m_ValueStack[first + k].ToDynValue();
 
-			m_ValueStack.Push(DynValue.NewTuple(v));
+				values = Internal_AdjustTuple(items);
+			}
+			else
+			{
+				values = new DynValue[count];
+
+				for (int k = 0; k < count; k++)
+					values[k] = m_ValueStack[first + k].ToScalar().ToDynValue();
+			}
+
+			m_ValueStack.RemoveLast(count);
+			m_ValueStack.Push(DynValue.NewTuple(values).ToLuaValue());
 		}
 
 		private void ExecToNum(Instruction i)
 		{
-			double? v = m_ValueStack.Pop().ToScalar().CastToNumber();
+			ref LuaValue top = ref m_ValueStack.Peek();
+			double? v = top.ToScalar().CastToNumber();
+
 			if (v.HasValue)
-				m_ValueStack.Push(DynValue.NewNumber(v.Value));
+				top = LuaValue.FromNumber(v.Value);
 			else
 				throw ScriptRuntimeException.ConvertToNumberFailed(i.NumVal);
 		}
@@ -498,19 +600,32 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private void ExecIterUpd(Instruction i)
 		{
-			DynValue v = m_ValueStack.Peek(0);
-			DynValue t = m_ValueStack.Peek(1);
-			t.Tuple[2] = v;
+			// stack: iterator state (a LuaValue[3]: f, s, var), new value of var
+			LuaValue v = m_ValueStack.Peek(0);
+			LuaValue[] state = (LuaValue[])m_ValueStack.Peek(1).Object;
+			state[2] = v;
 		}
 
 		private void ExecExpTuple(Instruction i)
 		{
-			DynValue t = m_ValueStack.Peek(i.NumVal);
+			LuaValue t = m_ValueStack.Peek(i.NumVal);
 
 			if (t.Type == DataType.Tuple)
 			{
-				for (int idx = 0; idx < t.Tuple.Length; idx++)
-					m_ValueStack.Push(t.Tuple[idx]);
+				LuaValue[] state = t.Object as LuaValue[];
+
+				if (state != null)
+				{
+					for (int idx = 0; idx < state.Length; idx++)
+						m_ValueStack.Push(state[idx]);
+				}
+				else
+				{
+					DynValue[] tuple = t.TupleValue.Tuple;
+
+					for (int idx = 0; idx < tuple.Length; idx++)
+						m_ValueStack.Push(tuple[idx].ToLuaValue());
+				}
 			}
 			else
 			{
@@ -521,7 +636,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private void ExecIterPrep(Instruction i)
 		{
-			DynValue v = m_ValueStack.Pop();
+			DynValue v = m_ValueStack.Pop().ToDynValue();
 
 			if (v.Type != DataType.Tuple)
 			{
@@ -551,7 +666,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 					s = v.Tuple.Length >= 2 ? v.Tuple[1] : DynValue.Nil;
 					var = v.Tuple.Length >= 3 ? v.Tuple[2] : DynValue.Nil;
 
-					m_ValueStack.Push(DynValue.NewTuple(f, s, var));
+					PushIteratorState(f, s, var);
 					return;
 				}
 				else if (f.Type == DataType.Table)
@@ -560,15 +675,31 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 					if (callmeta == null || callmeta.IsNil())
 					{
-						m_ValueStack.Push(EnumerableWrapper.ConvertTable(f.Table));
+						DynValue[] wrapper = EnumerableWrapper.ConvertTable(f.Table).Tuple;
+						PushIteratorState(wrapper[0], wrapper[1], wrapper[2]);
 						return;
 					}
 				}
 			}
 
-			m_ValueStack.Push(DynValue.NewTuple(f, s, var));
+			PushIteratorState(f, s, var);
 		}
 
+		/// <summary>
+		/// Pushes the generic for's state as a LuaValue[3], which the loop updates in place every iteration
+		/// (IterUpd) without creating a DynValue for the control variable.
+		/// </summary>
+		private void PushIteratorState(DynValue f, DynValue s, DynValue var)
+		{
+			LuaValue[] state = new LuaValue[] { f.ToLuaValue(), s.ToLuaValue(), var.ToLuaValue() };
+			m_ValueStack.Push(LuaValue.FromObject(DataType.Tuple, state));
+		}
+
+
+		private int CurrentBasePointer()
+		{
+			return m_ExecutionStack.Count > 0 ? m_ExecutionStack.Peek().BasePointer : -1;
+		}
 
 		private int ExecJFor(Instruction i, int instructionPtr)
 		{
@@ -588,93 +719,118 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private void ExecIncr(Instruction i)
 		{
-			DynValue top = m_ValueStack.Peek(0);
-			DynValue btm = m_ValueStack.Peek(i.NumVal);
-
-			if (top.ReadOnly)
-			{
-				m_ValueStack.Pop();
-
-				if (top.ReadOnly)
-					top = top.CloneAsWritable();
-
-				m_ValueStack.Push(top);
-			}
-
-			top.AssignNumber(top.Number + btm.Number);
+			// The counter is a stack slot of its own (the loop variable gets a copy), so it changes in place.
+			m_ValueStack.Peek(0).Number += m_ValueStack.Peek(i.NumVal).Number;
 		}
 
 
 		private void ExecCNot(Instruction i)
 		{
-			DynValue v = m_ValueStack.Pop().ToScalar();
-			DynValue not = m_ValueStack.Pop().ToScalar();
+			LuaValue v = m_ValueStack.Pop().ToScalar();
+			LuaValue not = m_ValueStack.Pop().ToScalar();
 
 			if (not.Type != DataType.Boolean)
 				throw new InternalErrorException("CNOT had non-bool arg");
 
 			if (not.CastToBool())
-				m_ValueStack.Push(DynValue.FromBoolean(!(v.CastToBool())));
+				m_ValueStack.Push(LuaValue.FromBoolean(!(v.CastToBool())));
 			else
-				m_ValueStack.Push(DynValue.FromBoolean(v.CastToBool()));
+				m_ValueStack.Push(LuaValue.FromBoolean(v.CastToBool()));
 		}
 
 		private void ExecNot(Instruction i)
 		{
-			DynValue v = m_ValueStack.Pop().ToScalar();
-			m_ValueStack.Push(DynValue.FromBoolean(!(v.CastToBool())));
+			ref LuaValue top = ref m_ValueStack.Peek();
+			top = LuaValue.FromBoolean(!top.ToScalar().CastToBool());
 		}
 
 		private void ExecBeginFn(Instruction i)
 		{
-			CallStackItem cur = m_ExecutionStack.Peek();
+			ref CallStackItem cur = ref m_ExecutionStack.Peek();
 
 			cur.Debug_Symbols = i.SymbolList;
-			cur.LocalScope = new DynValue[i.NumVal];
 
-			ClearBlockData(i);
+			// The locals live on the value stack at the base pointer, one slot per local symbol, each
+			// undeclared until its declaration runs.
+			m_ValueStack.Expand(i.NumVal, LuaValue.Undeclared);
 		}
 
 		private CallStackItem PopToBasePointer()
 		{
 			var csi = m_ExecutionStack.Pop();
 			if (csi.BasePointer >= 0)
+			{
+				CloseUpvalues(csi.BasePointer);
 				m_ValueStack.CropAtCount(csi.BasePointer);
+			}
 			return csi;
+		}
+
+		/// <summary>
+		/// Leaves the running script function: closes the upvalues of its locals and removes its frame,
+		/// locals, temporaries, arguments and the function value. Returns the return address.
+		/// </summary>
+		private int PopScriptFrame(out CallbackFunction continuation)
+		{
+			ref CallStackItem csi = ref m_ExecutionStack.Peek();
+			int retpoint = csi.ReturnAddress;
+			int basePointer = csi.BasePointer;
+			int argCount = csi.ArgCount;
+			continuation = csi.Continuation;
+			m_ExecutionStack.RemoveLast();
+
+			if (m_OpenUpvalues != null)
+				CloseUpvalues(basePointer);
+
+			m_ValueStack.CropAtCount(basePointer - argCount - 1);
+			return retpoint;
 		}
 
 		private int PopExecStackAndCheckVStack(int vstackguard)
 		{
-			var xs = m_ExecutionStack.Pop();
-			if (vstackguard != xs.BasePointer)
+			ref CallStackItem xs = ref m_ExecutionStack.Peek();
+			int returnAddress = xs.ReturnAddress;
+			int basePointer = xs.BasePointer;
+			m_ExecutionStack.RemoveLast();
+
+			if (vstackguard != basePointer)
 				throw new InternalErrorException("StackGuard violation");
 
-			return xs.ReturnAddress;
+			return returnAddress;
 		}
 
 		static readonly DynValue[] s_NoArgs = new DynValue[0];
 
-		private IList<DynValue> CreateArgsListForFunctionCall(int numargs, int offsFromTop)
+		/// <summary>
+		/// The arguments of a call to a C# function, the top <paramref name="numargs"/> stack values, as
+		/// DynValues. A last argument that is a tuple of more than one value is expanded.
+		/// </summary>
+		private DynValue[] CreateArgsListForFunctionCall(int numargs)
 		{
 			if (numargs == 0) return s_NoArgs;
 
-			DynValue lastParam = m_ValueStack.Peek(offsFromTop);
+			int first = m_ValueStack.Count - numargs;
+			ref LuaValue lastParam = ref m_ValueStack[first + numargs - 1];
 
-			if (lastParam.Type == DataType.Tuple && lastParam.Tuple.Length > 1)
+			if (lastParam.Type == DataType.Tuple && lastParam.TupleValue.Tuple.Length > 1)
 			{
-				List<DynValue> values = new List<DynValue>();
+				DynValue[] tuple = lastParam.TupleValue.Tuple;
+				DynValue[] values = new DynValue[numargs - 1 + tuple.Length];
 
 				for (int idx = 0; idx < numargs - 1; idx++)
-					values.Add(m_ValueStack.Peek(numargs - idx - 1 + offsFromTop));
+					values[idx] = m_ValueStack[first + idx].ToDynValue();
 
-				for (int idx = 0; idx < lastParam.Tuple.Length; idx++)
-					values.Add(lastParam.Tuple[idx]);
-
+				Array.Copy(tuple, 0, values, numargs - 1, tuple.Length);
 				return values;
 			}
 			else
 			{
-				return new Slice<DynValue>(m_ValueStack, m_ValueStack.Count - numargs - offsFromTop, numargs, false);
+				DynValue[] values = new DynValue[numargs];
+
+				for (int idx = 0; idx < numargs; idx++)
+					values[idx] = m_ValueStack[first + idx].ToDynValue();
+
+				return values;
 			}
 		}
 
@@ -682,61 +838,84 @@ namespace MoonSharp.Interpreter.Execution.VM
 		private void ExecArgs(Instruction I)
 		{
 			// The arguments sit right below the frame's base pointer; the count is in the frame.
-			CallStackItem frame = m_ExecutionStack.Peek();
+			ref CallStackItem frame = ref m_ExecutionStack.Peek();
 			int numargs = frame.ArgCount;
-			int argsBase = frame.BasePointer - numargs;
+			int basePointer = frame.BasePointer;
+			int argsBase = basePointer - numargs;
 			SymbolRef[] symbols = I.SymbolList;
 
 			bool lastArgExpands = numargs > 0 && m_ValueStack[argsBase + numargs - 1].Type == DataType.Tuple
-				&& m_ValueStack[argsBase + numargs - 1].Tuple.Length > 1;
+				&& m_ValueStack[argsBase + numargs - 1].TupleValue.Tuple.Length > 1;
 			bool hasVarArgs = symbols.Length > 0 && symbols[symbols.Length - 1].i_Name == WellKnownSymbols.VARARGS;
 
 			if (!lastArgExpands && !hasVarArgs)
 			{
-				// Common case: read the arguments in place and keep the writable copy as the parameter's
-				// cell, instead of a Slice, a new nil cell and a second copy into it.
-				DynValue[] scope = frame.LocalScope;
-
+				// Common case: copy the arguments, read in place, into the parameters' slots.
 				for (int i = 0; i < symbols.Length; i++)
 				{
-					int index = symbols[i].i_Index;
-					DynValue value = (i < numargs) ? m_ValueStack[argsBase + i].ToScalar().CloneAsWritable() : DynValue.NewNil();
-
-					if (scope[index] == null)
-						scope[index] = value;
-					else
-						scope[index].Assign(value);
+					m_ValueStack[basePointer + symbols[i].i_Index] = (i < numargs)
+						? ParameterValue(m_ValueStack[argsBase + i])
+						: LuaValue.Nil;
 				}
 
 				return;
 			}
 
 			// unpacks last tuple arguments to simplify a lot of code down under
-			var argsList = CreateArgsListForFunctionCall(numargs, m_ValueStack.Count - frame.BasePointer);
+			List<LuaValue> argsList = new List<LuaValue>(numargs);
 
-			for (int i = 0; i < I.SymbolList.Length; i++)
+			for (int i = 0; i < numargs; i++)
 			{
+				LuaValue a = m_ValueStack[argsBase + i];
+
+				if (i == numargs - 1 && lastArgExpands)
+				{
+					foreach (DynValue d in a.TupleValue.Tuple)
+						argsList.Add(d.ToLuaValue());
+				}
+				else
+				{
+					argsList.Add(a);
+				}
+			}
+
+			for (int i = 0; i < symbols.Length; i++)
+			{
+				bool isVarArgs = (i == symbols.Length - 1) && (symbols[i].i_Name == WellKnownSymbols.VARARGS);
+
 				if (i >= argsList.Count)
 				{
-					this.AssignLocal(I.SymbolList[i], DynValue.NewNil());
+					// '...' with no values is an empty list, not one nil (select('#', ...) is 0).
+					this.AssignLocal(symbols[i], isVarArgs ? DynValue.EmptyTuple.ToLuaValue() : LuaValue.Nil);
 				}
-				else if ((i == I.SymbolList.Length - 1) && (I.SymbolList[i].i_Name == WellKnownSymbols.VARARGS))
+				else if (isVarArgs)
 				{
 					int len = argsList.Count - i;
 					DynValue[] varargs = new DynValue[len];
 
 					for (int ii = 0; ii < len; ii++, i++)
 					{
-						varargs[ii] = argsList[i].ToScalar().CloneAsWritable();
+						varargs[ii] = argsList[i].ToScalar().ToDynValue();
 					}
 
-					this.AssignLocal(I.SymbolList[I.SymbolList.Length - 1], DynValue.NewTuple(Internal_AdjustTuple(varargs)));
+					DynValue[] adjusted = Internal_AdjustTuple(varargs);
+					this.AssignLocal(symbols[symbols.Length - 1], (adjusted.Length == 0 ? DynValue.EmptyTuple : DynValue.NewTuple(adjusted)).ToLuaValue());
 				}
 				else
 				{
-					this.AssignLocal(I.SymbolList[i], argsList[i].ToScalar().CloneAsWritable());
+					this.AssignLocal(symbols[i], ParameterValue(argsList[i]));
 				}
 			}
+		}
+
+		/// <summary>
+		/// The value a parameter takes from an argument: the first value of a tuple, and nil for no value
+		/// (an argument f() where f returns nothing), since a parameter is a variable.
+		/// </summary>
+		private static LuaValue ParameterValue(LuaValue argument)
+		{
+			LuaValue v = argument.ToScalar();
+			return v.Type == DataType.Void ? LuaValue.Nil : v;
 		}
 
 
@@ -745,7 +924,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		private int Internal_ExecCall(int argsCount, int instructionPtr, CallbackFunction handler = null,
 			CallbackFunction continuation = null, bool thisCall = false, string debugText = null, DynValue unwindHandler = null)
 		{
-			DynValue fn = m_ValueStack.Peek(argsCount);
+			LuaValue fn = m_ValueStack.Peek(argsCount);
 			CallStackItemFlags flags = (thisCall ? CallStackItemFlags.MethodCall : CallStackItemFlags.None);
 
 			// if TCO threshold reached
@@ -760,11 +939,11 @@ namespace MoonSharp.Interpreter.Execution.VM
 					// and we are followed *exactly* by a RET 1
 					if (I.OpCode == OpCode.Ret && I.NumVal == 1)
 					{
-						CallStackItem csi = m_ExecutionStack.Peek();
+						ref CallStackItem csi = ref m_ExecutionStack.Peek();
 
 						// if the current stack item has no "odd" things pending and neither has the new coming one..
-						if (csi.ClrFunction == null && csi.Continuation == null && csi.ErrorHandler == null
-							&& csi.ErrorHandlerBeforeUnwind == null && continuation == null && unwindHandler == null && handler == null)
+						if (csi.ClrFunction == null && csi.Handlers == null
+							&& continuation == null && unwindHandler == null && handler == null)
 						{
 							instructionPtr = PerformTCO(instructionPtr, argsCount);
 							flags |= CallStackItemFlags.TailCall;
@@ -777,52 +956,44 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			if (fn.Type == DataType.ClrFunction)
 			{
-				//IList<DynValue> args = new Slice<DynValue>(m_ValueStack, m_ValueStack.Count - argsCount, argsCount, false);
-				IList<DynValue> args = CreateArgsListForFunctionCall(argsCount, 0);
-				// we expand tuples before callbacks
-				// args = DynValue.ExpandArgumentsToList(args);
+				CallbackFunction callback = (CallbackFunction)fn.Object;
+				DynValue[] args = CreateArgsListForFunctionCall(argsCount);
 
 				// instructionPtr - 1: instructionPtr already points to the next instruction at this moment
 				// but we need the current instruction here
 				SourceRef sref = GetCurrentSourceRef(instructionPtr - 1);
 
-				m_ExecutionStack.Push(new CallStackItem()
-				{
-					ClrFunction = fn.Callback,
-					ReturnAddress = instructionPtr,
-					CallingSourceRef = sref,
-					BasePointer = -1,
-					ErrorHandler = handler,
-					Continuation = continuation,
-					ErrorHandlerBeforeUnwind = unwindHandler,
-					Flags = flags,
-				});
+				ref CallStackItem frame = ref m_ExecutionStack.Push();
+				frame.ClrFunction = callback;
+				frame.ReturnAddress = instructionPtr;
+				frame.CallingSourceRef = sref;
+				frame.BasePointer = -1;
+				frame.Handlers = CallStackItemHandlers.Create(continuation, handler, unwindHandler);
+				frame.Flags = flags;
 
-				var ret = fn.Callback.Invoke(new ScriptExecutionContext(this, fn.Callback, sref), args,
+				var ret = callback.Invoke(new ScriptExecutionContext(this, callback, sref), args,
 					isMethodCall: thisCall);
 				m_ValueStack.RemoveLast(argsCount + 1);
 				m_ValueStack.Push(ret);
 
-				m_ExecutionStack.Pop();
+				m_ExecutionStack.RemoveLast();
 
 				return Internal_CheckForTailRequests(null, instructionPtr);
 			}
 			else if (fn.Type == DataType.Function)
 			{
-				m_ExecutionStack.Push(new CallStackItem()
-				{
-					BasePointer = m_ValueStack.Count,
-					ArgCount = argsCount,
-					ReturnAddress = instructionPtr,
-					Debug_EntryPoint = fn.Function.EntryPointByteCodeLocation,
-					CallingSourceRef = GetCurrentSourceRef(instructionPtr - 1), // See right above in GetCurrentSourceRef(instructionPtr - 1)
-					ClosureScope = fn.Function.ClosureContext,
-					ErrorHandler = handler,
-					Continuation = continuation,
-					ErrorHandlerBeforeUnwind = unwindHandler,
-					Flags = flags,
-				});
-				return fn.Function.EntryPointByteCodeLocation;
+				Closure closure = (Closure)fn.Object;
+				ref CallStackItem frame = ref m_ExecutionStack.Push();
+				frame.BasePointer = m_ValueStack.Count;
+				frame.ArgCount = argsCount;
+				frame.ReturnAddress = instructionPtr;
+				frame.Debug_EntryPoint = closure.EntryPointByteCodeLocation;
+				frame.CallingSourceRef = GetCurrentSourceRef(instructionPtr - 1); // See right above in GetCurrentSourceRef(instructionPtr - 1)
+				frame.Function = closure;
+				frame.Upvalues = closure.Upvalues;
+				frame.Handlers = CallStackItemHandlers.Create(continuation, handler, unwindHandler);
+				frame.Flags = flags;
+				return closure.EntryPointByteCodeLocation;
 			}
 
 			// fallback to __call metamethod
@@ -830,7 +1001,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			if (m != null && m.IsNotNil())
 			{
-				DynValue[] tmp = new DynValue[argsCount + 1];
+				LuaValue[] tmp = new LuaValue[argsCount + 1];
 				for (int i = 0; i < argsCount + 1; i++)
 					tmp[i] = m_ValueStack.Pop();
 
@@ -847,7 +1018,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private int PerformTCO(int instructionPtr, int argsCount)
 		{
-			DynValue[] args = new DynValue[argsCount + 1];
+			LuaValue[] args = new LuaValue[argsCount + 1];
 
 			// Remove all cur args and func ptr
 			for (int i = 0; i <= argsCount; i++)
@@ -870,22 +1041,18 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private int ExecRet(Instruction i)
 		{
-			CallStackItem csi;
+			CallbackFunction continuation;
 			int retpoint = 0;
 
 			if (i.NumVal == 0)
 			{
-				csi = PopToBasePointer();
-				retpoint = csi.ReturnAddress;
-				m_ValueStack.RemoveLast(csi.ArgCount + 1);
-				m_ValueStack.Push(DynValue.Void);
+				retpoint = PopScriptFrame(out continuation);
+				m_ValueStack.Push(LuaValue.Void);
 			}
 			else if (i.NumVal == 1)
 			{
 				var retval = m_ValueStack.Pop();
-				csi = PopToBasePointer();
-				retpoint = csi.ReturnAddress;
-				m_ValueStack.RemoveLast(csi.ArgCount + 1);
+				retpoint = PopScriptFrame(out continuation);
 				m_ValueStack.Push(retval);
 				retpoint = Internal_CheckForTailRequests(i, retpoint);
 			}
@@ -894,9 +1061,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 				throw new InternalErrorException("RET supports only 0 and 1 ret val scenarios");
 			}
 
-			if (csi.Continuation != null)
-				m_ValueStack.Push(csi.Continuation.Invoke(new ScriptExecutionContext(this, csi.Continuation, i.SourceCodeRef),
-					new DynValue[1] { m_ValueStack.Pop() }));
+			if (continuation != null)
+				m_ValueStack.Push(continuation.Invoke(new ScriptExecutionContext(this, continuation, i.SourceCodeRef),
+					new DynValue[1] { m_ValueStack.Pop().ToDynValue() }));
 
 			return retpoint;
 		}
@@ -905,13 +1072,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private int Internal_CheckForTailRequests(Instruction i, int instructionPtr)
 		{
-			DynValue tail = m_ValueStack.Peek(0);
+			ref LuaValue tail = ref m_ValueStack.Peek(0);
 
 			if (tail.Type == DataType.TailCallRequest)
 			{
-				m_ValueStack.Pop(); // discard tail call request
+				TailCallData tcd = tail.TupleValue.TailCallData;
 
-				TailCallData tcd = tail.TailCallData;
+				m_ValueStack.RemoveLast(); // discard tail call request
 
 				m_ValueStack.Push(tcd.Function);
 
@@ -934,7 +1101,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private int JumpBool(Instruction i, bool expectedValueForJump, int instructionPtr)
 		{
-			DynValue op = m_ValueStack.Pop().ToScalar();
+			LuaValue op = m_ValueStack.Pop().ToScalar();
 
 			if (op.CastToBool() == expectedValueForJump)
 				return i.NumVal;
@@ -946,7 +1113,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		{
 			bool expectedValToShortCircuit = i.OpCode == OpCode.JtOrPop;
 
-			DynValue op = m_ValueStack.Peek().ToScalar();
+			LuaValue op = m_ValueStack.Peek().ToScalar();
 
 			if (op.CastToBool() == expectedValToShortCircuit)
 			{
@@ -954,7 +1121,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 			else
 			{
-				m_ValueStack.Pop();
+				m_ValueStack.RemoveLast();
 				return instructionPtr;
 			}
 		}
@@ -962,11 +1129,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private int ExecArithmetic(Instruction i, int instructionPtr)
 		{
-			DynValue r = m_ValueStack.Pop().ToScalar();
-			DynValue l = m_ValueStack.Pop().ToScalar();
+			LuaValue[] items = m_ValueStack.Items;
+			int top = m_ValueStack.Count;
+			ref LuaValue l = ref items[top - 2];
+			ref LuaValue r = ref items[top - 1];
 			double ln, rn;
 
-			// Numbers first; strings that convert to numbers next; then metamethods.
+			// Numbers first, in place: the result replaces the left operand, and the right operand's slot
+			// holds no object, so it needs no clearing. Strings that convert to numbers next; then metamethods.
 			if (l.Type == DataType.Number && r.Type == DataType.Number)
 			{
 				ln = l.Number;
@@ -974,18 +1144,22 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 			else
 			{
-				double? lc = l.CastToNumber();
-				double? rc = r.CastToNumber();
+				LuaValue ls = l.ToScalar();
+				LuaValue rs = r.ToScalar();
+				double? lc = ls.CastToNumber();
+				double? rc = rs.CastToNumber();
 
 				if (!lc.HasValue || !rc.HasValue)
 				{
-					int ip = Internal_InvokeBinaryMetaMethod(l, r, ArithmeticEvent(i.OpCode), instructionPtr);
+					m_ValueStack.RemoveLast(2);
+					int ip = Internal_InvokeBinaryMetaMethod(ls, rs, ArithmeticEvent(i.OpCode), instructionPtr);
 					if (ip >= 0) return ip;
-					else throw ScriptRuntimeException.ArithmeticOnNonNumber(l, r);
+					else throw ScriptRuntimeException.ArithmeticOnNonNumber(ls.ToDynValue(), rs.ToDynValue());
 				}
 
 				ln = lc.Value;
 				rn = rc.Value;
+				r = LuaValue.Nil;
 			}
 
 			double result;
@@ -1000,7 +1174,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 				default: result = Math.Pow(ln, rn); break;
 			}
 
-			m_ValueStack.Push(DynValue.NewNumber(result));
+			l = LuaValue.FromNumber(result);
+			m_ValueStack.Count = top - 1;
 			return instructionPtr;
 		}
 
@@ -1027,39 +1202,47 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private int ExecNeg(Instruction i, int instructionPtr)
 		{
-			DynValue r = m_ValueStack.Pop().ToScalar();
+			ref LuaValue top = ref m_ValueStack.Peek();
 
-			if (r.Type == DataType.Number)
+			if (top.Type == DataType.Number)
 			{
-				m_ValueStack.Push(DynValue.NewNumber(-r.Number));
+				top.Number = -top.Number;
 				return instructionPtr;
 			}
 
+			LuaValue r = m_ValueStack.Pop().ToScalar();
 			double? rn = r.CastToNumber();
 
 			if (rn.HasValue)
 			{
-				m_ValueStack.Push(DynValue.NewNumber(-rn.Value));
+				m_ValueStack.Push(LuaValue.FromNumber(-rn.Value));
 				return instructionPtr;
 			}
 			else
 			{
 				int ip = Internal_InvokeUnaryMetaMethod(r, "__unm", instructionPtr);
 				if (ip >= 0) return ip;
-				else throw ScriptRuntimeException.ArithmeticOnNonNumber(r);
+				else throw ScriptRuntimeException.ArithmeticOnNonNumber(r.ToDynValue());
 			}
 		}
 
 
 		private int ExecEq(Instruction i, int instructionPtr)
 		{
-			DynValue r = m_ValueStack.Pop().ToScalar();
-			DynValue l = m_ValueStack.Pop().ToScalar();
+			LuaValue r = m_ValueStack.Pop().ToScalar();
+			LuaValue l = m_ValueStack.Pop().ToScalar();
+
+			// Same type, not a table or userdata: no metamethod can apply.
+			if (r.Type == l.Type && r.Type != DataType.Table && r.Type != DataType.UserData)
+			{
+				m_ValueStack.Push(LuaValue.FromBoolean(LuaValue.RawEquals(ref l, ref r)));
+				return instructionPtr;
+			}
 
 			// first we do a brute force equals over the references
-			if (object.ReferenceEquals(r, l))
+			if (r.Type == l.Type && ReferenceEquals(r.Object, l.Object))
 			{
-				m_ValueStack.Push(DynValue.True);
+				m_ValueStack.Push(LuaValue.True);
 				return instructionPtr;
 			}
 
@@ -1074,9 +1257,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 			if (r.Type != l.Type)
 			{
 				if ((l.Type == DataType.Nil && r.Type == DataType.Void) || (l.Type == DataType.Void && r.Type == DataType.Nil))
-					m_ValueStack.Push(DynValue.True);
+					m_ValueStack.Push(LuaValue.True);
 				else
-					m_ValueStack.Push(DynValue.False);
+					m_ValueStack.Push(LuaValue.False);
 
 				return instructionPtr;
 			}
@@ -1089,28 +1272,40 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 
 			// else perform standard comparison
-			m_ValueStack.Push(DynValue.FromBoolean(r.Equals(l)));
+			m_ValueStack.Push(LuaValue.FromBoolean(LuaValue.RawEquals(ref r, ref l)));
 			return instructionPtr;
 		}
 
 		private int ExecLess(Instruction i, int instructionPtr)
 		{
-			DynValue r = m_ValueStack.Pop().ToScalar();
-			DynValue l = m_ValueStack.Pop().ToScalar();
+			LuaValue[] items = m_ValueStack.Items;
+			int top = m_ValueStack.Count;
+			ref LuaValue l = ref items[top - 2];
+			ref LuaValue r = ref items[top - 1];
 
 			if (l.Type == DataType.Number && r.Type == DataType.Number)
 			{
-				m_ValueStack.Push(DynValue.FromBoolean(l.Number < r.Number));
+				l = LuaValue.FromBoolean(l.Number < r.Number);
+				m_ValueStack.Count = top - 1;
+				return instructionPtr;
 			}
-			else if (l.Type == DataType.String && r.Type == DataType.String)
+
+			LuaValue rs = m_ValueStack.Pop().ToScalar();
+			LuaValue ls = m_ValueStack.Pop().ToScalar();
+
+			if (ls.Type == DataType.Number && rs.Type == DataType.Number)
 			{
-				m_ValueStack.Push(DynValue.FromBoolean(string.CompareOrdinal(l.String, r.String) < 0));
+				m_ValueStack.Push(LuaValue.FromBoolean(ls.Number < rs.Number));
+			}
+			else if (ls.Type == DataType.String && rs.Type == DataType.String)
+			{
+				m_ValueStack.Push(LuaValue.FromBoolean(string.CompareOrdinal((string)ls.Object, (string)rs.Object) < 0));
 			}
 			else
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__lt", instructionPtr);
+				int ip = Internal_InvokeBinaryMetaMethod(ls, rs, "__lt", instructionPtr);
 				if (ip < 0)
-					throw ScriptRuntimeException.CompareInvalidType(l, r);
+					throw ScriptRuntimeException.CompareInvalidType(ls.ToDynValue(), rs.ToDynValue());
 				else
 					return ip;
 			}
@@ -1120,28 +1315,28 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private int ExecLessEq(Instruction i, int instructionPtr)
 		{
-			DynValue r = m_ValueStack.Pop().ToScalar();
-			DynValue l = m_ValueStack.Pop().ToScalar();
+			LuaValue r = m_ValueStack.Pop().ToScalar();
+			LuaValue l = m_ValueStack.Pop().ToScalar();
 
 			if (l.Type == DataType.Number && r.Type == DataType.Number)
 			{
-				m_ValueStack.Push(DynValue.False);
-				m_ValueStack.Push(DynValue.FromBoolean(l.Number <= r.Number));
+				m_ValueStack.Push(LuaValue.False);
+				m_ValueStack.Push(LuaValue.FromBoolean(l.Number <= r.Number));
 			}
 			else if (l.Type == DataType.String && r.Type == DataType.String)
 			{
-				m_ValueStack.Push(DynValue.False);
-				m_ValueStack.Push(DynValue.FromBoolean(string.CompareOrdinal(l.String, r.String) <= 0));
+				m_ValueStack.Push(LuaValue.False);
+				m_ValueStack.Push(LuaValue.FromBoolean(string.CompareOrdinal((string)l.Object, (string)r.Object) <= 0));
 			}
 			else
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__le", instructionPtr, DynValue.False);
+				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__le", instructionPtr, LuaValue.False);
 				if (ip < 0)
 				{
-					ip = Internal_InvokeBinaryMetaMethod(r, l, "__lt", instructionPtr, DynValue.True);
+					ip = Internal_InvokeBinaryMetaMethod(r, l, "__lt", instructionPtr, LuaValue.True);
 
 					if (ip < 0)
-						throw ScriptRuntimeException.CompareInvalidType(l, r);
+						throw ScriptRuntimeException.CompareInvalidType(l.ToDynValue(), r.ToDynValue());
 					else
 						return ip;
 				}
@@ -1154,19 +1349,19 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private int ExecLen(Instruction i, int instructionPtr)
 		{
-			DynValue r = m_ValueStack.Pop().ToScalar();
+			LuaValue r = m_ValueStack.Pop().ToScalar();
 
 			if (r.Type == DataType.String)
-				m_ValueStack.Push(DynValue.NewNumber(r.String.Length));
+				m_ValueStack.Push(LuaValue.FromNumber(((string)r.Object).Length));
 			else
 			{
 				int ip = Internal_InvokeUnaryMetaMethod(r, "__len", instructionPtr);
 				if (ip >= 0)
 					return ip;
 				else if (r.Type == DataType.Table)
-					m_ValueStack.Push(DynValue.NewNumber(r.Table.Length));
+					m_ValueStack.Push(LuaValue.FromNumber(((Table)r.Object).Length));
 
-				else throw ScriptRuntimeException.LenOnInvalidType(r);
+				else throw ScriptRuntimeException.LenOnInvalidType(r.ToDynValue());
 			}
 
 			return instructionPtr;
@@ -1175,22 +1370,22 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private int ExecConcat(Instruction i, int instructionPtr)
 		{
-			DynValue r = m_ValueStack.Pop().ToScalar();
-			DynValue l = m_ValueStack.Pop().ToScalar();
+			LuaValue r = m_ValueStack.Pop().ToScalar();
+			LuaValue l = m_ValueStack.Pop().ToScalar();
 
 			string rs = r.CastToString();
 			string ls = l.CastToString();
 
 			if (rs != null && ls != null)
 			{
-				m_ValueStack.Push(DynValue.NewString(ls + rs));
+				m_ValueStack.Push(LuaValue.FromString(ls + rs));
 				return instructionPtr;
 			}
 			else
 			{
 				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__concat", instructionPtr);
 				if (ip >= 0) return ip;
-				else throw ScriptRuntimeException.ConcatOnNonString(l, r);
+				else throw ScriptRuntimeException.ConcatOnNonString(l.ToDynValue(), r.ToDynValue());
 			}
 
 		}
@@ -1199,26 +1394,73 @@ namespace MoonSharp.Interpreter.Execution.VM
 		private void ExecTblInitI(Instruction i)
 		{
 			// stack: tbl - val
-			DynValue val = m_ValueStack.Pop();
-			DynValue tbl = m_ValueStack.Peek();
+			LuaValue val = m_ValueStack.Pop();
+			LuaValue tbl = m_ValueStack.Peek();
 
 			if (tbl.Type != DataType.Table)
 				throw new InternalErrorException("Unexpected type in table ctor : {0}", tbl);
 
-			tbl.Table.InitNextArrayKeys(val, i.NumVal != 0);
+			((Table)tbl.Object).InitNextArrayKeys(val.ToDynValue(), i.NumVal != 0);
 		}
 
 		private void ExecTblInitN(Instruction i)
 		{
 			// stack: tbl - key - val
-			DynValue val = m_ValueStack.Pop();
-			DynValue key = m_ValueStack.Pop();
-			DynValue tbl = m_ValueStack.Peek();
+			LuaValue val = m_ValueStack.Pop();
+			LuaValue key = m_ValueStack.Pop();
+			LuaValue tbl = m_ValueStack.Peek();
 
 			if (tbl.Type != DataType.Table)
 				throw new InternalErrorException("Unexpected type in table ctor : {0}", tbl);
 
-			tbl.Table.Set(key, val.ToScalar());
+			TableSet((Table)tbl.Object, ref key, val.ToScalar().ToDynValue());
+		}
+
+		/// <summary>
+		/// t[key] without metamethods, without creating a DynValue key for string and integer keys.
+		/// </summary>
+		private static DynValue TableGet(Table t, ref LuaValue key)
+		{
+			if (key.Type == DataType.String)
+				return t.Get((string)key.Object);
+
+			if (key.Type == DataType.Number)
+			{
+				// Table's own rule for keys that go to its integer map.
+				double d = key.Number;
+				int idx = (int)d;
+
+				if (d >= 1.0 && d == idx)
+					return t.Get(idx);
+			}
+
+			return t.Get(key.ToDynValue());
+		}
+
+		/// <summary>
+		/// t[key] = value without metamethods, without creating a DynValue key for string and integer keys.
+		/// </summary>
+		private static void TableSet(Table t, ref LuaValue key, DynValue value)
+		{
+			if (key.Type == DataType.String)
+			{
+				t.Set((string)key.Object, value);
+				return;
+			}
+
+			if (key.Type == DataType.Number)
+			{
+				double d = key.Number;
+				int idx = (int)d;
+
+				if (d >= 1.0 && d == idx)
+				{
+					t.Set(idx, value);
+					return;
+				}
+			}
+
+			t.Set(key.ToDynValue(), value);
 		}
 
 		private int ExecIndexSet(Instruction i, int instructionPtr)
@@ -1229,10 +1471,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 			bool isNameIndex = i.OpCode == OpCode.IndexSetN;
 			bool isMultiIndex = (i.OpCode == OpCode.IndexSetL);
 
-			DynValue originalIdx = i.Value ?? m_ValueStack.Pop();
-			DynValue idx = originalIdx.ToScalar();
-			DynValue obj = m_ValueStack.Pop().ToScalar();
-			var value = GetStoreValue(i);
+			LuaValue originalIdx = i.Value != null ? i.Value.ToLuaValue() : m_ValueStack.Pop();
+			LuaValue idx = originalIdx.ToScalar();
+			LuaValue obj = m_ValueStack.Pop().ToScalar();
+			LuaValue value = GetStoreValue(i);
 			DynValue h = null;
 
 
@@ -1242,12 +1484,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 				if (obj.Type == DataType.Table)
 				{
+					Table table = (Table)obj.Object;
+
 					if (!isMultiIndex)
 					{
 						// Without a metatable there is no __newindex to find, so skip the lookup of the old value.
-						if (obj.Table.MetaTable == null || !obj.Table.Get(idx).IsNil())
+						if (table.MetaTable == null || !TableGet(table, ref idx).IsNil())
 						{
-							obj.Table.Set(idx, value);
+							TableSet(table, ref idx, value.ToDynValue());
 							return instructionPtr;
 						}
 					}
@@ -1258,15 +1502,15 @@ namespace MoonSharp.Interpreter.Execution.VM
 					{
 						if (isMultiIndex) throw new ScriptRuntimeException("cannot multi-index a table. userdata expected");
 
-						obj.Table.Set(idx, value);
+						TableSet(table, ref idx, value.ToDynValue());
 						return instructionPtr;
 					}
 				}
 				else if (obj.Type == DataType.UserData)
 				{
-					UserData ud = obj.UserData;
+					UserData ud = (UserData)obj.Object;
 
-					if (!ud.Descriptor.SetIndex(this.GetScript(), ud.Object, originalIdx, value, isNameIndex))
+					if (!ud.Descriptor.SetIndex(this.GetScript(), ud.Object, i.Value ?? originalIdx.ToDynValue(), value.ToDynValue(), isNameIndex))
 					{
 						throw ScriptRuntimeException.UserDataMissingField(ud.Descriptor.Name, idx.String);
 					}
@@ -1278,13 +1522,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 					h = GetMetamethodRaw(obj, "__newindex");
 
 					if (h == null || h.IsNil())
-						throw ScriptRuntimeException.IndexType(obj);
+						throw ScriptRuntimeException.IndexType(obj.ToDynValue());
 				}
 
 				if (h.Type == DataType.Function || h.Type == DataType.ClrFunction)
 				{
 					if (isMultiIndex) throw new ScriptRuntimeException("cannot multi-index through metamethods. userdata expected");
-					m_ValueStack.Pop(); // burn extra value ?
+					m_ValueStack.RemoveLast(); // burn extra value ?
 
 					m_ValueStack.Push(h);
 					m_ValueStack.Push(obj);
@@ -1294,7 +1538,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				}
 				else
 				{
-					obj = h;
+					obj = h.ToLuaValue();
 					h = null;
 				}
 			}
@@ -1310,9 +1554,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			bool isMultiIndex = (i.OpCode == OpCode.IndexL);
 
-			DynValue originalIdx = i.Value ?? m_ValueStack.Pop();
-			DynValue idx = originalIdx.ToScalar();
-			DynValue obj = m_ValueStack.Pop().ToScalar();
+			LuaValue originalIdx = i.Value != null ? i.Value.ToLuaValue() : m_ValueStack.Pop();
+			LuaValue idx = originalIdx.ToScalar();
+			LuaValue obj = m_ValueStack.Pop().ToScalar();
 
 			DynValue h = null;
 
@@ -1325,11 +1569,11 @@ namespace MoonSharp.Interpreter.Execution.VM
 				{
 					if (!isMultiIndex)
 					{
-						var v = obj.Table.Get(idx);
+						var v = TableGet((Table)obj.Object, ref idx);
 
 						if (!v.IsNil())
 						{
-							m_ValueStack.Push(v.AsReadOnly());
+							m_ValueStack.Push(v);
 							return instructionPtr;
 						}
 					}
@@ -1340,25 +1584,26 @@ namespace MoonSharp.Interpreter.Execution.VM
 					{
 						if (isMultiIndex) throw new ScriptRuntimeException("cannot multi-index a table. userdata expected");
 
-						m_ValueStack.Push(DynValue.Nil);
+						m_ValueStack.Push(LuaValue.Nil);
 						return instructionPtr;
 					}
 				}
 				else if (obj.Type == DataType.UserData)
 				{
-					UserData ud = obj.UserData;
+					UserData ud = (UserData)obj.Object;
+					DynValue index = i.Value ?? originalIdx.ToDynValue();
 
 					var dispatching = ud.Descriptor as Interop.BasicDescriptors.DispatchingUserDataDescriptor;
 					var v = (dispatching != null)
-						? dispatching.IndexUserData(this.GetScript(), ud, originalIdx, isNameIndex)
-						: ud.Descriptor.Index(this.GetScript(), ud.Object, originalIdx, isNameIndex);
+						? dispatching.IndexUserData(this.GetScript(), ud, index, isNameIndex)
+						: ud.Descriptor.Index(this.GetScript(), ud.Object, index, isNameIndex);
 
 					if (v == null)
 					{
 						throw ScriptRuntimeException.UserDataMissingField(ud.Descriptor.Name, idx.String);
 					}
 
-					m_ValueStack.Push(v.AsReadOnly());
+					m_ValueStack.Push(v);
 					return instructionPtr;
 				}
 				else
@@ -1366,7 +1611,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 					h = GetMetamethodRaw(obj, "__index");
 
 					if (h == null || h.IsNil())
-						throw ScriptRuntimeException.IndexType(obj);
+						throw ScriptRuntimeException.IndexType(obj.ToDynValue());
 				}
 
 				if (h.Type == DataType.Function || h.Type == DataType.ClrFunction)
@@ -1379,17 +1624,12 @@ namespace MoonSharp.Interpreter.Execution.VM
 				}
 				else
 				{
-					obj = h;
+					obj = h.ToLuaValue();
 					h = null;
 				}
 			}
 
 			throw ScriptRuntimeException.LoopInIndex();
 		}
-
-
-
-
-
 	}
 }

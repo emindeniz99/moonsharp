@@ -17,7 +17,7 @@ namespace MoonSharp.Benchmarks
 		const long K = 1000;
 
 		// name, iterations, source, expected check value (as tostring would print it), note
-		static readonly (string Name, long Iterations, string Source, string Check, string Note)[] Cases =
+		internal static readonly (string Name, long Iterations, string Source, string Check, string Note)[] Cases =
 		{
 			("empty_loop", 4000 * K, "return function(n) for i = 1, n do end end", "void", "MoonSharp prints a missing return value as void"),
 			("function_call", 1000 * K, "local function f(a) return a + 1 end\nreturn function(n) local x = 0 for i = 1, n do x = f(x) end return x end", "1000000", null),

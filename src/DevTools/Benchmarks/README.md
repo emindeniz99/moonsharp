@@ -37,6 +37,16 @@ per-round ratios and their interquartile range. Run the same build against
 itself first (an A/A run) to see the noise on your machine before trusting a
 small difference.
 
+Add `tables` after the rounds to run the table workloads instead (the table
+cases of `workloads` plus delete/reinsert, an integer-key queue, `pairs` and
+record building, timed per inner iteration), or `tablemem` with 0 rounds for
+the bytes each build retains per small table:
+
+```sh
+dotnet run -c Release --project src/DevTools/Benchmarks -- ab old/MoonSharp.Interpreter.dll new/MoonSharp.Interpreter.dll 21 tables
+dotnet run -c Release --project src/DevTools/Benchmarks -- ab old/MoonSharp.Interpreter.dll new/MoonSharp.Interpreter.dll 0 tablemem
+```
+
 **Pure Lua workloads** with the same sources and iteration counts as the
 pure-Lua cases of xLua-NG's `Test/Native/flag_bench.c`, to compare MoonSharp
 with a native Lua on the same machine:

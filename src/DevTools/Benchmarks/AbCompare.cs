@@ -31,6 +31,8 @@ namespace MoonSharp.Benchmarks
 		{
 			public string Name;
 			public int Iterations;
+			// inner loop iterations per call: times and allocations are reported per inner iteration
+			public int Scale = 1;
 			public Func<Build, Action> Prepare;
 		}
 
@@ -38,14 +40,31 @@ namespace MoonSharp.Benchmarks
 		{
 			if (args.Length < 2)
 			{
-				Console.Error.WriteLine("usage: ab <A/MoonSharp.Interpreter.dll> <B/MoonSharp.Interpreter.dll> [rounds]");
+				Console.Error.WriteLine("usage: ab <A/MoonSharp.Interpreter.dll> <B/MoonSharp.Interpreter.dll> [rounds] [tables|tablemem]");
 				return 2;
 			}
 
 			int rounds = args.Length > 2 ? int.Parse(args[2]) : 15;
 			var builds = new[] { Load("A", args[0]), Load("B", args[1]) };
 
-			var workloads = new List<Workload>
+			string set = args.Length > 3 ? args[3] : null;
+
+			if (set == "tablemem")
+				return TableWorkloads.RetainedBytes(builds.Select(b => (Func<string, object>)b.Run).ToArray(),
+					builds.Select(b => (Func<object, object[], object>)b.Invoke).ToArray());
+
+			var workloads = (set == "tables") ? TableWorkloads.Cases.Select(c => new Workload
+			{
+				Name = c.Name,
+				Iterations = 3,
+				Scale = c.Arg * c.PerArg,
+				Prepare = b =>
+				{
+					object fn = b.Run(c.Source);
+					var callArgs = new object[] { c.Arg };
+					return () => b.Invoke(fn, callArgs);
+				}
+			}).ToList() : new List<Workload>
 			{
 				new Workload { Name = "NewScript_Default", Iterations = 200, Prepare = b => () => b.NewScript() },
 				new Workload { Name = "CreateCoroutine", Iterations = 500, Prepare = b =>
@@ -90,8 +109,8 @@ namespace MoonSharp.Benchmarks
 					{
 						int k = (r % 2 == 0) ? j : 1 - j;
 						long alloc;
-						times[k].Add(Measure(actions[k], w.Iterations, out alloc));
-						allocs[k] = alloc;
+						times[k].Add(Measure(actions[k], w.Iterations, out alloc) / w.Scale);
+						allocs[k] = alloc / w.Scale;
 					}
 				}
 
@@ -169,7 +188,7 @@ namespace MoonSharp.Benchmarks
 		{
 			if (ns >= 1e6) return (ns / 1e6).ToString("0.00") + " ms";
 			if (ns >= 1e3) return (ns / 1e3).ToString("0.00") + " µs";
-			return ns.ToString("0") + " ns";
+			return ns.ToString(ns < 100 ? "0.0" : "0") + " ns";
 		}
 
 		static string FormatBytes(long bytes)

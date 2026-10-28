@@ -498,7 +498,14 @@ namespace MoonSharp.Interpreter
 			}
 			else if (function.Type == DataType.ClrFunction)
 			{
-				return function.Callback.ClrCallback(this.CreateDynamicExecutionContext(function.Callback), new CallbackArguments(args, false));
+				DynValue ret = function.Callback.ClrCallback(this.CreateDynamicExecutionContext(function.Callback), new CallbackArguments(args, false));
+
+				// A C# function can end with a plain tail call (dofile, require): finish it rather than
+				// handing the request to the host.
+				if (ret.Type == DataType.TailCallRequest && ret.TailCallData.Continuation == null && ret.TailCallData.ErrorHandler == null)
+					return Call(ret.TailCallData.Function, ret.TailCallData.Args);
+
+				return ret;
 			}
 
 			return m_MainProcessor.Call(function, args);

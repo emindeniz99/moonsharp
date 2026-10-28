@@ -123,5 +123,25 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual(DataType.String, res.Type);
 			Assert.AreEqual("ciao", res.String);
 		}
+
+		sealed class SingleFileLoader : Loaders.ScriptLoaderBase
+		{
+			public override object LoadFile(string file, Table globalContext) { return "return 'loaded'"; }
+			public override bool ScriptFileExists(string name) { return true; }
+		}
+
+		// dofile ends with a tail call to the loaded chunk. A host calling it through Script.Call got the
+		// internal tail call request back instead of the chunk's result.
+		[Test]
+		public void ClrFunctionTailCall_FinishedForHostCall()
+		{
+			var S = new Script();
+			S.Options.ScriptLoader = new SingleFileLoader();
+
+			DynValue res = S.Call(S.Globals.Get("dofile"), "a.lua");
+
+			Assert.AreEqual(DataType.String, res.Type);
+			Assert.AreEqual("loaded", res.String);
+		}
 	}
 }

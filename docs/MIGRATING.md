@@ -21,3 +21,14 @@ What a host can notice is the removal of members of the public `LuaBase` class
 
 Affected: hosts that subclass `LuaBase` to port C library code and call these helpers. Scripts are
 not affected.
+
+## Script.Call finishes a tail call returned by a C# function
+
+`Script.Call` on a C# function that ends with a plain tail call (`dofile`, and now `require`) returned
+the internal tail-call request (`DataType.TailCallRequest`) to the host instead of running it.
+
+- Before: `script.Call(script.Globals.Get("dofile"), "a.lua")` returned a `TailCallRequest` value.
+- Now: it runs the chunk and returns its result. Tail calls with a continuation or error handler
+  (such as `pcall`'s) are returned as before.
+
+Affected: hosts that call `dofile` (or other tail-calling C# functions) through `Script.Call`.

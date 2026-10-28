@@ -20,8 +20,8 @@ again; planned work goes in [ROADMAP.md](ROADMAP.md), and fork-only changes in
 
 | Status | Issues | Pull requests |
 |---|---|---|
-| fixed in the fork | 14 | 5 |
-| reproduces, waits for other work | 12 | 4 |
+| fixed in the fork | 15 | 5 |
+| reproduces, waits for other work | 11 | 4 |
 | needs the owner | 5 | 2 |
 | does not reproduce | 16 | 3 |
 | question, answered | 8 | 0 |
@@ -69,7 +69,7 @@ keys 1..n (`77c8662`).
 | [#319](https://github.com/moonsharp-devs/moonsharp/issues/319) | json.parse fails on negative integers | bug | does not reproduce | `json.parse('{"foo": -1}')` and `'[-1, -2.5e3]'` parse (probe on this branch) |
 | [#318](https://github.com/moonsharp-devs/moonsharp/issues/318) | KopiLua string.gsub() "pattern too complex" error | bug | waits: string library | Reproduces: `'^%s*(.-)%s*$'` on a 300-character string. Ignored test `UpstreamIssueTests.Issue318_TrimIdiomWorksOnLongStrings` |
 | [#317](https://github.com/moonsharp-devs/moonsharp/issues/317) | Unexpected result on string XOR | bug | does not reproduce | The issue's script returns `test1234567890`. Related, not reported: `string.char(300)` gives `?` where Lua raises "value out of range" |
-| [#315](https://github.com/moonsharp-devs/moonsharp/issues/315) | Lua code can set table[0], but C# can't read it | bug | waits: table | Reproduces: `Table.Get(0)` and `Get(-1)` return nil. Ignored test `UpstreamIssueTests.Issue315_TableGetReadsZeroAndNegativeKeys` |
+| [#315](https://github.com/moonsharp-devs/moonsharp/issues/315) | Lua code can set table[0], but C# can't read it | bug | fixed | Branch `perf/table-array-part`: the table rewrite keeps keys below 1 in one place for scripts and `Table.Get(int)`; `Issue315_TableGetReadsZeroAndNegativeKeys` |
 | [#313](https://github.com/moonsharp-devs/moonsharp/issues/313) | Watch Item Location | bug | does not reproduce | `ScriptRuntimeException.CallStack` has a location for every frame of the issue's script |
 | [#312](https://github.com/moonsharp-devs/moonsharp/issues/312) | Feature Request: Increased Error Data | feature | feature: planned | `InterpreterException.CallStack` already gives the frames and locations; naming the variable in runtime errors is on the roadmap |
 | [#310](https://github.com/moonsharp-devs/moonsharp/issues/310) | Can we make a C# method that "Yield requests" but also returns a value to lua? | question | answered | Works: a callback returns `DynValue.NewYieldReq(...)`, and the values passed to the next `Resume` become the call's results (checked on this branch). Not in our docs |

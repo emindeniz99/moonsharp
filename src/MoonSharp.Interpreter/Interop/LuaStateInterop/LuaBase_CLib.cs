@@ -56,7 +56,6 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 
 		protected static bool isalpha(int c) { return Char.IsLetter((char)c); }
 		protected static bool iscntrl(int c) { return Char.IsControl((char)c); }
-		protected static bool isdigit(int c) { return Char.IsDigit((char)c); }
 		protected static bool islower(int c) { return Char.IsLower((char)c); }
 		protected static bool ispunct(int c) { return ((char)c != ' ') && !isalnum((char)c); } // *not* the same as Char.IsPunctuation
 		protected static bool isspace(int c) { return ((char)c == ' ') || ((char)c >= (char)0x09 && (char)c <= (char)0x0D); }
@@ -68,52 +67,5 @@ namespace MoonSharp.Interpreter.Interop.LuaStateInterop
 		protected static char toupper(char c) { return Char.ToUpper(c); }
 		protected static char tolower(int c) { return Char.ToLower((char)c); }
 		protected static char toupper(int c) { return Char.ToUpper((char)c); }
-
-
-		// find c in str
-		protected static CharPtr strchr(CharPtr str, char c)
-		{
-			for (int index = str.index; str.chars[index] != 0; index++)
-				if (str.chars[index] == c)
-					return new CharPtr(str.chars, index);
-			return null;
-		}
-
-		protected static CharPtr strcpy(CharPtr dst, CharPtr src)
-		{
-			int i;
-			for (i = 0; src[i] != '\0'; i++)
-				dst[i] = src[i];
-			dst[i] = '\0';
-			return dst;
-		}
-
-		protected static CharPtr strncpy(CharPtr dst, CharPtr src, int length)
-		{
-			int index = 0;
-			while ((src[index] != '\0') && (index < length))
-			{
-				dst[index] = src[index];
-				index++;
-			}
-			while (index < length)
-				dst[index++] = '\0';
-			return dst;
-		}
-
-		protected static int strlen(CharPtr str)
-		{
-			int index = 0;
-			while (str[index] != '\0')
-				index++;
-			return index;
-		}
-
-		public static void sprintf(CharPtr buffer, CharPtr str, params object[] argv)
-		{
-			string temp = Tools.sprintf(str.ToString(), argv);
-			strcpy(buffer, temp);
-		}
-
 	}
 }

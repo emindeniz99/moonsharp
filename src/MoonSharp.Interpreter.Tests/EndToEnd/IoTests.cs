@@ -1,6 +1,9 @@
+using System;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Threading;
+using MoonSharp.Interpreter.Platforms;
 using NUnit.Framework;
 
 namespace MoonSharp.Interpreter.Tests.EndToEnd
@@ -70,6 +73,88 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			{
 				Thread.CurrentThread.CurrentCulture = saved;
 			}
+		}
+
+		/// <summary>
+		/// A platform like browser WebAssembly: asking for stdin throws PlatformNotSupportedException.
+		/// </summary>
+		private class NoStdinPlatform : StandardPlatformAccessor
+		{
+			public readonly MemoryStream Stdout = new MemoryStream();
+			public bool StdoutAndStderrAlsoUnsupported;
+
+			public override Stream IO_GetStandardStream(StandardFileType type)
+			{
+				if (type == StandardFileType.StdIn || StdoutAndStderrAlsoUnsupported)
+					throw new PlatformNotSupportedException();
+
+				return type == StandardFileType.StdOut ? Stdout : new MemoryStream();
+			}
+		}
+
+		private static void WithPlatform(IPlatformAccessor platform, Action action)
+		{
+			IPlatformAccessor saved = Script.GlobalOptions.Platform;
+
+			try
+			{
+				Script.GlobalOptions.Platform = platform;
+				action();
+			}
+			finally
+			{
+				Script.GlobalOptions.Platform = saved;
+			}
+		}
+
+		[Test]
+		public void Create_WhenStandardStreamsAreUnsupported_StillBuildsTheIoLibrary()
+		{
+			// On browser WebAssembly Console.OpenStandardInput throws PlatformNotSupportedException,
+			// which made new Script(CoreModules.Preset_Complete) fail while loading the io module.
+			NoStdinPlatform platform = new NoStdinPlatform { StdoutAndStderrAlsoUnsupported = true };
+
+			WithPlatform(platform, () =>
+			{
+				Script script = new Script(CoreModules.Preset_Complete);
+
+				Assert.AreEqual(DataType.Table, script.Globals.Get("io").Type);
+				Assert.AreEqual("function", script.DoString("return type(io.read)").String);
+				Assert.AreEqual(DataType.UserData, script.DoString("return io.stdin").Type);
+				Assert.AreEqual(DataType.UserData, script.DoString("return io.stdout").Type);
+				Assert.AreEqual(DataType.UserData, script.DoString("return io.stderr").Type);
+			});
+		}
+
+		[Test]
+		public void Read_FromUnsupportedStdin_FailsAtCallTimeWithClearMessage()
+		{
+			WithPlatform(new NoStdinPlatform(), () =>
+			{
+				Script script = new Script(CoreModules.Preset_Complete);
+
+				ScriptRuntimeException ex = Assert.Throws<ScriptRuntimeException>(() => script.DoString("return io.read()"));
+				StringAssert.Contains("standard input is not available", ex.Message);
+
+				// Lua code can handle it like any other error.
+				DynValue r = script.DoString("local ok, err = pcall(io.read, '*l'); return ok, err");
+				Assert.IsFalse(r.Tuple[0].Boolean);
+				StringAssert.Contains("standard input is not available", r.Tuple[1].String);
+			});
+		}
+
+		[Test]
+		public void Write_WhenOnlyStdinIsUnsupported_StillReachesStdout()
+		{
+			NoStdinPlatform platform = new NoStdinPlatform();
+
+			WithPlatform(platform, () =>
+			{
+				Script script = new Script(CoreModules.Preset_Complete);
+				script.DoString("io.write('hello'); io.flush()");
+
+				Assert.AreEqual("hello", Encoding.UTF8.GetString(platform.Stdout.ToArray()));
+			});
 		}
 	}
 }

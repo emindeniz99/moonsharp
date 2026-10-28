@@ -25,7 +25,7 @@ chat or a pull request.
 | 2026-10-28 | 64-bit integers are an opt-in library type (`int64`, `uint64`), not a number subtype. | Costs nothing when unused and keeps Lua 5.2 semantics. Revisit once values are structs. |
 | 2026-10-28 | No pull requests to upstream MoonSharp until the owner approves. | Owner's call. |
 | standing | Safe C# only: no `unsafe`, no `System.Runtime.CompilerServices.Unsafe`. Public Unity mechanisms only: no libil2cpp patches. | Bugs must stay exceptions, not memory corruption. The `Unsafe` package also fails to load in some Unity 6 setups ([Lua-CSharp#337](https://github.com/nuskey8/Lua-CSharp/issues/337)). |
-| 2026-10-28 | Work lands on `master` directly. A branch is merged with `git merge --no-ff` after the full unit suite and the fixtures pass locally; pull requests are optional. CI runs on every push to `master`, and a red `master` is fixed forward first. | Fewer round trips; CI only runs on `master` pushes and pull requests, so local checks come first. |
+| 2026-10-28 | Work collects on the `next` branch and lands on `master` in batches with `git merge --no-ff`, after the full unit suite and the fixtures pass locally. Pull requests are optional. CI runs on pushes to `master` (not for docs-only changes), and a red `master` is fixed forward first. | Fewer round trips and fewer CI runs. CI does not run on branches, so local checks come first. |
 | standing | Every performance change carries A/B numbers from `src/DevTools/Benchmarks`; every fix carries a test that fails without it. | See [upstream.md](upstream.md). |
 
 ## Platform targets

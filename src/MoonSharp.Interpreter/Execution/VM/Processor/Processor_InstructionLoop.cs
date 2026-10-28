@@ -30,6 +30,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			repeat_execution:
 
+			// The running frame's base pointer, where its locals start. Ops that enter or leave a script
+			// function refresh it.
+			int basePointer = CurrentBasePointer();
+
 			try
 			{
 				while (true)
@@ -89,37 +93,101 @@ namespace MoonSharp.Interpreter.Execution.VM
 						case OpCode.Div:
 						case OpCode.Mod:
 						case OpCode.Power:
-							instructionPtr = ExecArithmetic(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecArithmetic(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.Concat:
-							instructionPtr = ExecConcat(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecConcat(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.Neg:
-							instructionPtr = ExecNeg(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecNeg(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.Eq:
-							instructionPtr = ExecEq(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecEq(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.LessEq:
-							instructionPtr = ExecLessEq(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecLessEq(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.Less:
-							instructionPtr = ExecLess(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecLess(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.Len:
-							instructionPtr = ExecLen(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecLen(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.Call:
 						case OpCode.ThisCall:
 							instructionPtr = Internal_ExecCall(i.NumVal, instructionPtr, null, null, i.OpCode == OpCode.ThisCall, i.Name);
 							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							basePointer = CurrentBasePointer();
 							break;
 						case OpCode.Scalar:
 							{
@@ -161,7 +229,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 							ExecMkTuple(i);
 							break;
 						case OpCode.Clean:
-							ClearBlockData(i);
+							ClearBlockData(i, basePointer);
 							break;
 						case OpCode.Closure:
 							ExecClosure(i);
@@ -183,6 +251,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
 							if (instructionPtr < 0)
 								goto return_to_native_code;
+							basePointer = CurrentBasePointer();
 							break;
 						case OpCode.Incr:
 							ExecIncr(i);
@@ -207,7 +276,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 							ExecExpTuple(i);
 							break;
 						case OpCode.Local:
-							m_ValueStack.Push(m_ValueStack[m_ExecutionStack.Peek().BasePointer + i.Symbol.i_Index]);
+							m_ValueStack.Push(m_ValueStack.Items[basePointer + i.Symbol.i_Index]);
 							break;
 						case OpCode.Upvalue:
 							m_ValueStack.Push(m_ExecutionStack.Peek().Upvalues[i.Symbol.i_Index].Get());
@@ -216,7 +285,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 							ExecStoreUpv(i);
 							break;
 						case OpCode.StoreLcl:
-							ExecStoreLcl(i);
+							m_ValueStack.Items[basePointer + i.Symbol.i_Index] = GetStoreValue(i);
 							break;
 						case OpCode.TblInitN:
 							ExecTblInitN(i);
@@ -227,14 +296,32 @@ namespace MoonSharp.Interpreter.Execution.VM
 						case OpCode.Index:
 						case OpCode.IndexN:
 						case OpCode.IndexL:
-							instructionPtr = ExecIndex(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecIndex(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.IndexSet:
 						case OpCode.IndexSetN:
 						case OpCode.IndexSetL:
-							instructionPtr = ExecIndexSet(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							{
+								int next = instructionPtr;
+								instructionPtr = ExecIndexSet(i, instructionPtr);
+
+								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+								if (instructionPtr != next)
+								{
+									if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+									basePointer = CurrentBasePointer();
+								}
+							}
 							break;
 						case OpCode.Invalid:
 							throw new NotImplementedException(string.Format("Invalid opcode : {0}", i.Name));
@@ -400,12 +487,6 @@ namespace MoonSharp.Interpreter.Execution.VM
 		private void AssignLocal(SymbolRef symref, LuaValue value)
 		{
 			m_ValueStack[m_ExecutionStack.Peek().BasePointer + symref.i_Index] = value;
-		}
-
-		private void ExecStoreLcl(Instruction i)
-		{
-			LuaValue value = GetStoreValue(i);
-			m_ValueStack[m_ExecutionStack.Peek().BasePointer + i.Symbol.i_Index] = value;
 		}
 
 		private void ExecStoreUpv(Instruction i)
@@ -614,6 +695,11 @@ namespace MoonSharp.Interpreter.Execution.VM
 			m_ValueStack.Push(LuaValue.FromObject(DataType.Tuple, state));
 		}
 
+
+		private int CurrentBasePointer()
+		{
+			return m_ExecutionStack.Count > 0 ? m_ExecutionStack.Peek().BasePointer : -1;
+		}
 
 		private int ExecJFor(Instruction i, int instructionPtr)
 		{

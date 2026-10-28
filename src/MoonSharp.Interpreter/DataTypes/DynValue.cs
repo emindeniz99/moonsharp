@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Runtime.CompilerServices;
 
 namespace MoonSharp.Interpreter
 {
@@ -132,6 +133,7 @@ namespace MoonSharp.Interpreter
 		/// <summary>
 		/// The VM's struct form of this value (see <see cref="Execution.VM.LuaValue"/>).
 		/// </summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		internal Execution.VM.LuaValue ToLuaValue()
 		{
 			Execution.VM.LuaValue v;

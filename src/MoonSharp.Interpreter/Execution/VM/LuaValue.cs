@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Runtime.CompilerServices;
 
 namespace MoonSharp.Interpreter.Execution.VM
 {
@@ -40,6 +41,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			get { return Type == DataType.Nil && Object == s_UndeclaredMarker; }
 		}
 
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static LuaValue FromNumber(double number)
 		{
 			LuaValue v;
@@ -49,6 +51,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			return v;
 		}
 
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static LuaValue FromBoolean(bool value)
 		{
 			return value ? True : False;
@@ -109,6 +112,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		/// <summary>
 		/// The first value of a tuple (void for an empty one); any other value itself.
 		/// </summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public LuaValue ToScalar()
 		{
 			if (Type != DataType.Tuple)
@@ -125,6 +129,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		/// <summary>
 		/// False for false, nil and void; true for everything else (call on a scalar).
 		/// </summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public bool CastToBool()
 		{
 			if (Type == DataType.Boolean)

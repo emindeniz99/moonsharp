@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Runtime.CompilerServices;
 
 namespace MoonSharp.Interpreter.Execution.VM
 {
@@ -24,6 +25,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			get { return ref Items[index]; }
 		}
 
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void Push(LuaValue item)
 		{
 			int head = Count;
@@ -70,11 +72,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 		/// <summary>
 		/// The value <paramref name="idxofs"/> slots below the top (0 is the top).
 		/// </summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public ref LuaValue Peek(int idxofs = 0)
 		{
 			return ref Items[Count - 1 - idxofs];
 		}
 
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public LuaValue Pop()
 		{
 			int top = --Count;

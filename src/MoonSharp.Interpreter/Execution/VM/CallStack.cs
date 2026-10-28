@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Runtime.CompilerServices;
 
 namespace MoonSharp.Interpreter.Execution.VM
 {
@@ -46,6 +47,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		/// <summary>
 		/// The frame idx levels below the top (0 is the top).
 		/// </summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public ref CallStackItem Peek(int idx = 0)
 		{
 			return ref m_Items[m_Count - 1 - idx];

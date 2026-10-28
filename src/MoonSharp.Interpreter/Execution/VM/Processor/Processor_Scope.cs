@@ -4,14 +4,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 {
 	sealed partial class Processor
 	{
-		private void ClearBlockData(Instruction I)
+		private void ClearBlockData(Instruction I, int basePointer)
 		{
 			int from = I.NumVal;
 			int to = I.NumVal2;
 
 			if (to >= 0 && from >= 0 && to >= from)
 			{
-				int basePointer = this.m_ExecutionStack.Peek().BasePointer;
 
 				// The block's locals go out of scope: closures that captured them keep their values. Locals
 				// of enclosing blocks sit in lower slots, so only this block's and nested blocks' close.

@@ -594,3 +594,14 @@ so `type(v)` failed with "bad argument #1 to 'type' (value expected)".
 [#258](https://github.com/moonsharp-devs/moonsharp/issues/258)).
 
 **Affected:** scripts that read a variable declared without a value and got the leftover value.
+
+## Parameters and `...` receive what Lua 5.2 passes
+
+**Before:** a parameter that received a call with no results, `g(f())` where `f` returns nothing,
+held "no value", so `type(a)` in `g` failed with "bad argument #1 to 'type' (value expected)". And
+`...` that received no values held one nil: in `function v(a, ...)` called as `v(1)`,
+`select('#', ...)` was 1 and `f(...)` passed `f` a nil.
+
+**After:** the parameter holds nil, and `...` holds no values (`select('#', ...)` is 0), as in Lua.
+
+**Affected:** scripts that relied on `select('#', ...)` being 1 for an empty `...`, or on the error.

@@ -551,8 +551,14 @@ namespace MoonSharp.Interpreter
 		public static DynValue False { get; private set; }
 
 
+		/// <summary>
+		/// A read-only tuple of no values: the varargs of a call that passes none to '...'.
+		/// </summary>
+		internal static DynValue EmptyTuple { get; private set; }
+
 		static DynValue()
 		{
+			EmptyTuple = new DynValue() { m_Object = new DynValue[0], m_Type = DataType.Tuple, m_ReadOnly = true };
 			Nil = new DynValue() { m_Type = DataType.Nil }.AsReadOnly();
 			Void = new DynValue() { m_Type = DataType.Void }.AsReadOnly();
 			True = DynValue.NewBoolean(true).AsReadOnly();

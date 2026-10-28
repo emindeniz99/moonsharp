@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using MoonSharp.Interpreter.DataStructs;
@@ -768,7 +768,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				for (int i = 0; i < symbols.Length; i++)
 				{
 					m_ValueStack[basePointer + symbols[i].i_Index] = (i < numargs)
-						? m_ValueStack[argsBase + i].ToScalar()
+						? ParameterValue(m_ValueStack[argsBase + i])
 						: LuaValue.Nil;
 				}
 
@@ -795,11 +795,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			for (int i = 0; i < symbols.Length; i++)
 			{
+				bool isVarArgs = (i == symbols.Length - 1) && (symbols[i].i_Name == WellKnownSymbols.VARARGS);
+
 				if (i >= argsList.Count)
 				{
-					this.AssignLocal(symbols[i], LuaValue.Nil);
+					// '...' with no values is an empty list, not one nil (select('#', ...) is 0).
+					this.AssignLocal(symbols[i], isVarArgs ? DynValue.EmptyTuple.ToLuaValue() : LuaValue.Nil);
 				}
-				else if ((i == symbols.Length - 1) && (symbols[i].i_Name == WellKnownSymbols.VARARGS))
+				else if (isVarArgs)
 				{
 					int len = argsList.Count - i;
 					DynValue[] varargs = new DynValue[len];
@@ -809,13 +812,24 @@ namespace MoonSharp.Interpreter.Execution.VM
 						varargs[ii] = argsList[i].ToScalar().ToDynValue();
 					}
 
-					this.AssignLocal(symbols[symbols.Length - 1], DynValue.NewTuple(Internal_AdjustTuple(varargs)).ToLuaValue());
+					DynValue[] adjusted = Internal_AdjustTuple(varargs);
+					this.AssignLocal(symbols[symbols.Length - 1], (adjusted.Length == 0 ? DynValue.EmptyTuple : DynValue.NewTuple(adjusted)).ToLuaValue());
 				}
 				else
 				{
-					this.AssignLocal(symbols[i], argsList[i].ToScalar());
+					this.AssignLocal(symbols[i], ParameterValue(argsList[i]));
 				}
 			}
+		}
+
+		/// <summary>
+		/// The value a parameter takes from an argument: the first value of a tuple, and nil for no value
+		/// (an argument f() where f returns nothing), since a parameter is a variable.
+		/// </summary>
+		private static LuaValue ParameterValue(LuaValue argument)
+		{
+			LuaValue v = argument.ToScalar();
+			return v.Type == DataType.Void ? LuaValue.Nil : v;
 		}
 
 

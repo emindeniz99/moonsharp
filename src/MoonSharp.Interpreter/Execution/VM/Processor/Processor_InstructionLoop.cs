@@ -957,6 +957,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 			if (fn.Type == DataType.ClrFunction)
 			{
 				CallbackFunction callback = (CallbackFunction)fn.Object;
+
+				if (callback.BuiltinId != 0 && TryFastCall(callback.BuiltinId, argsCount))
+					return instructionPtr;
+
 				DynValue[] args = callback.ReadsArgumentsInPlace ? null : CreateArgsListForFunctionCall(argsCount);
 
 				// instructionPtr - 1: instructionPtr already points to the next instruction at this moment

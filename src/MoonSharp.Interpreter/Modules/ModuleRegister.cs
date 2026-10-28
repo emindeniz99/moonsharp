@@ -102,6 +102,7 @@ namespace MoonSharp.Interpreter
 						// A new CallbackFunction per Script: its AdditionalData and identity belong to the Script.
 						DynValue cb = DynValue.NewCallback(m.Callback, m.Name);
 						cb.Callback.ReadsArgumentsInPlace = m.IsLibrary;
+						cb.Callback.BuiltinId = m.BuiltinId;
 						table.Set(m.Name, cb);
 						break;
 					case ModuleMemberKind.Init:
@@ -144,6 +145,7 @@ namespace MoonSharp.Interpreter
 			public Func<ScriptExecutionContext, CallbackArguments, DynValue> Callback;
 			// A function of this assembly's standard library, which reads its arguments in place.
 			public bool IsLibrary;
+			public int BuiltinId;
 			public MethodInfo Method;
 			public FieldInfo Field;
 		}
@@ -203,7 +205,7 @@ namespace MoonSharp.Interpreter
 
 					var func = (Func<ScriptExecutionContext, CallbackArguments, DynValue>)Delegate.CreateDelegate(typeof(Func<ScriptExecutionContext, CallbackArguments, DynValue>), mi);
 					string name = (!string.IsNullOrEmpty(attr.Name)) ? attr.Name : mi.Name;
-					members.Add(new ModuleMember { Kind = ModuleMemberKind.Callback, Name = name, Callback = func, IsLibrary = t.Assembly == typeof(ModuleRegister).Assembly });
+					members.Add(new ModuleMember { Kind = ModuleMemberKind.Callback, Name = name, Callback = func, IsLibrary = t.Assembly == typeof(ModuleRegister).Assembly, BuiltinId = Execution.VM.Processor.BuiltinId(t, name) });
 				}
 				else if (mi.Name == "MoonSharpInit")
 				{

@@ -75,6 +75,11 @@ namespace MoonSharp.Interpreter
 		internal bool ReadsArgumentsInPlace;
 
 		/// <summary>
+		/// The builtin fast-call id of a library function (Processor_Builtins.cs), or 0.
+		/// </summary>
+		internal int BuiltinId;
+
+		/// <summary>
 		/// <see cref="Invoke"/> with the arguments read in place from the value stack: the top
 		/// <paramref name="count"/> values from <paramref name="first"/>.
 		/// </summary>

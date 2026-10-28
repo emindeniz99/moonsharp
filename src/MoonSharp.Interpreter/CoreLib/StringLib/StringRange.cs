@@ -36,8 +36,13 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 		// If, after these corrections, i is greater than j, the function returns the empty string. 		
 		public string ApplyToString(string value)
 		{
-			int i = Start < 0 ? Start + value.Length + 1 : Start;
-			int j = End < 0 ? End + value.Length + 1 : End;
+			return Apply(value, Start, End);
+		}
+
+		public static string Apply(string value, int start, int end)
+		{
+			int i = start < 0 ? start + value.Length + 1 : start;
+			int j = end < 0 ? end + value.Length + 1 : end;
 
 			if (i < 1) i = 1;
 			if (j > value.Length) j = value.Length;

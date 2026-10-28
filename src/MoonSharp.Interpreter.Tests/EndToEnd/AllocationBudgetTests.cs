@@ -204,6 +204,13 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
+		public void AllocationBudget_BuiltinCalls()
+		{
+			// Fast-called library functions run on the value stack: no frame, context or argument list.
+			AssertLuaBudget("builtin_calls", "local floor, len, byte, max = math.floor, string.len, string.byte, math.max\nreturn function(n) local s = 0 for i = 1, n do s = s + floor(i / 3) + len('abc') + byte('xyz', 2) + max(i, 5) + select('#', i, i) + (type(s) == 'number' and 1 or 0) end return s end", NoAllocation);
+		}
+
+		[Test]
 		public void AllocationBudget_LuaToCsCall1()
 		{
 			SkipUnlessMeasurable();

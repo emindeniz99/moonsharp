@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <LangVersion>7.3</LangVersion>
+        <RootNamespace>MoonSharp.Hosting</RootNamespace>
+        <Description>A JSON-in, JSON-out host for running the same MoonSharp scripts from .NET, the browser and the JVM.</Description>
+        <IsPackable>false</IsPackable>
+        <NoWarn>1591</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\MoonSharp.Interpreter\MoonSharp.Interpreter.csproj" />
+    </ItemGroup>
+
+</Project>

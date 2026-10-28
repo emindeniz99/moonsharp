@@ -1,0 +1,31 @@
+:root {
+  --bg: #ffffff; --fg: #1d1f23; --muted: #5b616b; --panel: #f4f5f7; --border: #d5d8de;
+  --accent: #2456c7; --ok: #1d7a3a; --bad: #b3261e;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #15171a; --fg: #e6e8eb; --muted: #9aa1ab; --panel: #1f2226; --border: #343840;
+          --accent: #7fa5ff; --ok: #5fcf85; --bad: #ff8a80; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, sans-serif; }
+header p { color: var(--muted); margin-top: 0; }
+main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 860px) { main { grid-template-columns: minmax(0, 1fr); } }
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 14px; margin: 16px 0 6px; color: var(--muted); }
+label { display: block; color: var(--muted); margin: 8px 0 4px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; }
+.row label { margin: 0; }
+textarea, input, select { width: 100%; font: 13px/1.4 ui-monospace, monospace; color: var(--fg); background: var(--panel);
+  border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
+.row input, .row select { width: auto; }
+.row input[type=checkbox] { width: auto; }
+textarea { min-height: 300px; resize: vertical; }
+textarea.short { min-height: 90px; }
+button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+pre { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px; overflow: auto; white-space: pre-wrap; word-break: break-word; min-height: 2em; margin: 0; }
+.status.ok { color: var(--ok); } .status.bad { color: var(--bad); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+td { border-top: 1px solid var(--border); padding: 4px 6px; vertical-align: top; }
+td.pass { color: var(--ok); } td.fail { color: var(--bad); }

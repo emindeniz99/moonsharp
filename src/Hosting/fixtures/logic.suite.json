@@ -1,0 +1,184 @@
+{
+  "suite": "logic",
+  "description": "Synthetic application logic run identically by the .NET, browser and Java hosts.",
+  "modules": {
+    "eligibility": "scripts/eligibility.lua",
+    "variants": "scripts/variants.lua",
+    "offers": "scripts/offers.lua",
+    "config": "scripts/config.lua"
+  },
+  "cases": [
+    {
+      "name": "eligible: level, country and beta flag pass",
+      "module": "eligibility", "function": "eligible",
+      "args": [{ "level": 12, "country": "DE", "flags": { "beta": true } }, "offers"],
+      "expect": true
+    },
+    {
+      "name": "eligible: low level fails",
+      "module": "eligibility", "function": "eligible",
+      "args": [{ "level": 3, "country": "DE", "flags": { "beta": true } }, "offers"],
+      "expect": false
+    },
+    {
+      "name": "eligible: missing flags table is not an error",
+      "module": "eligibility", "function": "eligible",
+      "args": [{ "level": 12, "country": "FR" }, "offers"],
+      "expect": false
+    },
+    {
+      "name": "eligible: other feature ignores flags",
+      "module": "eligibility", "function": "eligible",
+      "args": [{ "level": 40, "country": "TR" }, "chat"],
+      "expect": true
+    },
+    {
+      "name": "variants: string hash is exact below 2^53",
+      "module": "variants", "function": "hash",
+      "args": ["abc"],
+      "expect": 304891
+    },
+    {
+      "name": "variants: bucket 24 selects control",
+      "module": "variants", "function": "select_variant",
+      "args": ["user-1001", { "name": "checkout_button", "variants": [
+        { "name": "control", "weight": 25 }, { "name": "blue", "weight": 25 }, { "name": "green", "weight": 50 } ] }],
+      "expect": { "experiment": "checkout_button", "variant": "control", "bucket": 24 }
+    },
+    {
+      "name": "variants: bucket 25 selects blue",
+      "module": "variants", "function": "select_variant",
+      "args": ["user-1002", { "name": "checkout_button", "variants": [
+        { "name": "control", "weight": 25 }, { "name": "blue", "weight": 25 }, { "name": "green", "weight": 50 } ] }],
+      "expect": { "experiment": "checkout_button", "variant": "blue", "bucket": 25 }
+    },
+    {
+      "name": "variants: 64-bit user id passed as a string",
+      "module": "variants", "function": "select_variant",
+      "args": ["9223372036854775807", { "name": "checkout_button", "variants": [
+        { "name": "control", "weight": 25 }, { "name": "blue", "weight": 25 }, { "name": "green", "weight": 50 } ] }],
+      "expect": { "experiment": "checkout_button", "variant": "blue", "bucket": 44 }
+    },
+    {
+      "name": "offers: filter, sort by priority then price, limit",
+      "module": "offers", "function": "select_offers",
+      "args": [
+        { "level": 15, "country": "DE", "flags": { "beta": true } },
+        [
+          { "id": "starter", "price": 1.99, "priority": 1 },
+          { "id": "vip", "price": 49.99, "priority": 5, "min_level": 20 },
+          { "id": "gems_small", "price": 4.99, "priority": 3 },
+          { "id": "gems_large", "price": 19.99, "priority": 3 },
+          { "id": "fr_only", "price": 0.99, "priority": 9, "countries": { "FR": true } }
+        ],
+        2
+      ],
+      "expect": [{ "id": "gems_small", "price": 4.99 }, { "id": "gems_large", "price": 19.99 }]
+    },
+    {
+      "name": "offers: ineligible player gets an empty array, not an object",
+      "module": "offers", "function": "select_offers",
+      "args": [{ "level": 15, "country": "DE" }, [{ "id": "starter", "price": 1.99, "priority": 1 }], 3],
+      "expect": []
+    },
+    {
+      "name": "config: nested document with Unicode, floats, string ids and empty arrays",
+      "module": "config", "function": "build",
+      "args": [{ "player_id": "18446744073709551615", "name": "Ayşe", "price": 10, "tags": [], "items": [] }],
+      "expect": {
+        "version": 3,
+        "player_id": "18446744073709551615",
+        "greeting": "Merhaba, Ayşe 👋",
+        "ratio": 0.30000000000000004,
+        "discount": 8.5,
+        "tags": [],
+        "empty_list": [],
+        "passthrough": [],
+        "limits": { "daily": 5, "weekly": 20 }
+      }
+    },
+    {
+      "name": "config: array order and values survive a round trip",
+      "module": "config", "function": "build",
+      "args": [{ "player_id": "1", "name": "Bo", "price": 2.5, "tags": ["new", "vip"], "items": [3, 1, 2] }],
+      "expect": {
+        "version": 3, "player_id": "1", "greeting": "Merhaba, Bo 👋", "ratio": 0.30000000000000004,
+        "discount": 2.125, "tags": ["NEW", "VIP"], "empty_list": [], "passthrough": [3, 1, 2],
+        "limits": { "daily": 5, "weekly": 20 }
+      }
+    },
+    {
+      "name": "precision: 2^53 is accepted exactly",
+      "module": "config", "function": "echo",
+      "argsJson": "[9007199254740992]",
+      "expect": 9007199254740992
+    },
+    {
+      "name": "precision: -(2^53) is accepted exactly",
+      "module": "config", "function": "echo",
+      "argsJson": "[-9007199254740992]",
+      "expect": -9007199254740992
+    },
+    {
+      "name": "precision: 2^53 + 1 is rejected, not rounded",
+      "module": "config", "function": "echo",
+      "argsJson": "[9007199254740993]",
+      "expectError": { "kind": "input", "messageContains": "9007199254740993" }
+    },
+    {
+      "name": "precision: long.MaxValue as a number is rejected",
+      "module": "config", "function": "echo",
+      "argsJson": "[9223372036854775807]",
+      "expectError": { "kind": "input", "messageContains": "9223372036854775807" }
+    },
+    {
+      "name": "null inside an array keeps its position",
+      "module": "config", "function": "echo",
+      "args": [[1, null, 3]],
+      "expect": [1, null, 3]
+    },
+    {
+      "name": "null arguments arrive as nil and still count",
+      "module": "config", "function": "count_args",
+      "args": [null, null, 1],
+      "expect": 3
+    },
+    {
+      "name": "runtime error reports chunk and line",
+      "module": "config", "function": "fail",
+      "args": ["missing price"],
+      "expectError": { "kind": "runtime", "messageContains": "cannot build config: missing price", "line": 34 }
+    },
+    {
+      "name": "unknown function is a host error",
+      "module": "config", "function": "nope",
+      "args": [],
+      "expectError": { "kind": "host", "messageContains": "has no function 'nope'" }
+    },
+    {
+      "name": "validate: syntax error reports the line",
+      "op": "validate", "chunk": "broken.lua",
+      "source": "local x = 1\nlocal y = = 2\nreturn x",
+      "expectError": { "kind": "syntax", "line": 2 }
+    },
+    {
+      "name": "run: one-off chunk returning a function gets the input",
+      "op": "run", "chunk": "adhoc.lua",
+      "source": "return function(input) return input.a * input.b end",
+      "input": { "a": 6, "b": 7 },
+      "expect": 42
+    },
+    {
+      "name": "string order is by character code on every host (needs the culture fix)",
+      "op": "run", "chunk": "order.lua",
+      "source": "local t = { 'b', 'B', 'a', 'A', 'i', 'I', 'ı', 'İ' } table.sort(t) return { 'a' < 'B', table.concat(t, ' '), string.upper('quit'), json.serialize({ x = 1.5 }) }",
+      "expect": [false, "A B I a b i İ ı", "QUIT", "{\"x\":1.5}"]
+    },
+    {
+      "name": "MoonSharp strings are UTF-16: # counts code units, string.byte maps units above 255 to '?'",
+      "op": "run", "chunk": "unicode.lua",
+      "source": "return { #'ğ', #'👋', string.byte('ğ'), string.unicode('ğ'), string.byte('é') }",
+      "expect": [1, 2, 63, 287, 233]
+    }
+  ]
+}

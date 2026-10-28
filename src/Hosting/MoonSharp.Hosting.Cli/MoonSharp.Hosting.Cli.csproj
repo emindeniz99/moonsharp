@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <AssemblyName>moonsharp-host</AssemblyName>
+        <RootNamespace>MoonSharp.Hosting.Cli</RootNamespace>
+        <Nullable>disable</Nullable>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\MoonSharp.Hosting\MoonSharp.Hosting.csproj" />
+    </ItemGroup>
+
+</Project>

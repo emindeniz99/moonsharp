@@ -176,6 +176,72 @@ return a()
 			AssertOriginalExceptionFrame(exception, typeof(ClassWithMember));
 		}
 
+		// A long-lived Script (a game session, a server worker) must survive any number of failed calls.
+		// Each failed call used to leave the function, its arguments and the argument count on the value
+		// stack, so the Script broke for good after 131072 / (args + 2) errors.
+		[Test]
+		public void Errors_ScriptStaysUsableAfterManyFailedCalls()
+		{
+			Script S = new Script(CoreModules.None);
+			DynValue fail = S.DoString("return function(...) error('failed') end");
+
+			// 10 arguments leaked 12 slots per call, so this loop overflowed the old stack.
+			for (int i = 0; i < 12000; i++)
+				Assert.Throws<ScriptRuntimeException>(() => S.Call(fail, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
+
+			Assert.AreEqual(2, S.DoString("return 1 + 1").Number);
+		}
+
+		[Test]
+		public void Errors_ScriptStaysUsableAfterManyClrExceptions()
+		{
+			Script S = new Script(CoreModules.None);
+			S.Globals["throwing"] = (Action)(() => { throw new InvalidOperationException("host failure"); });
+			DynValue fail = S.DoString("return function(...) throwing() end");
+
+			for (int i = 0; i < 12000; i++)
+				Assert.Throws<InvalidOperationException>(() => S.Call(fail, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
+
+			Assert.AreEqual(2, S.DoString("return 1 + 1").Number);
+		}
+
+		// Lua reports runaway recursion as a "stack overflow" error that pcall can catch.
+		[Test]
+		public void Errors_StackOverflowIsCatchableByPcall()
+		{
+			Script S = new Script(CoreModules.Basic | CoreModules.ErrorHandling);
+			DynValue res = S.DoString(@"
+				local function f() return 1 + f() end
+				return pcall(f)");
+
+			Assert.AreEqual(DataType.Tuple, res.Type);
+			Assert.AreEqual(false, res.Tuple[0].Boolean);
+			StringAssert.Contains("stack overflow", res.Tuple[1].String);
+			Assert.AreEqual(2, S.DoString("return 1 + 1").Number);
+		}
+
+		[Test]
+		public void Errors_UncaughtStackOverflowIsScriptRuntimeException()
+		{
+			Script S = new Script(CoreModules.None);
+
+			var ex = Assert.Throws<ScriptRuntimeException>(() => S.DoString("local function f() return 1 + f() end return f()"));
+			StringAssert.Contains("stack overflow", ex.Message);
+			Assert.AreEqual(2, S.DoString("return 1 + 1").Number);
+		}
+
+		// The maximum recursion depth must not shrink: scripts that recursed this deep before keep working.
+		[Test]
+		public void Errors_DeepRecursionBelowLimitStillWorks()
+		{
+			Script S = new Script(CoreModules.None);
+			DynValue res = S.DoString(@"
+				local function depth(n) if n == 0 then return 0 end return 1 + depth(n - 1) end
+				return depth(30000)");
+
+			Assert.AreEqual(30000, res.Number);
+		}
+
 		private static void AssertOriginalExceptionFrame(Exception exception, Type declaringType)
 		{
 			var frames = new StackTrace(exception).GetFrames();

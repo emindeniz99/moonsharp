@@ -93,7 +93,7 @@ namespace MoonSharp.Interpreter.CoreLib
 					if (a.Type == DataType.Number && b.Type == DataType.Number)
 						return a.Number.CompareTo(b.Number);
 					if (a.Type == DataType.String && b.Type == DataType.String)
-						return a.String.CompareTo(b.String);
+						return string.CompareOrdinal(a.String, b.String);
 
 					throw ScriptRuntimeException.CompareInvalidType(a, b);
 				}

@@ -269,5 +269,26 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual("QUIT", res.Tuple[0].String);
 			Assert.AreEqual("quit", res.Tuple[1].String);
 		}
+
+		// Lua compares strings by character code, as strcmp does in the C locale: 'B' < 'a'.
+		// Culture-aware comparison sorted 'a' before 'B' with ICU, but not in invariant
+		// globalization mode (browser builds, many containers), so results differed by host.
+		[Test]
+		public void String_ComparisonIsOrdinal()
+		{
+			foreach (string culture in new[] { "en-US", "tr-TR" })
+			{
+				DynValue res = Utils.WithCulture(culture, () => new Script(CoreModules.None).DoString(@"
+					local a, B = 'a', 'B'
+					return a < B, B < a, a <= B, 'a' < 'B', 'ab' < 'abc', 'Z' <= 'Z'"));
+
+				Assert.AreEqual(false, res.Tuple[0].Boolean, culture + " a < B");
+				Assert.AreEqual(true, res.Tuple[1].Boolean, culture + " B < a");
+				Assert.AreEqual(false, res.Tuple[2].Boolean, culture + " a <= B");
+				Assert.AreEqual(false, res.Tuple[3].Boolean, culture + " constant-folded 'a' < 'B'");
+				Assert.AreEqual(true, res.Tuple[4].Boolean, culture + " prefix");
+				Assert.AreEqual(true, res.Tuple[5].Boolean, culture + " equal");
+			}
+		}
 	}
 }

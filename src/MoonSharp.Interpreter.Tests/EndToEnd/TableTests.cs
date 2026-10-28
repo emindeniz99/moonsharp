@@ -563,5 +563,19 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 		}
 
+		// table.sort without a comparator must order strings the way '<' does, on every host.
+		[Test]
+		public void Table_Sort_StringsOrdinal()
+		{
+			foreach (string culture in new[] { "en-US", "tr-TR" })
+			{
+				DynValue res = Utils.WithCulture(culture, () => new Script(CoreModules.Table).DoString(@"
+					local t = { 'b', 'B', 'a', 'A', 'i', 'I' }
+					table.sort(t)
+					return table.concat(t, ' ')"));
+
+				Assert.AreEqual("A B I a b i", res.String, culture);
+			}
+		}
 	}
 }

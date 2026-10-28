@@ -1,5 +1,6 @@
 ﻿using System;
 using MoonSharp.Interpreter.Compatibility;
+using MoonSharp.Interpreter.Interop.UserDataRegistries;
 
 namespace MoonSharp.Interpreter.Interop
 {
@@ -75,7 +76,9 @@ namespace MoonSharp.Interpreter.Interop
 			if (Framework.Do.IsGenericTypeDefinition(type))
 				return null;
 
-			return UserData.RegisterType(type, AccessMode);
+			// Not UserData.RegisterType, whose trimming annotation is for the host's own calls: the
+			// registration of the generic definition already kept the members.
+			return TypeDescriptorRegistry.RegisterType_Impl(type, AccessMode, null, null);
 		}
 	}
 }

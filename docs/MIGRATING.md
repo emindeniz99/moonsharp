@@ -292,6 +292,10 @@ compiled. The original exception is now rethrown on every path, with its
 stack trace. Affected: hosts on IL2CPP or iOS, or using `Reflection`, that
 caught `TargetInvocationException` and read `InnerException`.
 
+The same holds for property getters and setters called through reflection.
+A setter that throws `ArgumentException` itself is now reported as a type
+mismatch (`ScriptRuntimeException`), as the compiled setter already did.
+
 ## The Unity package requires Unity 2021.3
 
 `package.json` of `org.moonsharp.moonsharp` and
@@ -300,3 +304,293 @@ caught `TargetInvocationException` and read `InnerException`.
 which `.github/workflows/unity.yml` tests; 2020.3 is out of support and was
 never tested. Nothing in the package needed the lower number. Affected:
 projects on Unity 2020.3.
+
+## NativeAOT counts as an AOT platform
+
+`Script.GlobalOptions.Platform.IsRunningOnAOT()` returned false on .NET
+NativeAOT: its probe compiles an expression tree, which NativeAOT interprets
+instead of refusing. It now reads `RuntimeFeature.IsDynamicCodeSupported`
+where the runtime has it, and returns true on NativeAOT. There, as on IL2CPP,
+every descriptor uses `InteropAccessMode.Reflection` whatever mode was asked
+for, `_MOONSHARP.is_aot` is true and the platform name ends in `.aot`.
+Affected: hosts published with NativeAOT that checked these values or
+counted adapter compilations.
+
+## Generic extension overloads that AOT cannot instantiate are skipped
+
+When a script calls an extension method by name, MoonSharp instantiates each
+generic candidate for the userdata's type. On NativeAOT an instantiation the
+app never compiled threw `NotSupportedException` and ended the lookup, so
+`list:Sum()` failed although `Sum(IEnumerable<int>)` existed. Such a
+candidate is now skipped like one whose arguments do not fit; when no
+candidate is left, the member is missing, as for any unknown name.
+Affected: hosts on NativeAOT that registered extension types.
+
+## Trimmed apps keep the members of registered types
+
+`UserData.RegisterType<T>()`, `RegisterType(Type, ...)` and
+`RegisterExtensionType(Type)` carry trimming annotations
+(`DynamicallyAccessedMembers`). An app trimmed by the .NET SDK or published
+with NativeAOT now keeps every member of a type it registers with a
+`typeof` or a type argument, without a descriptor file, and grows by those
+members. A `Type` computed at run time gets a trim warning in the host's
+build, as other reflection does. Unity's linker is not known to read these
+annotations; keep using `link.xml` or `[Preserve]` there.
+
+## Extension methods from every registered class are found
+
+A userdata looked for extension methods only when an extension class had
+been registered since its previous lookup. After a script used one
+extension method of a type, the others stayed invisible ("cannot access
+field") until another extension class was registered. Every registered
+extension method is now found. Affected: hosts that register extension
+methods for one type from several static classes
+([upstream #102](https://github.com/moonsharp-devs/moonsharp/issues/102)).
+
+## Types that hide inherited members with `new` can be registered
+
+Registering a type that hides an inherited property, field or event with
+`new` (for example a command type whose `Connection` property returns a
+more derived connection) threw "Multiple members named ... are being
+added". The type now registers and scripts see the member that C# code
+sees through that type: the most derived visible one. Affected: hosts
+that worked around the exception with wrapper types
+([upstream #286](https://github.com/moonsharp-devs/moonsharp/issues/286)).
+
+## Delegates compiled at run time can be passed to scripts
+
+A delegate built with `Expression.Compile()` or a `DynamicMethod` threw
+`NullReferenceException` when converted for a script, because its method
+has no declaring type. Such delegates are now called through their
+`Invoke` method. Affected: hosts that wrapped them in a lambda to work
+around the exception
+([upstream #291](https://github.com/moonsharp-devs/moonsharp/issues/291)).
+
+## A CLR callback that returns null gives the script nil
+
+A `CallbackFunction` whose function returned `null` instead of a
+`DynValue` made the VM throw `NullReferenceException`. Scripts now
+receive `nil`. Affected: hosts that relied on the exception to detect
+such callbacks
+([upstream #307](https://github.com/moonsharp-devs/moonsharp/issues/307)).
+
+## `debug.getmetatable` returns nil for values without a metatable
+
+For a table without a metatable, or a type without a type metatable,
+`debug.getmetatable` returned a table value wrapping nothing: it was not
+`nil`, and using it threw `NullReferenceException`. It now returns `nil`,
+as `getmetatable` and Lua do. Affected: scripts that used the debug
+library to inspect metatables
+([upstream PR #173](https://github.com/moonsharp-devs/moonsharp/pull/173)).
+
+## `json.parse` reads nested arrays
+
+`json.parse` used the Lua lexer, which reads `[[` as the start of a long
+string, so JSON such as `[[1,2],[3,4]]` failed with "Unexpected token".
+It now reads `[[` as two array openings. Affected: hosts that inserted
+spaces between brackets as a workaround
+([upstream #219](https://github.com/moonsharp-devs/moonsharp/issues/219)).
+
+## `tonumber` reads Lua numerals
+
+`tonumber(s)` used .NET number parsing. It returned `nil` for
+hexadecimal numerals such as `"0x23"`, and returned numbers for strings
+that Lua rejects, such as `"1,000"` (1000) and `"(5)"` (-5). It now
+follows Lua 5.2: decimal or hexadecimal numerals (with an optional
+fraction and `p` exponent), an optional sign and surrounding whitespace.
+
+```lua
+print(tonumber("0x23"), tonumber("1,000"))   -- before: nil 1000   now: 35 nil
+```
+
+Strings that arithmetic and the library functions turn into numbers
+(`DynValue.CastToNumber`) follow the same rules: `"0x10" + 1` is 17,
+and `"1,000" + 1` is an error where it was 1001. Affected: scripts that
+passed formatted numbers to `tonumber` or used them in arithmetic
+([upstream #229](https://github.com/moonsharp-devs/moonsharp/issues/229)).
+
+## Standard streams set after a script is created are used
+
+`Script.Options.Stdin`, `Stdout` and `Stderr` were read only while the
+`Script` was constructed; setting them later had no effect and `io`
+kept using the process console. The `io` module now switches to the
+stream the options name when it next uses a standard file. A file value
+a script already holds (`local out = io.stdout`) keeps its old stream.
+Affected: hosts that set these options after creating a script
+([upstream #70](https://github.com/moonsharp-devs/moonsharp/issues/70)).
+
+## `json.parse` reads JSON string escapes
+
+`json.parse` unescaped strings with Lua's rules: `é` failed with
+"'{' expected near '\u'", while Lua-only escapes such as `\x41`, `\65`
+and `\u{41}` were accepted. Strings now use JSON's escapes (`\"`, `\\`,
+`\/`, `\b`, `\f`, `\n`, `\r`, `\t`, `\uXXXX`, with surrogate pairs kept
+as two UTF-16 units), and other escapes are a parse error. Affected:
+hosts that pre-processed JSON to avoid `\u` escapes, and input that
+relied on Lua escapes.
+
+## `json.serialize` writes mixed tables as objects
+
+A table with keys 1..n was written as a JSON array even when it had other
+keys, which were dropped: `{ 10, name = "x" }` became `[10]`. Such a
+table is now an object, with integer keys written as strings
+(`{"1":10,"name":"x"}`), as the host's JSON writer already did. A table
+whose keys are exactly 1..n is still an array, and a table with only
+integer keys that are not 1..n (`{ [3] = "c" }`) is now an object
+instead of `{}`. Affected: scripts that relied on the dropped keys being
+left out.
+
+## `io.write` to the standard streams is not buffered
+
+`io.write` and `io.stdout:write` kept text in a `StreamWriter` buffer
+until `io.flush()`. Nothing flushed it when a script finished, so output
+appeared late or never (each `Script` has its own writer). The standard
+output and error files now write through. A script that writes much
+small output can ask for buffering with `io.stdout:setvbuf("full")` and
+flush itself. Affected: hosts that read the output stream and saw
+partial text before
+([upstream #161](https://github.com/moonsharp-devs/moonsharp/issues/161)).
+
+## Delegates compiled from expression trees work on AOT runtimes
+
+On NativeAOT and IL2CPP an expression-tree delegate is interpreted, and reading its `Method` throws.
+Passing such a delegate to a script used to fail there; it is now called through its `Invoke` method.
+Passing a delegate whose type is not `Func<ScriptExecutionContext, CallbackArguments, DynValue>` but has
+the same signature used to throw `InvalidCastException`; it is now converted like any other delegate.
+
+## `>` and `>=` follow Lua 5.2
+
+**Before:** `a > b` ran as `not (a <= b)` and `a >= b` as `not (a < b)`.
+
+**After:** `a > b` runs as `b < a` and `a >= b` as `b <= a`, as the Lua 5.2 manual defines them
+([3.4.3](https://www.lua.org/manual/5.2/manual.html#3.4.3)). Operands are still evaluated left to right.
+
+| Expression | Before | After (and Lua 5.2) |
+|---|---|---|
+| `(0/0) > 1`, `(0/0) >= 1`, `1 > (0/0)` | `true` | `false` |
+| `x > y` with `__lt` and `__le` | `not __le(x, y)` | `__lt(y, x)` |
+| `x >= y` with `__le` | `not __lt(x, y)` (an error without `__lt`) | `__le(y, x)` |
+| `x > y` with only `__le` | `not __le(x, y)` | error: attempt to compare two table values |
+
+`x >= y` with only `__lt` gives the same result as before (`not __lt(x, y)`). Errors for comparisons
+of unrelated types name the operands of the comparison that runs, as Lua 5.2 does: `1 > 'x'` now
+reports "attempt to compare string with number" (it said "number with string").
+
+**Affected:** scripts that compare NaN with `>`/`>=`, and types whose `__le` is not the complement of
+`__lt` (for example partial orders). Code compiled by an older version and loaded with `load` from a
+`string.dump` keeps the old behaviour until it is recompiled.
+
+## Comparison and `not` results are read-only
+
+**Before:** `==`, `<`, `<=`, `>`, `>=` and `not` produced a new writable boolean each time.
+
+**After:** they produce the shared read-only `DynValue.True` and `DynValue.False`, as the literals
+`true` and `false` already did. This removes an allocation per comparison.
+
+**Affected:** hosts that call `DynValue.Assign` on a boolean they received from a script. That now
+throws `ScriptRuntimeException` ("Assigning on r-value") instead of changing the value; create a new
+value with `DynValue.NewBoolean` instead. `DynValue.NewBoolean` still returns a writable value.
+
+## `%` follows Lua 5.2 for negative divisors
+
+**Before:** `a % b` was `IEEERemainder(a, b)`, plus `b` when that was negative. That is right for a
+positive divisor and wrong for a negative one.
+
+**After:** `a % b` is `a - math.floor(a/b)*b`, the Lua 5.2 definition
+([3.4.1](https://www.lua.org/manual/5.2/manual.html#3.4.1)), in scripts and in dynamic expressions.
+The result has the sign of the divisor.
+
+| Expression | Before | After (and Lua 5.2) |
+|---|---|---|
+| `5 % -3` | `-4` | `-1` |
+| `-5 % -3` | `1` | `-2` |
+| `5.5 % -2` | `-2.5` | `-0.5` |
+| `5 % (1/0)` | `5` | `nan` |
+| `-5 % (1/0)` | `inf` | `nan` |
+
+Positive divisors give the same results as before, except where the two formulas round differently
+in the last bit for fractional operands.
+
+**Affected:** scripts that use `%` with a negative or infinite divisor.
+
+## Native recursion is limited to 200 levels and fails with an error
+
+**Before:** recursion that runs through C# (a Lua function passed to `string.gsub` or `table.sort`
+that calls them again, a C# callback that calls back into Lua, `coroutine.wrap` inside a coroutine),
+source nested tens of thousands of levels deep, and deeply nested or cyclic data in `json.parse` and
+`json.serialize` overflowed the native stack. The runtime then ended the whole process; no `catch` or
+`pcall` could stop it.
+
+**After:** the same limit as Lua 5.2 (`LUAI_MAXCCALLS`, 200) applies everywhere, as a count, so every
+host stops at the same depth:
+
+| What | Error |
+|---|---|
+| More than 200 nested entries into the VM from C# on one thread (`Script.Call`, callbacks, `coroutine.resume`) | `ScriptRuntimeException` "C stack overflow" (Lua 5.2's text); `pcall` catches it |
+| Source with more than 200 nested expressions and blocks (`load`, `Script.LoadString`) | `SyntaxErrorException` "chunk has too many syntax levels" |
+| `json.parse` input or `json.serialize` tables more than 200 levels deep, or cyclic tables | `json nesting exceeds 200 levels` (a `ScriptRuntimeException` from Lua) |
+
+Chains of any length, such as a generated `1+1+...+1` with a million terms or `a.b.b.b...`, now
+compile without recursion, as in Lua; they used to overflow the stack too. A stack probe
+(`RuntimeHelpers.EnsureSufficientExecutionStack`) stays behind the VM count for threads with a small
+stack.
+
+**Affected:** code nested deeper than Lua 5.2 allows, which MoonSharp used to accept as long as the
+stack held. The stack probe does not work on Mono here (a test on Mono 6 overflowed inside it) and is
+unverified on IL2CPP; the counts work everywhere.
+
+## `xpcall` message handlers only see errors that reach them
+
+**Before:** an error raised below an `xpcall` ran its message handler even when an inner `pcall`
+caught the error first, and an error crossing several C# callbacks could run a handler once per
+callback level.
+
+**After:** the handler runs once, for errors that reach its `xpcall`, as in Lua.
+
+**Affected:** scripts whose message handlers have side effects (logging, counters).
+
+## `InterpreterException.CallStack` keeps the innermost frames
+
+**Before:** when an error crossed C# callbacks (for example a Lua function called from `string.gsub`),
+each level overwrote `CallStack`, and the host saw only the outermost frames.
+
+**After:** `CallStack` is filled once, where the error is first caught, and lists every frame from
+the error outwards.
+
+**Affected:** hosts that print `CallStack`; the list is longer and starts where the error happened.
+
+## `pcall` catches compile errors raised while a script runs
+
+**Before:** a `SyntaxErrorException` raised from running code, for example `require` of a module
+with a syntax error or a C# function that loads source, went past `pcall` and `xpcall` to the host.
+
+**After:** `pcall` and `xpcall` catch it like any other error and return `false` and the message, as
+in Lua. Without a `pcall` the host still receives the `SyntaxErrorException`.
+
+**Affected:** scripts that call `require` or loader functions inside `pcall`.
+
+## Coroutines can run C# functions
+
+**Before:** `coroutine.create(f)` with a C# function `f` (`select`, `string.upper`, `pcall`, a host
+callback) produced a coroutine that `coroutine.resume` and `Coroutine.Resume(args)` refused with an
+`InvalidOperationException`; only `Coroutine.Resume(context, args)` ran it, and only once.
+
+**After:** it is an ordinary coroutine, as in Lua: resuming it calls the function; a tail call it
+returns (as `pcall` does) runs inside the coroutine and may yield; `coroutine.create(coroutine.yield)`
+yields its arguments and returns the next resume's arguments. `Coroutine.Type` is `Coroutine` for it;
+`CoroutineType.ClrCallback` and `ClrCallbackDead` are no longer produced.
+
+**Affected:** hosts that checked `Coroutine.Type == CoroutineType.ClrCallback`.
+
+## Variables given no value hold nil
+
+**Before:** `local x` with no value could pick up a value left on the stack (inside a `for ... in`
+loop it read the iterator's state), and `local v = f()` where `f` returns nothing stored "no value",
+so `type(v)` failed with "bad argument #1 to 'type' (value expected)".
+
+**After:** both hold `nil`, as in Lua. A call with no results passed straight as an argument,
+`type(f())`, still passes no value, as Lua does
+([upstream #263](https://github.com/moonsharp-devs/moonsharp/issues/263),
+[#258](https://github.com/moonsharp-devs/moonsharp/issues/258)).
+
+**Affected:** scripts that read a variable declared without a value and got the leftover value.

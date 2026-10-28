@@ -39,7 +39,9 @@ namespace MoonSharp.Interpreter.Tree.Statements
 			}
 			else
 			{
-				m_RValues = new List<Expression>();
+				// "local x" is "local x = nil". With no value at all, the stores read whatever happened to
+				// be on top of the value stack (a for-in loop's iterator state, for example).
+				m_RValues = new List<Expression> { new LiteralExpression(lcontext, DynValue.Nil) };
 			}
 
 			foreach (string name in names)

@@ -24,7 +24,7 @@ namespace MoonSharp.Interpreter.Serialization.Json
 		public static string TableToJson(this Table table)
 		{
 			StringBuilder sb = new StringBuilder();
-			TableToJson(sb, table);
+			TableToJson(sb, table, 1);
 			return sb.ToString();
 		}
 
@@ -33,23 +33,29 @@ namespace MoonSharp.Interpreter.Serialization.Json
 		/// </summary>
 		/// <param name="sb">The sb.</param>
 		/// <param name="table">The table.</param>
-		private static void TableToJson(StringBuilder sb, Table table)
+		private static void TableToJson(StringBuilder sb, Table table, int depth)
 		{
+			// Deep or cyclic tables would otherwise recurse until the process dies.
+			if (depth > Execution.VM.Processor.MAX_NATIVE_NESTING)
+				throw new ScriptRuntimeException("json nesting exceeds {0} levels", Execution.VM.Processor.MAX_NATIVE_NESTING);
+
 			bool first = true;
 
-			if (table.Length == 0)
+			if (!IsSequence(table))
 			{
 				sb.Append("{");
 				foreach (TablePair pair in table.Pairs)
 				{
-					if (pair.Key.Type == DataType.String && IsValueJsonCompatible(pair.Value))
+					string key = ObjectKey(pair.Key);
+
+					if (key != null && IsValueJsonCompatible(pair.Value))
 					{
 						if (!first)
 							sb.Append(',');
 
-						ValueToJson(sb, pair.Key);
+						sb.Append(EscapeString(key));
 						sb.Append(':');
-						ValueToJson(sb, pair.Value);
+						ValueToJson(sb, pair.Value, depth);
 
 						first = false;
 					}
@@ -67,13 +73,44 @@ namespace MoonSharp.Interpreter.Serialization.Json
 						if (!first)
 							sb.Append(',');
 
-						ValueToJson(sb, value);
+						ValueToJson(sb, value, depth);
 
 						first = false;
 					}
 				}
 				sb.Append("]");
 			}
+		}
+
+		// A table is a JSON array when its keys are exactly 1..n; other keys make it an object.
+		private static bool IsSequence(Table table)
+		{
+			int length = table.Length;
+
+			if (length == 0)
+				return false;
+
+			int keys = 0;
+
+			foreach (TablePair pair in table.Pairs)
+			{
+				if (!pair.Value.IsNil())
+					++keys;
+			}
+
+			return keys == length;
+		}
+
+		// Object keys: strings, and integer numbers written as strings; other keys are skipped.
+		private static string ObjectKey(DynValue key)
+		{
+			if (key.Type == DataType.String)
+				return key.String;
+
+			if (key.Type == DataType.Number && Math.Floor(key.Number) == key.Number && Math.Abs(key.Number) < 9007199254740992.0)
+				return ((long)key.Number).ToString(CultureInfo.InvariantCulture);
+
+			return null;
 		}
 
 		/// <summary>
@@ -83,13 +120,13 @@ namespace MoonSharp.Interpreter.Serialization.Json
 		{
 			DynValue v = ObjectValueConverter.SerializeObjectToDynValue(null, obj, JsonNull.Create(), JsonEmptyArray.Create());
 			StringBuilder sb = new StringBuilder();
-			ValueToJson(sb, v);
+			ValueToJson(sb, v, 0);
 			return sb.ToString();
 		}
 
 
 
-		private static void ValueToJson(StringBuilder sb, DynValue value)
+		private static void ValueToJson(StringBuilder sb, DynValue value, int depth)
 		{
 			switch (value.Type)
 			{
@@ -103,7 +140,7 @@ namespace MoonSharp.Interpreter.Serialization.Json
 					sb.Append(EscapeString(value.String ?? ""));
 					break;
 				case DataType.Table:
-					TableToJson(sb, value.Table);
+					TableToJson(sb, value.Table, depth + 1);
 					break;
 				case DataType.UserData:
 					if (ExactInteger.IsExactInteger(value))
@@ -165,12 +202,12 @@ namespace MoonSharp.Interpreter.Serialization.Json
 		/// <returns>A table containing the representation of the given json.</returns>
 		public static DynValue ParseString(string json, Script script, bool emptyArrays, JsonBigIntegerMode bigIntegers)
 		{
-			Lexer L = new Lexer(0, json, false);
+			Lexer L = Lexer.ForJson(json);
 
 			if (L.Current.Type == TokenType.Brk_Open_Curly)
-				return ParseJsonObject(L, script, emptyArrays, bigIntegers);
+				return ParseJsonObject(L, script, emptyArrays, bigIntegers, 1);
 			else if (L.Current.Type == TokenType.Brk_Open_Square)
-				return ParseJsonArray(L, script, emptyArrays, bigIntegers);
+				return ParseJsonArray(L, script, emptyArrays, bigIntegers, 1);
 			else
 				throw new SyntaxErrorException(L.Current, "Unexpected token : '{0}'", L.Current.Text);
 		}
@@ -180,15 +217,23 @@ namespace MoonSharp.Interpreter.Serialization.Json
 			if (L.Current.Type != type)
 				throw new SyntaxErrorException(L.Current, "Unexpected token : '{0}'", L.Current.Text);
 		}
-		private static DynValue ParseJsonArray(Lexer L, Script script, bool emptyArray, JsonBigIntegerMode bigIntegers)
+		// Deeply nested input would otherwise recurse until the process dies.
+		private static void CheckDepth(Lexer L, int depth)
 		{
+			if (depth > Execution.VM.Processor.MAX_NATIVE_NESTING)
+				throw new SyntaxErrorException(L.Current, "json nesting exceeds {0} levels", Execution.VM.Processor.MAX_NATIVE_NESTING);
+		}
+
+		private static DynValue ParseJsonArray(Lexer L, Script script, bool emptyArray, JsonBigIntegerMode bigIntegers, int depth)
+		{
+			CheckDepth(L, depth);
 			Table t = new Table(script);
 
 			L.Next();
 
 			while (L.Current.Type != TokenType.Brk_Close_Square)
 			{
-				DynValue v = ParseJsonValue(L, script, emptyArray, bigIntegers);
+				DynValue v = ParseJsonValue(L, script, emptyArray, bigIntegers, depth);
 				t.Append(v);
 				L.Next();
 
@@ -199,8 +244,9 @@ namespace MoonSharp.Interpreter.Serialization.Json
 			return emptyArray && t.Length == 0 ? JsonEmptyArray.Create() : DynValue.NewTable(t);
 		}
 
-		private static DynValue ParseJsonObject(Lexer L, Script script, bool emptyArray, JsonBigIntegerMode bigIntegers)
+		private static DynValue ParseJsonObject(Lexer L, Script script, bool emptyArray, JsonBigIntegerMode bigIntegers, int depth)
 		{
+			CheckDepth(L, depth);
 			Table t = new Table(script);
 
 			L.Next();
@@ -212,7 +258,7 @@ namespace MoonSharp.Interpreter.Serialization.Json
 				L.Next();
 				AssertToken(L, TokenType.Colon);
 				L.Next();
-				DynValue v = ParseJsonValue(L, script, emptyArray, bigIntegers);
+				DynValue v = ParseJsonValue(L, script, emptyArray, bigIntegers, depth);
 				t.Set(key, v);
 				L.Next();
 
@@ -223,15 +269,15 @@ namespace MoonSharp.Interpreter.Serialization.Json
 			return DynValue.NewTable(t);
 		}
 
-		private static DynValue ParseJsonValue(Lexer L, Script script, bool emptyArray, JsonBigIntegerMode bigIntegers)
+		private static DynValue ParseJsonValue(Lexer L, Script script, bool emptyArray, JsonBigIntegerMode bigIntegers, int depth)
 		{
 			if (L.Current.Type == TokenType.Brk_Open_Curly)
 			{
-				return ParseJsonObject(L, script, emptyArray, bigIntegers);
+				return ParseJsonObject(L, script, emptyArray, bigIntegers, depth + 1);
 			}
 			else if (L.Current.Type == TokenType.Brk_Open_Square)
 			{
-				return ParseJsonArray(L, script, emptyArray, bigIntegers);
+				return ParseJsonArray(L, script, emptyArray, bigIntegers, depth + 1);
 			}
 			else if (L.Current.Type == TokenType.String)
 			{

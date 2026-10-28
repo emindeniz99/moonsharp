@@ -28,7 +28,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			ex.DecorateMessage(m_Script, sref, ip);
 
-			ex.CallStack = Debugger_GetCallStack(sref);
+			// The innermost level sees every frame; outer levels see what is left after the inner ones
+			// unwound. Building the list again at each of N nested levels costs O(N^2).
+			if (ex.CallStack == null)
+				ex.CallStack = Debugger_GetCallStack(sref);
 		}
 
 

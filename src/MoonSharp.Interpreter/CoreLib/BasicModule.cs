@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using MoonSharp.Interpreter.Debugging;
+using MoonSharp.Interpreter.Tree;
 
 namespace MoonSharp.Interpreter.CoreLib
 {
@@ -230,7 +231,7 @@ namespace MoonSharp.Interpreter.CoreLib
 					return DynValue.Nil;
 
 				double d;
-				if (double.TryParse(e.String, NumberStyles.Any, CultureInfo.InvariantCulture, out d))
+				if (TryParseLuaNumber(e.String, out d))
 				{
 					return DynValue.NewNumber(d);
 				}
@@ -252,6 +253,103 @@ namespace MoonSharp.Interpreter.CoreLib
 
 				return StringToNumberInBase(ee.String, bb);
 			}
+		}
+
+		/// <summary>
+		/// Converts a string to a number as Lua 5.2 does (luaO_str2d): a decimal numeral, or a
+		/// hexadecimal one with an optional fraction and binary exponent ("0x1.8p3"), with an
+		/// optional sign and surrounding whitespace. "inf" and "nan" are not numerals. String to
+		/// number coercion in arithmetic should follow the same rules.
+		/// </summary>
+		internal static bool TryParseLuaNumber(string s, out double result)
+		{
+			result = 0.0;
+
+			if (s == null || s.IndexOf('n') >= 0 || s.IndexOf('N') >= 0)
+				return false;
+
+			if (s.IndexOf('x') >= 0 || s.IndexOf('X') >= 0)
+				return TryParseLuaHexNumber(s, out result);
+
+			// double.TryParse also accepts culture symbols such as "Infinity" or "\u221E"; Lua does not
+			foreach (char c in s)
+			{
+				if (!LexerUtils.CharIsDigit(c) && c != '+' && c != '-' && c != '.' && c != 'e' && c != 'E' && !IsLuaSpace(c))
+					return false;
+			}
+
+			return double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
+		}
+
+		private static bool TryParseLuaHexNumber(string s, out double result)
+		{
+			result = 0.0;
+			int i = 0;
+
+			while (i < s.Length && IsLuaSpace(s[i]))
+				i++;
+
+			bool neg = (i < s.Length && s[i] == '-');
+
+			if (i < s.Length && (s[i] == '-' || s[i] == '+'))
+				i++;
+
+			if (i + 1 >= s.Length || s[i] != '0' || (s[i + 1] != 'x' && s[i + 1] != 'X'))
+				return false;
+
+			i += 2;
+
+			double mantissa = 0.0;
+			int exponent = 0;
+			int digits = 0;
+
+			for (; i < s.Length && LexerUtils.CharIsHexDigit(s[i]); i++, digits++)
+				mantissa = mantissa * 16 + LexerUtils.HexDigit2Value(s[i]);
+
+			if (i < s.Length && s[i] == '.')
+			{
+				for (i++; i < s.Length && LexerUtils.CharIsHexDigit(s[i]); i++, digits++, exponent -= 4)
+					mantissa = mantissa * 16 + LexerUtils.HexDigit2Value(s[i]);
+			}
+
+			if (digits == 0)
+				return false;
+
+			if (i < s.Length && (s[i] == 'p' || s[i] == 'P'))
+			{
+				int j = i + 1;
+				bool expNeg = (j < s.Length && s[j] == '-');
+
+				if (j < s.Length && (s[j] == '-' || s[j] == '+'))
+					j++;
+
+				// without a digit the 'p' is not part of the numeral, and is rejected below
+				if (j < s.Length && LexerUtils.CharIsDigit(s[j]))
+				{
+					int exp = 0;
+
+					for (; j < s.Length && LexerUtils.CharIsDigit(s[j]); j++)
+						exp = Math.Min(exp * 10 + (s[j] - '0'), 100000);
+
+					exponent += expNeg ? -exp : exp;
+					i = j;
+				}
+			}
+
+			while (i < s.Length && IsLuaSpace(s[i]))
+				i++;
+
+			if (i != s.Length)
+				return false;
+
+			result = (neg ? -mantissa : mantissa) * Math.Pow(2, exponent);
+			return true;
+		}
+
+		// isspace in the C locale, which Lua uses
+		private static bool IsLuaSpace(char c)
+		{
+			return c == ' ' || (c >= '\t' && c <= '\r');
 		}
 
 		// Integer numeral parsing for tonumber(e, base), following standard Lua semantics:

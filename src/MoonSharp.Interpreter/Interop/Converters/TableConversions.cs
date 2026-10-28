@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using MoonSharp.Interpreter.Compatibility;
 
 namespace MoonSharp.Interpreter.Interop.Converters
@@ -129,6 +130,8 @@ namespace MoonSharp.Interpreter.Interop.Converters
 		/// <summary>
 		/// Converts a table to a <see cref="Dictionary{K,V}"/>
 		/// </summary>
+		// The constructor is found by reflection; NativeAOT keeps it only when told.
+		[DynamicDependency(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor, typeof(Dictionary<,>))]
 		internal static object ConvertTableToDictionaryOfGenericType(Type dictionaryType, Type keyType, Type valueType, Table table)
 		{
 			if (dictionaryType.GetGenericTypeDefinition() != typeof(Dictionary<,>))
@@ -176,6 +179,7 @@ namespace MoonSharp.Interpreter.Interop.Converters
 		/// <summary>
 		/// Converts a table to a <see cref="List{T}"/>
 		/// </summary>
+		[DynamicDependency(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor, typeof(List<>))]
 		internal static object ConvertTableToListOfGenericType(Type listType, Type itemType, Table table)
 		{
 			if (listType.GetGenericTypeDefinition() != typeof(List<>))

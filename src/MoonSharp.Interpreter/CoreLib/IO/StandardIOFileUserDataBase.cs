@@ -7,6 +7,11 @@ namespace MoonSharp.Interpreter.CoreLib.IO
 	/// </summary>
 	internal class StandardIOFileUserDataBase : StreamFileUserDataBase
 	{
+		internal bool Wraps(Stream stream)
+		{
+			return m_Stream == stream;
+		}
+
 		protected override string Close()
 		{
 			return ("cannot close standard file");
@@ -22,7 +27,9 @@ namespace MoonSharp.Interpreter.CoreLib.IO
 		public static StandardIOFileUserDataBase CreateOutputStream(Stream stream)
 		{
 			var f = new StandardIOFileUserDataBase();
-			f.Initialize(stream, null, new StreamWriter(stream));
+			// Unbuffered, as C's stderr and an interactive stdout: nothing flushes a .NET writer
+			// when the script or the process ends. io.stdout:setvbuf("full") buffers again.
+			f.Initialize(stream, null, new StreamWriter(stream) { AutoFlush = true });
 			return f;
 		}
 

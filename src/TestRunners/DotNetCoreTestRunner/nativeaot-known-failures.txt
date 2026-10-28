@@ -1,0 +1,4 @@
+# Unit tests that are expected to fail in the NativeAOT build (nativeaot.sh).
+# One test name per line, followed by "# reason". Empty: every test passes.
+# Tests that cannot run in a trimmed build at all are skipped instead, on the
+# runner's AOT_SKIPLIST (Program.cs), with the reason next to them.

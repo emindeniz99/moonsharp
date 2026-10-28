@@ -317,5 +317,68 @@ checkresume(6, false, 'cannot resume dead coroutine');
 
 			Assert.AreEqual(30000, res.Number);
 		}
+
+		[Test]
+		public void Coroutine_BodyCanBeACSharpFunction()
+		{
+			// Lua accepts any function as a coroutine body, C# functions included.
+			DynValue r = new Script().DoString(@"
+				local ok1, a, b = coroutine.resume(coroutine.create(select), 2, 'x', 'y', 'z')
+				local up = coroutine.wrap(string.upper)('abc')
+
+				local co = coroutine.create(error)
+				local ok2, msg = coroutine.resume(co, 'boom', 0)
+				return ok1, a, b, up, ok2, msg, coroutine.status(co)");
+
+			Assert.IsTrue(r.Tuple[0].Boolean);
+			Assert.AreEqual("y", r.Tuple[1].String);
+			Assert.AreEqual("z", r.Tuple[2].String);
+			Assert.AreEqual("ABC", r.Tuple[3].String);
+			Assert.IsFalse(r.Tuple[4].Boolean);
+			Assert.AreEqual("boom", r.Tuple[5].String);
+			Assert.AreEqual("dead", r.Tuple[6].String);
+		}
+
+		[Test]
+		public void Coroutine_CSharpBodyCanYieldAndTailCall()
+		{
+			DynValue r = new Script().DoString(@"
+				-- coroutine.yield as the body: the first resume yields its arguments, the second
+				-- resume's arguments are the body's results.
+				local co = coroutine.create(coroutine.yield)
+				local s0 = coroutine.status(co)
+				local ok1, y = coroutine.resume(co, 1)
+				local s1 = coroutine.status(co)
+				local ok2, z = coroutine.resume(co, 2)
+				local s2 = coroutine.status(co)
+				local ok3 = coroutine.resume(co)
+
+				-- pcall as the body runs the Lua function it is given, which may yield.
+				local p = coroutine.create(pcall)
+				local okA, v = coroutine.resume(p, function() coroutine.yield(5) return 7 end)
+				local okB, pcallOk, w = coroutine.resume(p)
+				return s0, ok1, y, s1, ok2, z, s2, ok3, okA, v, okB, pcallOk, w");
+
+			object[] expected = { "suspended", true, 1.0, "suspended", true, 2.0, "dead", false, true, 5.0, true, true, 7.0 };
+
+			for (int i = 0; i < expected.Length; i++)
+			{
+				DynValue v = r.Tuple[i];
+				object actual = v.Type == DataType.Boolean ? (object)v.Boolean : v.Type == DataType.Number ? (object)v.Number : v.String;
+				Assert.AreEqual(expected[i], actual, "result " + (i + 1));
+			}
+		}
+
+		[Test]
+		public void Coroutine_HostCanResumeACSharpBody()
+		{
+			Script s = new Script();
+			DynValue body = DynValue.NewCallback((ctx, args) => DynValue.NewNumber(args[0].Number * 2));
+			DynValue co = s.CreateCoroutine(body);
+
+			Assert.AreEqual(CoroutineState.NotStarted, co.Coroutine.State);
+			Assert.AreEqual(42, co.Coroutine.Resume(DynValue.NewNumber(21)).Number);
+			Assert.AreEqual(CoroutineState.Dead, co.Coroutine.State);
+		}
 	}
 }

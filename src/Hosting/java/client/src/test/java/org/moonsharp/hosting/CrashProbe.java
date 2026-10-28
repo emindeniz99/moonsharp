@@ -27,8 +27,20 @@ public final class CrashProbe {
         // The same on a Java thread with an 8 MB stack instead of the default 1 MB (in-process calls run on the
         // calling Java thread's stack).
         "clr-recursion-8mb",
-        // A script that never returns, then Thread.interrupt() on the calling thread.
+        // Recursion through a callback that C# code makes (table.sort with a Lua comparator).
+        "sort-recursion",
+        // A script that never returns, no limits set, then Thread.interrupt() on the calling thread.
         "interrupt",
+        // The same script in a context with a 100 ms time limit (ContextOptions, docs/hosting.md "Limits").
+        "loop-time-limit",
+        // The same with an instruction limit of 1,000,000.
+        "loop-instruction-limit",
+        // One long library call (gsub over 20 million characters, about 2.5 s) under a 100 ms time limit:
+        // the VM checks the limits only between instructions.
+        "long-library-call",
+        // Allocation without bound, no limits, with the .NET GC heap capped at 256 MB (DOTNET_GCHeapHardLimit):
+        // does an OutOfMemoryException end the JVM?
+        "out-of-memory",
         // SIGTERM to the JVM: do Java shutdown hooks still run once .NET is loaded?
         "sigterm",
         // SIGINT (Ctrl-C): the same question.
@@ -60,7 +72,10 @@ public final class CrashProbe {
         command.add(probe);
 
         long t0 = System.nanoTime();
-        Process p = new ProcessBuilder(command).redirectErrorStream(true).start();
+        ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+        // 256 MB. The value is hexadecimal; NativeAOT ignores it with a 0x prefix, CoreCLR accepts both.
+        if (probe.equals("out-of-memory")) builder.environment().put("DOTNET_GCHeapHardLimit", "10000000");
+        Process p = builder.start();
         List<String> lines = new ArrayList<>();
         Thread reader = new Thread(() -> {
             try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
@@ -125,6 +140,31 @@ public final class CrashProbe {
                 }, "big-stack", 8L << 20);
                 t.start();
                 t.join();
+            }
+            case "sort-recursion" -> {
+                print(host.run("c", "sort", "local function f() table.sort({3, 2, 1}, function(a, b) f() return a < b end) end f()", null));
+                print(host.invoke("c", "ok", "ping"));
+            }
+            case "loop-time-limit", "loop-instruction-limit" -> {
+                host.create("limited", probe.equals("loop-time-limit")
+                    ? ContextOptions.DEFAULT.withTimeLimitMs(100) : ContextOptions.DEFAULT.withInstructionLimit(1_000_000));
+                host.load("limited", "ok", "return { ping = function() return 'pong' end }").valueOrThrow();
+                long t0 = System.nanoTime();
+                print(host.run("limited", "loop", "while true do end", null));
+                System.out.printf("probe: returned after %.0f ms%n", (System.nanoTime() - t0) / 1e6);
+                print(host.invoke("limited", "ok", "ping"));
+            }
+            case "long-library-call" -> {
+                host.create("limited", ContextOptions.DEFAULT.withTimeLimitMs(100));
+                long t0 = System.nanoTime();
+                print(host.run("limited", "gsub", "local s = string.rep('a', 2e7) local r, n = s:gsub('a', 'b') return n", null));
+                System.out.printf("probe: returned after %.0f ms%n", (System.nanoTime() - t0) / 1e6);
+            }
+            case "out-of-memory" -> {
+                long t0 = System.nanoTime();
+                print(host.run("c", "alloc", "local t = {} while true do t[#t + 1] = string.rep('x', 1000) .. #t end", null));
+                System.out.printf("probe: returned after %.0f ms%n", (System.nanoTime() - t0) / 1e6);
+                print(host.invoke("c", "ok", "ping"));
             }
             case "interrupt" -> {
                 Thread t = new Thread(() -> print(host.run("c", "loop", "while true do end", null)), "script");

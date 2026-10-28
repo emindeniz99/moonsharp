@@ -132,6 +132,9 @@ namespace Sample
 		public Vector2 Position;
 
 		public virtual string Describe() { return Name; }
+
+		// Scripts reach it through Player too, as C# does (upstream #175).
+		public static long PeekNextId() { return s_NextId; }
 	}
 
 	public class DamageEventArgs : EventArgs

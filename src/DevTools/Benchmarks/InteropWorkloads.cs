@@ -40,6 +40,8 @@ namespace MoonSharp.Benchmarks
 			static readonly Func<int, int> s_Inc = x => x + 1;
 			public int Value { get { return 1; } }
 			public int Add(int a, int b) { return a + b; }
+			public double Mix(int a) { return a; }
+			public double Mix(double a) { return a; }
 			public Color GetColor() { return Color.Green; }
 			public BaseThing MakeDerived() { return s_Derived; }
 			public Func<int, int> GetFunc() { return s_Inc; }
@@ -51,6 +53,8 @@ namespace MoonSharp.Benchmarks
 		const string DelegateSource = "return function(obj, n) local s = 0 for i = 1, n do s = s + obj:GetFunc()(1) end return s end";
 		// 1000 distinct userdata as table keys, then lookups.
 		const string KeysSource = "return function(obj, n) local keys, t = {}, {} for k = 1, 1000 do local u = obj:NewKey() keys[k] = u t[u] = k end local s = 0 for i = 1, n do s = s + t[keys[(i % 1000) + 1]] end return s end";
+		// An overloaded method, called with a whole and a fractional number: the cached overload path.
+		const string OverloadSource = "return function(obj, n) local s = 0 for i = 1, n do s = s + obj:Mix(i) + obj:Mix(0.5) end return s end";
 		const string DerivedSource = "return function(obj, n) local s = 0 for i = 1, n do s = s + obj:MakeDerived().Id end return s end";
 
 		sealed class Case
@@ -69,6 +73,7 @@ namespace MoonSharp.Benchmarks
 			new Case { Name = "clr_interop_reflection", Iterations = 1000000, Source = CallSource, CalcType = typeof(Calc<Refl>), Mode = "Reflection", Check = "500003500000" },
 			new Case { Name = "clr_interop_preoptimized", Iterations = 1000000, Source = CallSource, CalcType = typeof(Calc<Pre>), Mode = "Preoptimized", Check = "500003500000" },
 			new Case { Name = "clr_interop_hardwired", Iterations = 1000000, Source = CallSource, CalcType = typeof(Calc<Hw>), Mode = null, Check = "500003500000" },
+			new Case { Name = "overload_call", Iterations = 1000000, Source = OverloadSource, CalcType = typeof(Calc<Lazy>), Mode = "Default", Check = "500001000000" },
 			new Case { Name = "enum_push", Iterations = 500000, Source = EnumSource, CalcType = typeof(Calc<Lazy>), Mode = "Default", Check = "500000" },
 			new Case { Name = "delegate_push", Iterations = 20000, Source = DelegateSource, CalcType = typeof(Calc<Lazy>), Mode = "Default", Check = "40000" },
 			new Case { Name = "userdata_keys", Iterations = 100000, Source = KeysSource, CalcType = typeof(Calc<Lazy>), Mode = "Default", Check = "50050000" },

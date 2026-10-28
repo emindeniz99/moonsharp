@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using MoonSharp.Interpreter.Loaders;
@@ -517,6 +518,197 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			{
 				Directory.Delete(dir, true);
 			}
+		}
+
+		public class Scaler
+		{
+			public string Scale(int x) { return "int " + x; }
+			public string Scale(float x) { return "float " + x.ToString(CultureInfo.InvariantCulture); }
+		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/293: with F(int) and F(float), F(1.5)
+		// called F(int) and the fraction was lost, because a Lua number weighed the same for
+		// both. A whole number keeps the old choice. The calls alternate so that a cached
+		// choice for one kind of number is not reused for the other.
+		[Test]
+		public void Issue293_FractionalNumberPicksTheFloatingOverload()
+		{
+			UserData.RegisterType<Scaler>();
+
+			Script s = new Script();
+			s.Globals["o"] = new Scaler();
+
+			DynValue r = s.DoString("return o.Scale(2), o.Scale(1.5), o.Scale(3), o.Scale(0.25)");
+
+			Assert.AreEqual("int 2", r.Tuple[0].String);
+			Assert.AreEqual("float 1.5", r.Tuple[1].String);
+			Assert.AreEqual("int 3", r.Tuple[2].String);
+			Assert.AreEqual("float 0.25", r.Tuple[3].String);
+		}
+
+		public class Tag
+		{
+			public string Name;
+		}
+
+		public class Labeler
+		{
+			public string Describe(Tag t) { return "tag " + t.Name; }
+			public string Describe(string s) { return "string " + s; }
+		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/294: a custom converter weighed the
+		// same as an exact type match, so with a string-to-Tag converter registered,
+		// Describe("x") called Describe(Tag) (which sorts first) instead of Describe(string).
+		// Arguments that only the converter can take still reach Describe(Tag).
+		[Test]
+		public void Issue294_ExactMatchBeatsCustomConverter()
+		{
+			UserData.RegisterType<Labeler>();
+			Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion(DataType.String, typeof(Tag), v => new Tag() { Name = v.String });
+			Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion(DataType.Number, typeof(Tag), v => new Tag() { Name = "n" });
+
+			try
+			{
+				Script s = new Script();
+				s.Globals["o"] = new Labeler();
+
+				DynValue r = s.DoString("return o.Describe('x'), o.Describe(5)");
+
+				Assert.AreEqual("string x", r.Tuple[0].String);
+				Assert.AreEqual("tag n", r.Tuple[1].String);
+			}
+			finally
+			{
+				Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion(DataType.String, typeof(Tag), null);
+				Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion(DataType.Number, typeof(Tag), null);
+			}
+		}
+
+		public class ShapeBase
+		{
+			public static int Count = 3;
+			public static string Unit { get { return "cm"; } }
+			public static string Make() { return "base"; }
+			public static string Kind() { return "base kind"; }
+			public static string Scale(int x) { return "base " + x; }
+		}
+
+		public class Square : ShapeBase
+		{
+			public static new string Kind() { return "square kind"; }
+			public static string Scale(string x) { return "square " + x; }
+		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/175 (PR #336): C# finds a base class's
+		// static members through a derived type (Square.Make()), but scripts did not, because
+		// reflection leaves inherited statics out. A static the derived type hides with "new" stays
+		// hidden, overloads of one name merge, and the statics of framework base types
+		// (object.ReferenceEquals, object.Equals(a, b)) stay out of the member list.
+		[Test]
+		public void Issue175_DerivedTypeSeesStaticMembersOfBaseClasses()
+		{
+			UserData.RegisterType<Square>();
+
+			Script s = new Script();
+			s.Globals["Square"] = UserData.CreateStatic<Square>();
+
+			DynValue r = s.DoString("return Square.Make(), Square.Count, Square.Unit, Square.Kind(), Square.Scale(2), Square.Scale('x')");
+
+			Assert.AreEqual("base", r.Tuple[0].String);
+			Assert.AreEqual(3.0, r.Tuple[1].Number);
+			Assert.AreEqual("cm", r.Tuple[2].String);
+			Assert.AreEqual("square kind", r.Tuple[3].String);
+			Assert.AreEqual("base 2", r.Tuple[4].String);
+			Assert.AreEqual("square x", r.Tuple[5].String);
+
+			var descriptor = (MoonSharp.Interpreter.Interop.StandardUserDataDescriptor)UserData.GetDescriptorForType<Square>(false);
+			// Reflection returns the hidden ShapeBase.Kind too; which one ran above would depend on the sort order.
+			Assert.AreEqual(1, ((MoonSharp.Interpreter.Interop.OverloadedMethodMemberDescriptor)descriptor.FindMember("Kind")).OverloadCount);
+
+			var names = descriptor.MemberNames.ToList();
+			Assert.IsFalse(names.Contains("ReferenceEquals"));
+			Assert.IsTrue(names.Contains("Equals")); // the instance method object.Equals(object) stays
+		}
+
+		public class Roster : System.Collections.Generic.List<string>
+		{
+			public string Team = "blue";
+		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/274: with automatic registration, lists
+		// and dictionaries became userdata, so a script could not use # or ipairs on them, although
+		// the documented conversion (and the default policy) gives tables. A type the host
+		// registered explicitly stays userdata.
+		[Test]
+		public void Issue274_AutomaticRegistrationKeepsListsAndDictionariesAsTables()
+		{
+			var list = new System.Collections.Generic.List<short> { 1, 2, 3 };
+			var map = new System.Collections.Generic.Dictionary<string, short> { { "a", 4 } };
+			var array = new short[] { 5, 6 };
+
+			// Earlier tests and the runners leave types registered (List<>, Array, ...); a registered type
+			// that covers a collection rightly keeps it userdata. Set them aside under the default policy,
+			// which unregisters (a runner's policy may refuse), and put them back afterwards.
+			var oldPolicy = UserData.RegistrationPolicy;
+			var setAside = new System.Collections.Generic.Dictionary<Type, MoonSharp.Interpreter.Interop.IUserDataDescriptor>();
+
+			try
+			{
+				UserData.RegistrationPolicy = MoonSharp.Interpreter.Interop.InteropRegistrationPolicy.Default;
+
+				foreach (Type t in CoveringTypes(list.GetType()).Concat(CoveringTypes(map.GetType())).Concat(CoveringTypes(array.GetType())))
+				{
+					if (!setAside.ContainsKey(t) && UserData.IsTypeRegistered(t))
+					{
+						setAside[t] = UserData.GetDescriptorForType(t, false);
+						UserData.UnregisterType(t);
+					}
+				}
+
+				UserData.RegistrationPolicy = MoonSharp.Interpreter.Interop.InteropRegistrationPolicy.Automatic;
+				UserData.RegisterType<Roster>();
+
+				Script s = new Script();
+				s.Globals["list"] = list;
+				s.Globals["map"] = map;
+				s.Globals["array"] = array;
+				s.Globals["roster"] = new Roster();
+
+				DynValue r = s.DoString("return type(list), #list, list[3], type(map), map.a, type(array), #array, type(roster), roster.Team");
+
+				Assert.AreEqual("table", r.Tuple[0].String);
+				Assert.AreEqual(3.0, r.Tuple[1].Number);
+				Assert.AreEqual(3.0, r.Tuple[2].Number);
+				Assert.AreEqual("table", r.Tuple[3].String);
+				Assert.AreEqual(4.0, r.Tuple[4].Number);
+				Assert.AreEqual("table", r.Tuple[5].String);
+				Assert.AreEqual(2.0, r.Tuple[6].Number);
+				Assert.AreEqual("userdata", r.Tuple[7].String);
+				Assert.AreEqual("blue", r.Tuple[8].String);
+			}
+			finally
+			{
+				UserData.RegistrationPolicy = MoonSharp.Interpreter.Interop.InteropRegistrationPolicy.Default;
+				UserData.UnregisterType<Roster>();
+
+				foreach (var pair in setAside)
+					UserData.RegisterType(pair.Key, pair.Value);
+
+				UserData.RegistrationPolicy = oldPolicy;
+			}
+		}
+
+		// The types whose registration gives a value of type t a descriptor: t, its base types, its
+		// interfaces, and their generic definitions (TypeDescriptorRegistry.ResolveDescriptorForUnregisteredType).
+		static System.Collections.Generic.IEnumerable<Type> CoveringTypes(Type t)
+		{
+			var types = new System.Collections.Generic.List<Type>(t.GetInterfaces());
+
+			for (Type b = t; b != null; b = b.BaseType)
+				types.Add(b);
+
+			return types.Concat(types.Where(x => x.IsGenericType).Select(x => x.GetGenericTypeDefinition()));
 		}
 	}
 }

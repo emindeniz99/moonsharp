@@ -289,6 +289,52 @@ return a()
 			Assert.AreEqual(30000, res.Number);
 		}
 
+		[Test]
+		public void Errors_PcallCatchesSyntaxErrorsRaisedWhileRunning()
+		{
+			// A compile error raised from running code (require of a broken module, a C# function that
+			// loads source) is an error like any other to pcall, as in Lua.
+			Script S = new Script();
+			S.Globals["compile"] = DynValue.NewCallback((ctx, args) => ctx.GetScript().LoadString(args[0].String));
+
+			DynValue res = S.DoString(@"
+				local ok1, e1 = pcall(compile, 'x = = 1')
+				local ok2, e2 = pcall(function() return compile('x = = 1') end)
+				local ok3, e3 = xpcall(function() return compile('x = = 1') end, function(m) return 'handled: ' .. m end)
+				return ok1, e1, ok2, e2, ok3, e3");
+
+			Assert.IsFalse(res.Tuple[0].Boolean);
+			StringAssert.Contains("unexpected symbol", res.Tuple[1].String);
+			Assert.IsFalse(res.Tuple[2].Boolean);
+			StringAssert.Contains("unexpected symbol", res.Tuple[3].String);
+			Assert.IsFalse(res.Tuple[4].Boolean);
+			StringAssert.StartsWith("handled: ", res.Tuple[5].String);
+
+			// Without pcall the host still gets the SyntaxErrorException.
+			Assert.Throws<SyntaxErrorException>(() => S.DoString("compile('x = = 1')"));
+		}
+
+		[Test]
+		public void Errors_XpcallHandlerIgnoresErrorsAnInnerPcallCatches()
+		{
+			// The message handler runs for errors that reach its xpcall, once, as in Lua; it used to run for
+			// every error raised anywhere below it, even ones an inner pcall had already caught.
+			Script S = new Script();
+			DynValue res = S.DoString(@"
+				local calls = 0
+				local function handler(m) calls = calls + 1 return 'handled: ' .. m end
+				local ok1 = xpcall(function() pcall(function() error('inner') end) return 'fine' end, handler)
+				local before = calls
+				local ok2, msg = xpcall(function() local function deep(n) if n == 0 then error('boom') end return deep(n - 1) + 1 end return deep(5) end, handler)
+				return before, ok1, calls, ok2, msg");
+
+			Assert.AreEqual(0, res.Tuple[0].Number);
+			Assert.IsTrue(res.Tuple[1].Boolean);
+			Assert.AreEqual(1, res.Tuple[2].Number);
+			Assert.IsFalse(res.Tuple[3].Boolean);
+			StringAssert.StartsWith("handled: ", res.Tuple[4].String);
+		}
+
 		private static void AssertOriginalExceptionFrame(Exception exception, Type declaringType)
 		{
 			var frames = new StackTrace(exception).GetFrames();

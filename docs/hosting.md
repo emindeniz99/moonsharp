@@ -425,11 +425,19 @@ Making in process the default would need two changes in MoonSharp, after which
 this comparison should be repeated:
 
 - a stack guard on the CLR recursion paths (`Processor.Call`, callbacks from
-  `gsub`, `sort`, metamethods), for example
-  `RuntimeHelpers.EnsureSufficientExecutionStack()`, so the overflow becomes a
-  Lua error;
+  `gsub`, `sort`, metamethods), so the overflow becomes a Lua error. This now
+  exists: at most 200 nested entries into the VM per thread (Lua 5.2's limit,
+  also applied to the parser and `json`), backed by
+  `RuntimeHelpers.EnsureSufficientExecutionStack()`. In a .NET process the
+  `gsub` case above ends in a "C stack overflow" error that `pcall` catches.
+  The crash table above predates it; the JVM probe has not been rerun;
 - an execution budget (instruction count or cancellation) for plain calls, so a
-  runaway script returns an error instead of holding the thread.
+  runaway script returns an error instead of holding the thread. This now
+  exists as `ScriptOptions.InterruptHandler`: called every 10,000 instructions
+  with the count so far, it can stop the script with
+  `ScriptInterruptedException`, which `pcall` cannot catch. The hosting layer
+  does not use it yet (it needs an error kind for it), and a single long library
+  call such as `string.rep` is not interrupted.
 
 ## Modules
 
@@ -485,7 +493,7 @@ Measured on 2026-10-28 on a 4-core Intel Xeon 2.1 GHz cloud VM, Ubuntu 24.04.
 | Check | Result |
 |---|---|
 | Conformance corpus, 225 cases in 8 suites (2026-10-28, `mise.toml` tools): `dotnet`, `dotnet-bytecode`, .NET with invariant globalization, Chromium 153 main thread, Java 17 worker, CoreCLR 8.0.32 and NativeAOT in process | 225/225 on each; every known-failures file is empty |
-| Conformance corpus, .NET with `LANG=tr_TR.UTF-8` (also `de_DE`) | 223/225: `1.5 .. ''` and `string.format('%s', 1.5)` give `1,5` (listed in `known-failures/dotnet-tr-TR.json`) |
+| Conformance corpus, .NET with `LANG=tr_TR.UTF-8` | all pass since numbers convert to text without the process culture; earlier 223/225 (`1.5 .. ''` gave `1,5`) |
 | Shared fixtures, .NET 8 CLI | 24/24 under `C.UTF-8`, `tr_TR`, `de_DE` and invariant globalization |
 | Shared fixtures, headless Chromium 153 (Playwright 1.63), main thread | 24/24 |
 | Web Worker path, Chromium | pass (eligibility call, 2^53 + 1 rejected) |

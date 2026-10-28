@@ -71,6 +71,17 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
+		/// Initializes a new instance of the <see cref="Closure"/> class over an already filled context
+		/// (null when the function has no upvalues).
+		/// </summary>
+		internal Closure(Script script, int idx, ClosureContext context)
+		{
+			OwnerScript = script;
+			EntryPointByteCodeLocation = idx;
+			ClosureContext = context ?? emptyClosure;
+		}
+
+		/// <summary>
 		/// Calls this function with the specified args
 		/// </summary>
 		/// <returns></returns>

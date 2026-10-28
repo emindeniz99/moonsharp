@@ -13,7 +13,16 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			if (to >= 0 && from >= 0 && to >= from)
 			{
-				Array.Clear(array, from, to - from + 1);
+				// Blocks usually hold a few locals; a loop is cheaper than Array.Clear for those.
+				if (to - from < 8)
+				{
+					for (int k = from; k <= to; k++)
+						array[k] = null;
+				}
+				else
+				{
+					Array.Clear(array, from, to - from + 1);
+				}
 			}
 		}
 

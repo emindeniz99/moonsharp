@@ -32,6 +32,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		{
 			m_Debug.DebuggerAttached = debugger;
 			m_Debug.LineBasedBreakPoints = (debugger.GetDebuggerCaps() & DebuggerCaps.HasLineBasedBreakpoints) != 0;
+			m_Debug.Rearm(0); // a running loop takes the slow path at its next instruction
 			debugger.SetDebugService(new DebugService(m_Script, this));
 		}
 

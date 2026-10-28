@@ -482,7 +482,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		// and config. Code that registers modules in package.preload (module bundlers, compilers
 		// to Lua) could not run.
 		[Test]
-		[Ignore("waits for module registration work (require): https://github.com/moonsharp-devs/moonsharp/issues/285")]
 		public void Issue285_RequireUsesPackagePreload()
 		{
 			Script s = new Script();
@@ -496,7 +495,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		// https://github.com/moonsharp-devs/moonsharp/issues/332: require ignored package.path and
 		// read only the LUA_PATH global and ScriptLoader.ModulePaths.
 		[Test]
-		[Ignore("waits for module registration work (require): https://github.com/moonsharp-devs/moonsharp/issues/332")]
 		public void Issue332_RequireUsesPackagePath()
 		{
 			string dir = Path.Combine(Path.GetTempPath(), "moonsharp-issue332-" + Guid.NewGuid().ToString("N"));

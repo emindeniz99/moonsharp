@@ -55,6 +55,12 @@ namespace NUnit.Framework
 				Fail(message ?? "the same object was expected");
 		}
 
+		public static void AreNotSame(object expected, object actual, string message = null)
+		{
+			if (ReferenceEquals(expected, actual))
+				Fail(message ?? "different objects were expected");
+		}
+
 		public static void IsTrue(bool condition, string message = null)
 		{
 			if (!condition)
@@ -114,11 +120,12 @@ namespace NUnit.Framework
 		}
 
 		// Exactly T, as NUnit's Assert.Throws.
-		public static T Throws<T>(Action code) where T : Exception
+		public static T Throws<T>(Action code, string message = null) where T : Exception
 		{
 			Exception ex = Run(code);
 			if (ex == null || ex.GetType() != typeof(T))
-				Fail(string.Format("{0} was expected, {1}", typeof(T).Name, ex == null ? "nothing was thrown" : ex.GetType().Name + " was thrown"));
+				Fail((message != null ? message + ": " : "") + string.Format("{0} was expected, {1}", typeof(T).Name,
+					ex == null ? "nothing was thrown" : ex.GetType().Name + " was thrown"));
 			return (T)ex;
 		}
 

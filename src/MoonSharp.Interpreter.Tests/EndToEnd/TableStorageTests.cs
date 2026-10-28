@@ -343,23 +343,49 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
-		public void TableRemoveOnAnEmptyTableKeepsTodaysEntryOrder()
+		public void TableRemoveOnAnEmptyTableLeavesNoEntry()
 		{
-			// table.remove on an empty table stores nil under integer key 0 through Set(int), an entry the
-			// dead-key sweep cannot remove; the sweep then removes the next nil entry instead. (z keeps that
-			// entry from being the first one: pairs() fails with "invalid key to 'next'" when it is, before
-			// and after this change.)
-			string res = Script.RunString(@"
-				local t = { 'v' }
-				t.z = 0
-				table.remove(t); table.remove(t)
-				t.a = 1; t.b = 2; t.a = nil; t.c = 3; t.a = 4
-				t[1] = nil; t.d = 5; t[1] = 6
-				local r = {}
-				for k, v in pairs(t) do r[#r + 1] = tostring(k) .. '=' .. tostring(v) end
-				return table.concat(r, ',') .. '|' .. #t").String;
+			// table.remove on an empty table used to store nil under an internal integer key 0 that script
+			// key 0 cannot reach; when that entry came first, pairs() failed with "invalid key to 'next'".
+			// Lua 5.2 returns t[0] and assigns nil to it, which changes nothing when t[0] is nil.
+			var script = new Script();
+			DynValue res = script.DoString(@"
+				t = {}
+				local r = table.remove(t)
+				t[1] = 'a'
+				local s = {}
+				for k, v in pairs(t) do s[#s + 1] = tostring(k) .. '=' .. tostring(v) end
+				return tostring(r) .. '|' .. table.concat(s, ',') .. '|' .. #t");
 
-			Assert.AreEqual("z=0,b=2,c=3,a=4,d=5,1=6|1", res);
+			Assert.AreEqual("nil|1=a|1", res.String);
+			Assert.AreEqual(1, script.Globals.Get("t").Table.Pairs.Count(), "entries seen by hosts");
+		}
+
+		[Test]
+		public void TableRemoveOnAnEmptyTableReturnsAndClearsKeyZero()
+		{
+			// Lua 5.2: with #t == 0 the default position is 0, so t[0] is returned and set to nil.
+			string res = Script.RunString(@"
+				local t = { [0] = 'x' }
+				local r = table.remove(t)
+				return tostring(r) .. ',' .. tostring(t[0]) .. ',' .. tostring(next(t))").String;
+
+			Assert.AreEqual("x,nil,nil", res);
+		}
+
+		[Test]
+		public void TableRemoveOnAnEmptyTableRejectsNegativePositions()
+		{
+			// Lua 5.2 checks 1 <= pos <= #t + 1 whenever pos differs from #t; MoonSharp skipped the check
+			// on empty tables and stored nil under keys pos..0.
+			string res = Script.RunString(@"
+				local t = {}
+				local ok, err = pcall(table.remove, t, -2)
+				return tostring(ok) .. '|' .. tostring(err) .. '|' .. tostring(next(t))").String;
+
+			StringAssert.StartsWith("false|", res);
+			StringAssert.Contains("position out of bounds", res);
+			StringAssert.EndsWith("|nil", res);
 		}
 
 		// The dead-key sweep removes the first entry holding nil and stops (see the pinned test above).

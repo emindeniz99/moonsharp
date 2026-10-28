@@ -341,6 +341,7 @@ namespace MoonSharp.Hosting
 					WriteNumber(v.Number, sb, path);
 					return;
 				case DataType.String:
+					CheckSurrogates(v.String, path);
 					WriteString(v.String, sb);
 					return;
 				case DataType.Tuple:
@@ -399,6 +400,10 @@ namespace MoonSharp.Hosting
 
 				foreach (TablePair pair in t.Pairs)
 				{
+					// Pairs also lists fields set to nil (by table.remove, for example); Lua's pairs skips them.
+					if (pair.Value.IsNil())
+						continue;
+
 					string key = KeyToString(pair.Key, path);
 
 					if (!first) sb.Append(',');
@@ -420,7 +425,8 @@ namespace MoonSharp.Hosting
 			int n = 0;
 
 			foreach (TablePair pair in t.Pairs)
-				++n;
+				if (!pair.Value.IsNil())
+					++n;
 
 			return n;
 		}
@@ -428,7 +434,10 @@ namespace MoonSharp.Hosting
 		static string KeyToString(DynValue key, string path)
 		{
 			if (key.Type == DataType.String)
+			{
+				CheckSurrogates(key.String, path);
 				return key.String;
+			}
 
 			if (key.Type == DataType.Number && IsExactInteger(key.Number))
 				return ((long)key.Number).ToString(CultureInfo.InvariantCulture);
@@ -450,6 +459,29 @@ namespace MoonSharp.Hosting
 		static bool IsExactInteger(double d)
 		{
 			return Math.Floor(d) == d && Math.Abs(d) <= MaxExactInteger;
+		}
+
+		/// <summary>
+		/// Rejects a string with an unpaired surrogate (from string.sub or string.reverse on a pair, for example).
+		/// UTF-8 cannot encode it and System.Text.Json cannot read its \u escape, so each transport would
+		/// deliver something different; an error is the same everywhere.
+		/// </summary>
+		static void CheckSurrogates(string s, string path)
+		{
+			for (int i = 0; i < s.Length; i++)
+			{
+				if (!char.IsSurrogate(s[i]))
+					continue;
+
+				if (char.IsHighSurrogate(s[i]) && i + 1 < s.Length && char.IsLowSurrogate(s[i + 1]))
+				{
+					++i;
+					continue;
+				}
+
+				throw new HostException("output", string.Format(CultureInfo.InvariantCulture,
+					"{0}: a string with an unpaired surrogate at code unit {1} has no JSON representation", path, i + 1));
+			}
 		}
 
 		public static void WriteString(string s, StringBuilder sb)

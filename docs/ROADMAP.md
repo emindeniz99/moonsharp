@@ -32,6 +32,7 @@ chat or a pull request.
 | 2026-10-28 | `math.sin`, `cos`, `exp`, `log`, `pow` and the `^` operator keep using the platform's maths library; their last bit may differ between platforms, and the docs say so. No own maths library. | `+ - * /`, `sqrt` and `floor` are exact everywhere under IEEE 754; rewriting the platform's maths would be code for a problem nobody has seen. |
 | 2026-10-28 | Mobile hosts register only the C# types they choose (no automatic registration). Script signing waits until scripts are served from a CDN or a third party. | Store review: downloaded scripts must not open up native APIs. The scripts are the team's own and arrive over HTTPS; the server re-runs the same rule to check results. |
 | 2026-10-28 | Browser budget: first load under 5 s on a mid-range phone over slow 4G (today 1.91 MB brotli, about 0.6 s start on desktop). Optimise when a measurement crosses it. | Size matters only for mobile web users; the cache serves later visits. |
+| 2026-10-28 | Tables get an array part and keep full insertion order for `pairs`; the dead-key bugs are fixed (only the first cleared key was ever removed, and `Table.Pairs` still returned keys set to nil). | Measured on `spike/table-order`: insertion order costs +0.7% time against hash order (inside noise), is 39% faster on delete and re-insert, and keeps `json.serialize` output identical across runs; hash order changes JSON key order from one process run to the next. |
 | standing | Safe C# only: no `unsafe`, no `System.Runtime.CompilerServices.Unsafe`. Public Unity mechanisms only: no libil2cpp patches. | Bugs must stay exceptions, not memory corruption. The `Unsafe` package also fails to load in some Unity 6 setups ([Lua-CSharp#337](https://github.com/nuskey8/Lua-CSharp/issues/337)). |
 | 2026-10-28 | Work collects on the `next` branch and lands on `master` in batches with `git merge --no-ff`, after the full unit suite and the fixtures pass locally. Pull requests are optional. CI runs on pushes to `master` (not for docs-only changes), and a red `master` is fixed forward first. | Fewer round trips and fewer CI runs. CI does not run on branches, so local checks come first. |
 | 2026-10-28 | The development toolchain is pinned in `mise.toml` (.NET SDK 10 with the .NET 8 runtime, Java 17, Maven, Node 24, CMake), following the shared stack's toolchain rules; CI installs it with `jdx/mise-action`. clang and zlib come from apt. | Local and CI builds use the same exact versions instead of whatever a machine or runner image carries. mise offers clang only through conda, whose sysroot fails the NativeAOT link (`cannot find -lz`). |
@@ -67,7 +68,9 @@ What Unity 2021.3 support means for the code:
 | [#7](https://github.com/emindeniz99/moonsharp/pull/7) | Baseline measurements, upstream tracking, comparison with native Lua. |
 | [#8](https://github.com/emindeniz99/moonsharp/pull/8) | The `io` module works on browser WebAssembly; trimmed apps keep the standard library. |
 | [#9](https://github.com/emindeniz99/moonsharp/pull/9) | This roadmap. |
+| branch `feat/conformance-corpus` | Cross-host conformance corpus: 225 cases in 8 suites (numbers, strings, patterns, tables, errors, JSON, int64, logic) run by the .NET CLI (also from precompiled bytecode and under a decimal-comma culture), Chromium and the three Java transports, each checked against its own known-failures file in both directions. `moonsharp-host compile` writes bytecode with source locations; every transport can create int64 contexts. See [src/Hosting/fixtures/README.md](../src/Hosting/fixtures/README.md). |
 | branch `feat/exact-int64` | Exact 64-bit integers: opt-in `int64`/`uint64` values (`CoreModules.Int64`), CLR `long`/`ulong` in both directions (`ScriptOptions.ExactInt64Interop` for CLR to Lua), exact JSON on request. See [int64.md](int64.md). |
+| branch `feat/luacats-generator` | LuaCATS definitions generated from the registry and globals of a configured `Script` (`src/Tools/MoonSharp.LuaCats`, `moonsharp-luacats` CLI with `--check`), checked with lua-language-server 3.19.1 in a new workflow. Explicit registration for mobile hosts documented and tested; no runtime change was needed. See [luacats.md](luacats.md) and [registration.md](registration.md). |
 
 ## In progress
 
@@ -110,13 +113,33 @@ After step 4: the checkpoint in the decisions table.
 - A `Script` keeps every chunk it compiles, so a long-lived `Script` that compiles in a loop grows without bound.
 - `ScriptOptions(defaults)` does not copy `ColonOperatorClrCallbackBehaviour`.
 - The Unity test runner list misses `ProtectedCallMetamethodTests`, `TonumberTests` and `NewIndexAssignmentTests`.
+- Found by the conformance corpus; each is a case with a `note`, so a fix updates its expectation. The owner decides which are bugs to fix (in `legacy` too) and which stay as documented differences:
+  - Concatenation and `string.format('%s')` format numbers with the process culture: `1.5 .. ''` is `1,5` under `tr_TR` or `de_DE` (`DynValue.CastToString`, `Number.ToString()` without a culture). `known-failures/dotnet-tr-TR.json` lists the two cases.
+  - `%` with a negative divisor takes the dividend's sign: `7 % -3` is 1, Lua gives -2.
+  - `math.huge` is `Double.MaxValue`, so `math.huge == 1/0` is false.
+  - `error(t)` with a table, and `error()`, raise "bad argument #1 to 'error'"; `pcall` never sees the error object.
+  - The `json` module parses with the Lua lexer: `json.parse('[[1]]')` fails (a long string) and `\u00e9` escapes fail. `json.serialize` drops the string keys of a table that also has keys 1..n.
+  - The lexer reads `1e15+0.5` as one malformed number.
+  - `tonumber` and arithmetic do not read hexadecimal strings; `tonumber('nan')` is NaN.
+  - `string.format`: `%e` writes three exponent digits, `%d` of 2^63 wraps instead of failing, `%s` rejects nil.
+  - `string.find(s, '', init)` with `init` past the end still matches.
+  - `tostring` writes shortest round-trip digits, `NaN` and `Infinity`, where Lua 5.2 writes `%.14g`, `nan` and `inf`.
 
 ## Later, and ideas
 
-- A Unity CI matrix: 2021.3, 2022.3 and 6 LTS editors, Mono and IL2CPP players.
+- A Unity CI matrix: 2021.3, 2022.3 and 6 LTS editors, Mono and IL2CPP players. Run the conformance corpus in the players through `ScriptHost`, with `unity-mono` and `unity-il2cpp` known-failures files.
+- Run the bytecode leg of the corpus on the browser and Java hosts too (they accept the base64 dump text today; only the .NET runner compiles).
+- The JSON contract for int64 results (the decision above): today a context with int64 returns them as an `output` error.
+- Publish per-host corpus results over time, as JsonLogic's compat tables do.
 - In-process JVM hosting as the default: needs the native stack guard above and an execution budget for plain calls, then a new measurement against the worker.
 - Browser: AOT-compiled WebAssembly against the interpreter build; Firefox and WebKit tests.
-- LuaCATS type definitions generated from registered C# types, for editor completion.
+- LuaCATS follow-ups:
+  - a Unity Editor menu item that runs the generator. The UPM packages have no Editor part yet (`tools/upm` stages `Runtime` only), so it needs an Editor folder, an asmdef and the generator sources in the package;
+  - typed host global functions: a global set from a delegate is declared `fun(...): any`, because a `CallbackFunction` keeps no signature;
+  - `T?` for C# nullable reference annotations (only `Nullable<T>` is read today);
+  - move the lua-language-server pin to 3.19.2 once its release digests have been read.
+- Convert script functions to delegate parameters (`Action<T>`, `Func<T>`). Today only `Closure` and `ScriptFunctionDelegate` parameters take a function, unless the host adds a custom converter; the LuaCATS generator reports such parameters.
+- The Teal vs TypeScriptToLua trial from the decisions table.
 - A Debug Adapter Protocol server, so any editor can debug scripts.
 - Save and restore a `Script`'s state.
 - A built-in integer subtype, if the struct-value step makes it cheap (see decisions).

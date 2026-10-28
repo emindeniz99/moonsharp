@@ -20,10 +20,10 @@ namespace MoonSharp.Hosting.Browser
 		public static string Version() => ScriptHost.EngineVersion;
 
 		[JSExport]
-		public static int CreateContext()
+		public static int CreateContext(bool int64)
 		{
 			int id = s_NextId++;
-			s_Contexts[id] = new ScriptHost();
+			s_Contexts[id] = ScriptHost.Create(int64);
 			return id;
 		}
 

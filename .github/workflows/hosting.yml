@@ -1,6 +1,9 @@
 name: Hosting
 
-# Runs the shared fixtures on every host: .NET CLI, browser (headless Chromium) and Java.
+# Runs the conformance corpus (src/Hosting/fixtures) on every host: .NET CLI from source and from
+# precompiled bytecode, browser (headless Chromium) and Java (worker, CoreCLR and NativeAOT in process).
+# Each runner checks its results against fixtures/known-failures/<host>.json and fails on a new, changed
+# or fixed failure. The per-host counts go to the job summary.
 on:
   push:
     branches:
@@ -42,12 +45,31 @@ jobs:
         run: dotnet src/Hosting/MoonSharp.Hosting.Cli/bin/Release/net8.0/moonsharp-host.dll validate src/Hosting/fixtures/scripts/*.lua
 
       - name: Fixtures on .NET
-        run: dotnet src/Hosting/MoonSharp.Hosting.Cli/bin/Release/net8.0/moonsharp-host.dll test src/Hosting/fixtures/logic.suite.json
+        run: |
+          set -o pipefail
+          dotnet src/Hosting/MoonSharp.Hosting.Cli/bin/Release/net8.0/moonsharp-host.dll test src/Hosting/fixtures | tee fixtures.log
+          grep '^dotnet: ' fixtures.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fixtures on .NET, invariant globalization
         env:
           DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "1"
-        run: dotnet src/Hosting/MoonSharp.Hosting.Cli/bin/Release/net8.0/moonsharp-host.dll test src/Hosting/fixtures/logic.suite.json
+        run: dotnet src/Hosting/MoonSharp.Hosting.Cli/bin/Release/net8.0/moonsharp-host.dll test src/Hosting/fixtures
+
+      # A culture with a decimal comma; known-failures/dotnet-tr-TR.json lists what still depends on it.
+      - name: Fixtures on .NET, Turkish culture
+        env:
+          LANG: tr_TR.UTF-8
+        run: |
+          set -o pipefail
+          dotnet src/Hosting/MoonSharp.Hosting.Cli/bin/Release/net8.0/moonsharp-host.dll test --host dotnet-tr-TR src/Hosting/fixtures | tee fixtures.log
+          grep '^dotnet-tr-TR: ' fixtures.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
+
+      # Every chunk compiled as `moonsharp-host compile` does at publish time, then loaded as bytecode.
+      - name: Fixtures on .NET from precompiled bytecode
+        run: |
+          set -o pipefail
+          dotnet src/Hosting/MoonSharp.Hosting.Cli/bin/Release/net8.0/moonsharp-host.dll test --bytecode src/Hosting/fixtures | tee fixtures.log
+          grep '^dotnet-bytecode: ' fixtures.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build browser package
         working-directory: src/Hosting/browser
@@ -59,8 +81,10 @@ jobs:
       - name: Fixtures in headless Chromium
         working-directory: src/Hosting/browser
         run: |
+          set -o pipefail
           npx playwright install --with-deps chromium
-          node test/smoke.mjs bin/Release/net10.0/publish/wwwroot ../fixtures
+          node test/smoke.mjs bin/Release/net10.0/publish/wwwroot ../fixtures | tee fixtures.log
+          grep '^browser: ' fixtures.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build the in-process variants (CoreCLR component, NativeAOT library, JNI shim)
         run: |
@@ -72,4 +96,7 @@ jobs:
 
       - name: Fixtures on Java (worker, in-process CoreCLR and NativeAOT, Spring Boot sample)
         working-directory: src/Hosting/java
-        run: mvn -B test -Dmoonsharp.inprocess.required=true
+        run: |
+          set -o pipefail
+          mvn -B test -Dmoonsharp.inprocess.required=true | tee fixtures.log
+          grep -E '^java-(worker|coreclr|nativeaot): ' fixtures.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"

@@ -82,7 +82,7 @@ namespace MoonSharp.Interpreter.Interop
 		/// <param name="converter">The converter, or null.</param>
 		public void SetScriptToClrCustomConversion(DataType scriptDataType, Type clrDataType, Func<DynValue, object> converter = null)
 		{
-			if ((int)scriptDataType > m_Script2Clr.Length)
+			if ((int)scriptDataType >= m_Script2Clr.Length)
 				throw new ArgumentException("scriptDataType");
 
 			Dictionary<Type, Func<DynValue, object>> map = m_Script2Clr[(int)scriptDataType];
@@ -106,7 +106,7 @@ namespace MoonSharp.Interpreter.Interop
 		/// <returns>The converter function, or null if not found</returns>
 		public Func<DynValue, object> GetScriptToClrCustomConversion(DataType scriptDataType, Type clrDataType)
 		{
-			if ((int)scriptDataType > m_Script2Clr.Length)
+			if ((int)scriptDataType >= m_Script2Clr.Length)
 				return null;
 
 			// Checked on every argument conversion: an empty map answers without hashing the type.

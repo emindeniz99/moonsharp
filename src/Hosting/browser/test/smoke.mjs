@@ -1,5 +1,8 @@
-// Headless browser smoke test: the shared fixtures must pass in the page and in a Web Worker.
+// Headless browser smoke test: every fixture suite runs in the page and is checked against
+// known-failures/browser.json; an eligibility call runs through a Web Worker.
 // usage: node test/smoke.mjs <published wwwroot> <fixturesDir>
+import fs from "node:fs";
+import path from "node:path";
 import { createRequire } from "node:module";
 import { serve } from "./serve.mjs";
 
@@ -25,15 +28,15 @@ try {
   await page.waitForFunction(() => window.moonsharp !== undefined, null, { timeout: 60000 });
   const startupMs = Date.now() - t0;
 
-  const report = await page.evaluate(async () => {
+  const suiteFiles = fs.readdirSync(fixtures).filter(f => f.endsWith(".suite.json")).sort();
+  const report = await page.evaluate(async files => {
     const { runtime, runSuite } = window.moonsharp;
-    return { version: runtime.version, suite: await runSuite(runtime, "./fixtures/logic.suite.json") };
-  });
+    const suites = [];
+    for (const f of files) suites.push(await runSuite(runtime, `./fixtures/${f}`));
+    return { version: runtime.version, suites };
+  }, suiteFiles);
 
-  for (const c of report.suite.cases) {
-    console.log(`${c.pass ? "pass" : "FAIL"}  main thread / ${c.name}${c.pass ? "" : ": " + c.detail}`);
-    if (!c.pass) failed++;
-  }
+  failed += checkKnownFailures(report.suites, path.join(fixtures, "known-failures", "browser.json"));
 
   // The same eligibility call through the Web Worker.
   const viaWorker = await page.evaluate(async () => {
@@ -80,3 +83,42 @@ try {
 
 console.log(failed === 0 ? "browser smoke: all passed" : `browser smoke: ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
+
+/**
+ * The same two-way check as the .NET runner (KnownFailures in FixtureRunner.cs): a new failure, a changed
+ * detail, a listed failure that passes now and a listed case that no longer exists each count as a failure.
+ */
+function checkKnownFailures(suites, file) {
+  const known = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
+  const actual = {}, ran = new Set(), seen = new Set();
+  const n = { cases: 0, passed: 0, known: 0, new: 0, changed: 0, fixed: 0, stale: 0 };
+
+  for (const s of suites) {
+    ran.add(s.suite);
+    for (const c of s.cases) {
+      const key = `${s.suite} / ${c.name}`, listed = Object.hasOwn(known, key);
+      seen.add(key);
+      n.cases++;
+      if (!c.pass) actual[key] = c.detail;
+      if (c.pass && !listed) { n.passed++; console.log(`pass  ${key}`); }
+      else if (c.pass) { n.fixed++; console.log(`FIXED ${key}: passes now, remove it from known-failures/browser.json`); }
+      else if (!listed) { n.new++; console.log(`FAIL  ${key}: ${c.detail}`); }
+      else if (known[key] !== c.detail) { n.changed++; console.log(`CHANGED ${key}: ${c.detail} (known: ${known[key]})`); }
+      else { n.known++; console.log(`known ${key}: ${c.detail}`); }
+    }
+  }
+
+  for (const key of Object.keys(known)) {
+    const suite = key.split(" / ")[0];
+    if (ran.has(suite) && !seen.has(key)) { n.stale++; console.log(`STALE ${key}: listed in known-failures/browser.json, but there is no such case`); }
+    else if (!ran.has(suite)) actual[key] = known[key];
+  }
+
+  console.log(`browser: ${n.cases} cases, ${n.passed} passed, ${n.known} known failures; ${n.new} new, ${n.changed} changed, ${n.fixed} fixed, ${n.stale} stale`);
+  const errors = n.new + n.changed + n.fixed + n.stale;
+  if (errors > 0) {
+    const sorted = Object.fromEntries(Object.keys(actual).sort().map(k => [k, actual[k]]));
+    console.log(`The known failures changed. If that is intended, write this to ${file}:\n${JSON.stringify(sorted, null, 2)}`);
+  }
+  return errors;
+}

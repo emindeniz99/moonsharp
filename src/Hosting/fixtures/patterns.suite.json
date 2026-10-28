@@ -3,7 +3,7 @@
   "description": "Lua patterns through string.find, match, gmatch and gsub: captures, anchors, classes and error messages.",
   "cases": [
     {"name": "find: plain search ignores magic characters", "op": "run", "chunk": "patterns.lua", "source": "return { ('a.b.c'):find('.', 1, true), ('a.b.c'):find('.', 3, true) }", "expect": [2, 4, 4]},
-    {"name": "find: empty pattern at and past the end", "op": "run", "chunk": "patterns.lua", "source": "return { ('abc'):find('', 4), ('abc'):find('', 10) }", "expect": [4, 4, 3], "note": "Lua 5.2 returns nil for init 10; MoonSharp moves init back to the end and returns 4 3"},
+    {"name": "find: empty pattern at and past the end", "op": "run", "chunk": "patterns.lua", "source": "return { ('abc'):find('', 10) == nil, ('abc'):find('', 4) }", "expect": [true, 4, 3]},
     {"name": "find: negative init", "op": "run", "chunk": "patterns.lua", "source": "return { ('abc'):find('b', -1) == nil, ('abc'):find('b', -2) }", "expect": [true, 2, 2]},
     {"name": "find: returns captures after the positions", "op": "run", "chunk": "patterns.lua", "source": "return { ('key = value'):find('(%w+)%s*=%s*(%w+)') }", "expect": [1, 11, "key", "value"]},
     {"name": "find: anchors", "op": "run", "chunk": "patterns.lua", "source": "return { ('hello'):find('^h'), ('hello'):find('^e') == nil, ('hello'):find('o$'), ('hello'):find('l$') == nil, ('a^b'):find('a^b') }", "expect": [1, true, 5, true, 1, 3]},
@@ -34,8 +34,8 @@
     {"name": "error: pattern ends with %", "op": "run", "chunk": "patterns.lua", "source": "return ('a'):find('%')", "expectError": {"kind": "runtime", "messageContains": "patterns.lua:(1,0-22): malformed pattern (ends with '%')", "line": 1}},
     {"name": "error: unfinished capture", "op": "run", "chunk": "patterns.lua", "source": "return ('a'):find('(a')", "expectError": {"kind": "runtime", "messageContains": "patterns.lua:(1,0-23): unfinished capture", "line": 1}},
     {"name": "error: missing ]", "op": "run", "chunk": "patterns.lua", "source": "return ('a'):find('[a')", "expectError": {"kind": "runtime", "messageContains": "patterns.lua:(1,0-23): malformed pattern (missing ']')", "line": 1}},
-    {"name": "unmatched ) is a literal", "op": "run", "chunk": "patterns.lua", "source": "return ('a)'):find('a)')", "expect": 1, "note": "Lua 5.2 raises invalid pattern capture"},
-    {"name": "error: %b without arguments", "op": "run", "chunk": "patterns.lua", "source": "return ('a'):find('%b')", "expectError": {"kind": "runtime", "messageContains": "patterns.lua:(1,0-23): unbalanced pattern", "line": 1}, "note": "Lua 5.2: malformed pattern (missing arguments to '%b')"},
+    {"name": "unmatched ) is a literal", "op": "run", "chunk": "patterns.lua", "source": "return ('a)'):find('a)')", "expect": 1, "note": "no magic character, so a plain search, as in Lua 5.2; match raises invalid pattern capture"},
+    {"name": "error: %b without arguments", "op": "run", "chunk": "patterns.lua", "source": "return ('a'):find('%b')", "expectError": {"kind": "runtime", "messageContains": "patterns.lua:(1,0-23): malformed pattern (missing arguments to '%b')", "line": 1}},
     {"name": "error: %f without a set", "op": "run", "chunk": "patterns.lua", "source": "return ('a'):find('%f')", "expectError": {"kind": "runtime", "messageContains": "patterns.lua:(1,0-23): missing '[' after '%f' in pattern", "line": 1}}
   ]
 }

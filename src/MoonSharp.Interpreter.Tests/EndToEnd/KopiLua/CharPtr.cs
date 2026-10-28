@@ -48,9 +48,9 @@
 using System;
 using System.Diagnostics;
 
-namespace MoonSharp.Interpreter.Interop.LuaStateInterop
+namespace MoonSharp.Interpreter.Tests.EndToEnd
 {
-	public class CharPtr
+	internal class CharPtr
 	{
 		public char[] chars;
 		public int index;

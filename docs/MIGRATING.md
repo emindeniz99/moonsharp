@@ -873,3 +873,42 @@ the module or its loader; scripts should call `require`.
 **Affected:** hosts or tests that match the text of the "not found" error;
 scripts that tested `package.path` or `package.preload` for nil; modules that
 fill `package.loaded` themselves and relied on `require` returning `true`.
+
+## Lua patterns follow Lua 5.2
+
+`string.find`, `match`, `gmatch` and `gsub` no longer run KopiLua's port of the Lua 5.1 matcher.
+A port of Lua 5.2.4's `lstrlib.c` over string indices replaced it: it gives the same results as
+`lua5.2` on 219,075 generated ASCII cases. A pattern item still matches one UTF-16 code unit.
+What a script can notice:
+
+| Case | Before | Now |
+|---|---|---|
+| `('  ' .. long .. '  '):match('^%s*(.-)%s*$')` on a string of more than a few dozen characters ([#318](https://github.com/moonsharp-devs/moonsharp/issues/318)) | error "pattern too complex" | the trimmed string; the limit is 200 nested items, as in Lua |
+| A code unit above 255 in the subject or the pattern ([#187](https://github.com/moonsharp-devs/moonsharp/issues/187)) | compared by its low byte: `'\n'` matched `上` (U+4E0A), `%s` matched it too | compared whole; it belongs to no class (`%a`, `%s`, `%p`...), so only `.`, itself, a range such as `[一-龥]` or a complement (`%A`, `[^x]`) matches it |
+| `%p` ([#134](https://github.com/moonsharp-devs/moonsharp/issues/134)) | .NET `IsPunctuation`: missed `$`, `+`, `<`, `=`, `>`, `^`, `` ` ``, `\|` and `~` | C's `ispunct`: every printable ASCII character that is not a letter, digit or space; below 256 also symbols such as `¢ © ° ×` |
+| `'\0'` in a pattern | rewritten to `%z`, so `[\0-\31]` matched only `'\0'`, `'-'` and `'\31'` | an ordinary character; `%z` still works |
+| `s:find(p, init)` or `s:match(p, init)` with `init` past `#s + 1` | moved back to the end: `('abc'):find('', 10)` gave `4 3` | `nil`, as in Lua 5.2 |
+| `%b` without its two characters | error "unbalanced pattern" | error "malformed pattern (missing arguments to '%b')" |
+| A back reference to a missing capture, `('a'):find('(a)%2')` | error "invalid capture index 2" | error "invalid capture index %2" |
+| A `gmatch` iterator called through `pcall` or another C# function | `NullReferenceException` | works |
+
+Unchanged: classification below 256 other than `%p` (`é` is still a letter), `gsub` with a table
+reading it without `__index`, and `gsub` with a negative count replacing nothing (Lua 5.2 replaces
+everything there; Lua 5.3 and later replace nothing). A `gsub` that matches nothing now returns the
+subject string itself.
+
+Affected: scripts that relied on any "Before" column. The old matcher is kept in the tests
+(`KopiLuaPatternOracle`); `StringPatternTests` compares the two over 228,000 generated cases and
+allows only the differences above.
+
+## LuaBase, CharPtr and LuaLBuffer are gone
+
+The public classes `LuaBase`, `CharPtr` and `LuaLBuffer` in
+`MoonSharp.Interpreter.Interop.LuaStateInterop` were helpers for porting C library code: a C-string
+pointer emulation, `ctype.h` functions and `lua_*`/`luaL_*` look-alikes. MoonSharp's own ports used
+them (`string.format` and the pattern functions); neither does any more, so they left the
+interpreter (7 KB of the DLL). `LuaState` and `ScriptExecutionContext.EmulateClassicCall` stay.
+
+Affected: hosts that subclass `LuaBase` or use `CharPtr`. Copy the three files from MoonSharp 2.0
+([LuaStateInterop](https://github.com/moonsharp-devs/moonsharp/tree/fbd03678d5c0f731d731d099211c7f4a3a1ae8b7/src/MoonSharp.Interpreter/Interop/LuaStateInterop))
+into your project; they need only the public API. Scripts are not affected.

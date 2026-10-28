@@ -14,6 +14,9 @@ namespace MoonSharp.Benchmarks
 			if (args.Length > 0 && args[0] == "ab")
 				return AbCompare.Run(args.Skip(1).ToArray());
 
+			if (args.Length > 0 && args[0] == "workloads")
+				return LuaWorkloads.Run(args.Skip(1).ToArray());
+
 			BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
 			return 0;
 		}

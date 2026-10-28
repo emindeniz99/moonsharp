@@ -37,6 +37,18 @@ per-round ratios and their interquartile range. Run the same build against
 itself first (an A/A run) to see the noise on your machine before trusting a
 small difference.
 
+**Pure Lua workloads** with the same sources and iteration counts as the
+pure-Lua cases of xLua-NG's `Test/Native/flag_bench.c`, to compare MoonSharp
+with a native Lua on the same machine:
+
+```sh
+dotnet run -c Release --project src/DevTools/Benchmarks -- workloads 7
+```
+
+`int64_math` is left out (it needs Lua 5.3 integers). `table_sort_52` copies
+with a loop because Lua 5.2 has no `table.move`; its seed arithmetic exceeds
+2^53, so its check value differs from Lua 5.3+.
+
 ## Notes
 
 - A `Script` keeps every chunk it compiles. Compiling repeatedly into one

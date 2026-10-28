@@ -205,3 +205,98 @@ registration.
 
 Affected: hosts that inspect `require` as a Lua function. A debugger attached before the first
 `require` call receives the bytecode of `libfunc_require` when it is compiled.
+
+## Host JSON output skips fields set to nil
+
+`ScriptHost` wrote a table's fields set to nil as `null`, because the C#
+`Table.Pairs` still lists them, and counted them when deciding between an
+array and an object. A table shortened with `table.remove` therefore left
+the host as an object:
+
+```lua
+local t = { 1, 2, 3, 4 }
+table.remove(t)
+return t   -- before: {"1":1,"2":2,"3":3,"4":null}   now: [1,2,3]
+```
+
+Fields set to nil are now skipped, as Lua's `pairs` skips them. Affected:
+hosts (CLI, browser, Java) that read such results.
+
+## Host JSON output rejects unpaired surrogates
+
+A string holding half of a character outside the BMP, such as
+`('👋'):sub(1, 1)`, reached each host differently: the browser got the
+lone code unit, the Java worker and the in-process builds got U+FFFD from
+the UTF-8 encoder, and a .NET caller parsing the envelope with
+System.Text.Json got an exception. It is now an `output` error on every
+host ("a string with an unpaired surrogate at code unit 1 has no JSON
+representation"). Affected: scripts that return such strings to a host;
+return whole characters, or the code units from `string.unicode`.
+
+## Host contexts can be created with the int64 modules
+
+Every transport can now create a context with `CoreModules.Int64`:
+`ScriptHost.Create(true)`, the worker's `create` request, `create(context,
+int64)` on the Java `MoonSharpHost`, and `createContext({ int64: true })`
+in TypeScript. Two signatures changed for it:
+
+- C: `moonsharp_context_create(void)` is now
+  `moonsharp_context_create(int32_t options)`; pass 0 for the old
+  behaviour or `MOONSHARP_CONTEXT_INT64`.
+- Java: `MoonSharpHost` has a new `create` method, so a class outside this
+  repository that implements the interface must add it.
+
+The browser export `CreateContext` takes a boolean; `createContext()` in
+TypeScript keeps working without arguments.
+
+## `moonsharp-host test` checks known failures
+
+`moonsharp-host test` takes suite files or directories and compares the
+results with `known-failures/<host>.json` next to the suites. It exits 1
+on a new failure, a changed failure, a listed failure that passes and a
+listed case that does not exist, and prints one line per case (`pass`,
+`known`, `FAIL`, `CHANGED`, `FIXED`, `STALE`) and a count line. Before,
+it exited 1 on any failure and printed `pass` or `FAIL`.
+
+## Custom converter lookups accept every DataType
+
+`CustomConvertersCollection.GetScriptToClrCustomConversion` threw
+`IndexOutOfRangeException` for `DataType.TailCallRequest` and
+`DataType.YieldRequest`; it now returns null, as for any type without a
+converter. `SetScriptToClrCustomConversion` throws `ArgumentException` for
+them instead of `IndexOutOfRangeException`. Affected: code that looped over
+every `DataType`.
+
+## Numbers print the same text on every runtime
+
+`tostring`, concatenation (`..`), `string.format('%s')`, JSON output and conversions to CLR strings now
+share one formatter that reproduces .NET Core's output on every runtime: the fewest significant digits
+that read back as the same number, in the invariant culture. Output on .NET is unchanged.
+
+- On Mono and Unity (Mono and IL2CPP), numbers that need more than 15 digits used to lose digits:
+  `2^53` printed `9.00719925474099E+15`. It now prints `9007199254740992`, as on .NET.
+- Concatenation and `%s` used the process culture: `1.5 .. ''` gave `1,5` under a decimal-comma culture.
+  They now always give `1.5`.
+- Negative zero prints `-0` everywhere (Mono printed `0`).
+
+Who is affected: scripts and hosts that compare printed numbers as text, mostly on Unity.
+
+## Exceptions from C# methods called through reflection
+
+A C# method that threw, called from Lua through reflection, reached the
+host as a `TargetInvocationException` wrapping the real exception; through
+the compiled path it reached the host as itself. Reflection is what
+`InteropAccessMode.Reflection` uses, what every call uses on AOT platforms
+(IL2CPP, iOS), and what a `BackgroundOptimized` method uses until it is
+compiled. The original exception is now rethrown on every path, with its
+stack trace. Affected: hosts on IL2CPP or iOS, or using `Reflection`, that
+caught `TargetInvocationException` and read `InnerException`.
+
+## The Unity package requires Unity 2021.3
+
+`package.json` of `org.moonsharp.moonsharp` and
+`org.moonsharp.debugger.vscode` declares `"unity": "2021.3"` (it was
+`2020.3`). The fork targets Unity 2021.3 LTS, 2022.3 LTS and Unity 6 LTS,
+which `.github/workflows/unity.yml` tests; 2020.3 is out of support and was
+never tested. Nothing in the package needed the lower number. Affected:
+projects on Unity 2020.3.

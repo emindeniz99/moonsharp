@@ -97,7 +97,7 @@ namespace MoonSharp.Interpreter.Serialization.Json
 					sb.Append(value.Boolean ? "true" : "false");
 					break;
 				case DataType.Number:
-					sb.Append(value.Number.ToString("r", CultureInfo.InvariantCulture));
+					sb.Append(NumberFormatting.ToShortestString(value.Number).Replace('E', 'e'));
 					break;
 				case DataType.String:
 					sb.Append(EscapeString(value.String ?? ""));

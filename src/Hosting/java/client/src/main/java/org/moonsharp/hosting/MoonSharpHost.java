@@ -8,6 +8,13 @@ package org.moonsharp.hosting;
 public interface MoonSharpHost extends AutoCloseable {
     String version();
 
+    /**
+     * Creates the named context, replacing any context of that name. Contexts are also created on first
+     * use; call this to choose options: with {@code int64} the context has the int64 and uint64 modules
+     * (docs/int64.md).
+     */
+    void create(String context, boolean int64);
+
     HostResult load(String context, String moduleId, String source);
 
     boolean unload(String context, String moduleId);

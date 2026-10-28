@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+      Compiles the test sources the way Unity does (src/Unity/UnityTestBed): without NUnit, with
+      the NUnit subset in EmbeddableNUnitWrapper.cs, scripts looked up by file name. Its results
+      file is the reference the Unity CI job compares the editor and player runs with.
+    -->
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <DefineConstants>$(DefineConstants);EMBEDTEST</DefineConstants>
+        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+        <TestsDir>..\..\MoonSharp.Interpreter.Tests\</TestsDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="Program.cs" />
+        <Compile Include="$(TestsDir)**\*.cs" Exclude="$(TestsDir)bin\**;$(TestsDir)obj\**" LinkBase="Tests" />
+        <None Include="$(TestsDir)TestMore\**\*.t;$(TestsDir)TestMore\**\*.lua" LinkBase="TestMore" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\MoonSharp.Interpreter\MoonSharp.Interpreter.csproj" />
+    </ItemGroup>
+
+</Project>

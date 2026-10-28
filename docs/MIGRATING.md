@@ -130,3 +130,13 @@ thread, which ends the process. The work item now walks copies of the
 lists and ignores a failure: members it did not optimize keep running
 through reflection, as they do before it finishes. Affected: hosts using
 `BackgroundOptimized` with overloaded methods.
+
+## Extension methods from every registered class are found
+
+A userdata looked for extension methods only when an extension class had
+been registered since its previous lookup. After a script used one
+extension method of a type, the others stayed invisible ("cannot access
+field") until another extension class was registered. Every registered
+extension method is now found. Affected: hosts that register extension
+methods for one type from several static classes
+([upstream #102](https://github.com/moonsharp-devs/moonsharp/issues/102)).

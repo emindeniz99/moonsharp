@@ -15,7 +15,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 		internal DynValue Value;
 		internal int NumVal;
 		internal int NumVal2;
+		internal int NumVal3;
 		internal SourceRef SourceCodeRef;
+		// Runtime only, never saved: the inline cache of a field or global access with a constant key.
+		internal FieldCache Cache;
 
 		internal Instruction(SourceRef sourceref)
 		{
@@ -38,6 +41,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			if ((usage & ((int)InstructionFieldUsage.NumVal2)) != 0)
 				append += " " + NumVal2.ToString();
+
+			if ((usage & ((int)InstructionFieldUsage.NumVal3)) != 0)
+				append += " " + NumVal3.ToString();
 
 			if ((usage & ((int)InstructionFieldUsage.Name)) != 0)
 				append += " " + Name;
@@ -80,6 +86,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			if ((usage & ((int)InstructionFieldUsage.NumVal2)) != 0)
 				wr.Write(this.NumVal2);
+
+			if ((usage & ((int)InstructionFieldUsage.NumVal3)) != 0)
+				wr.Write(this.NumVal3);
 
 			if ((usage & ((int)InstructionFieldUsage.Name)) != 0)
 				wr.Write(Name ?? "");
@@ -127,6 +136,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			if ((usage & ((int)InstructionFieldUsage.NumVal2)) != 0)
 				that.NumVal2 = rd.ReadInt32();
+
+			if ((usage & ((int)InstructionFieldUsage.NumVal3)) != 0)
+				that.NumVal3 = rd.ReadInt32();
 
 			if ((usage & ((int)InstructionFieldUsage.Name)) != 0)
 				that.Name = rd.ReadString();

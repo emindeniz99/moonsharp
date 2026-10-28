@@ -60,10 +60,16 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 
 			m_ParamNames = DefineArguments(paramnames, lcontext);
 
+			// A goto cannot leave the function, so its loops count from zero.
+			int loopStackValues = lcontext.LoopStackValues;
+			lcontext.LoopStackValues = 0;
+
 			if(isLambda)
 				m_Statement = CreateLambdaBody(lcontext);
 			else
 				m_Statement = CreateBody(lcontext);
+
+			lcontext.LoopStackValues = loopStackValues;
 
 			m_StackFrame = lcontext.Scope.PopFunction();
 

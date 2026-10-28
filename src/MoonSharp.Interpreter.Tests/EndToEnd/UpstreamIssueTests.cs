@@ -374,5 +374,19 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual("zero", t.Get(0).String);
 			Assert.AreEqual("minus one", t.Get(-1).String);
 		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/308 (upstream PR #355): the error of a
+		// multi-key Table.Get showed the template "Key '{0}' ..." instead of the key.
+		[Test]
+		[Ignore("waits for table work (Table.cs): https://github.com/moonsharp-devs/moonsharp/issues/308")]
+		public void Issue308_MultiKeyGetNamesTheMissingKey()
+		{
+			Script s = new Script();
+			Table t = new Table(s);
+
+			ScriptRuntimeException ex = Assert.Throws<ScriptRuntimeException>(() => t.Get("settings", "volume"));
+
+			StringAssert.Contains("'settings'", ex.Message);
+		}
 	}
 }

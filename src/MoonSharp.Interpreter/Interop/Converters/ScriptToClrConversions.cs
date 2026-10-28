@@ -5,13 +5,14 @@ namespace MoonSharp.Interpreter.Interop.Converters
 {
 	internal static class ScriptToClrConversions
 	{
-		internal const int WEIGHT_MAX_VALUE = 100;
+		internal const int WEIGHT_MAX_VALUE = 101;
+		// Below an exact match (upstream #294), above every other conversion.
 		internal const int WEIGHT_CUSTOM_CONVERTER_MATCH = 100;
-		internal const int WEIGHT_EXACT_MATCH = 100;
+		internal const int WEIGHT_EXACT_MATCH = 101;
 		internal const int WEIGHT_STRING_TO_STRINGBUILDER = 99;
 		internal const int WEIGHT_STRING_TO_CHAR = 98;
-		internal const int WEIGHT_NIL_TO_NULLABLE = 100;
-		internal const int WEIGHT_NIL_TO_REFTYPE = 100;
+		internal const int WEIGHT_NIL_TO_NULLABLE = 101;
+		internal const int WEIGHT_NIL_TO_REFTYPE = 101;
 		internal const int WEIGHT_VOID_WITH_DEFAULT = 50;
 		internal const int WEIGHT_VOID_WITHOUT_DEFAULT = 25;
 		internal const int WEIGHT_NIL_WITH_DEFAULT = 25;

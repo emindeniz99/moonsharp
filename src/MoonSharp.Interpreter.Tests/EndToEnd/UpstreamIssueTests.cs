@@ -547,5 +547,44 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual("int 3", r.Tuple[2].String);
 			Assert.AreEqual("float 0.25", r.Tuple[3].String);
 		}
+
+		public class Tag
+		{
+			public string Name;
+		}
+
+		public class Labeler
+		{
+			public string Describe(Tag t) { return "tag " + t.Name; }
+			public string Describe(string s) { return "string " + s; }
+		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/294: a custom converter weighed the
+		// same as an exact type match, so with a string-to-Tag converter registered,
+		// Describe("x") called Describe(Tag) (which sorts first) instead of Describe(string).
+		// Arguments that only the converter can take still reach Describe(Tag).
+		[Test]
+		public void Issue294_ExactMatchBeatsCustomConverter()
+		{
+			UserData.RegisterType<Labeler>();
+			Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion(DataType.String, typeof(Tag), v => new Tag() { Name = v.String });
+			Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion(DataType.Number, typeof(Tag), v => new Tag() { Name = "n" });
+
+			try
+			{
+				Script s = new Script();
+				s.Globals["o"] = new Labeler();
+
+				DynValue r = s.DoString("return o.Describe('x'), o.Describe(5)");
+
+				Assert.AreEqual("string x", r.Tuple[0].String);
+				Assert.AreEqual("tag n", r.Tuple[1].String);
+			}
+			finally
+			{
+				Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion(DataType.String, typeof(Tag), null);
+				Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion(DataType.Number, typeof(Tag), null);
+			}
+		}
 	}
 }

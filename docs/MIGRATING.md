@@ -612,3 +612,23 @@ number argument is whole, so a cached choice for `F(2)` is not reused for
 
 **Affected:** hosts with integer and `float` overloads of one method whose
 scripts pass fractional numbers.
+
+## An exact type match beats a custom converter
+
+**Before:** an argument that a custom converter
+(`Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion`) could
+convert weighed the same as an argument whose type matched the parameter
+exactly, so the overload that sorted first won. With a string-to-`Tag`
+converter and overloads `Describe(Tag)` and `Describe(string)`,
+`Describe("x")` called `Describe(Tag)`.
+
+**After:** the exact match wins: `Describe("x")` calls `Describe(string)`. A
+converter still beats every other conversion (number to `int`, number to
+string, table to list), so arguments that only the converter can take reach
+the converter's overload as before
+([upstream #294](https://github.com/moonsharp-devs/moonsharp/issues/294)).
+
+**Affected:** hosts with custom converters and overloads that take both the
+converter's target type and the argument's own type, for example a
+number-to-`int` converter on a method with `F(int)` and `F(double)`, where a
+number now calls `F(double)`.

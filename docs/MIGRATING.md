@@ -709,3 +709,11 @@ host can see:
   through `for i = 1, 2 do x = x + i end` written on lines 2 to 4 went
   2, 3, 4, 2, 3, 4, 2, 4; it now goes 2, 3, 4, 3, 4. A breakpoint on the `for`
   line is hit once per loop, not once per iteration.
+
+## `goto` out of a `for` loop
+
+A `goto` that left a numeric or generic `for` loop left the loop's control
+values on the value stack, so an enclosing `for` loop then read them as its
+own: it skipped or repeated iterations. The jump now removes them, as `break`
+does. Affected: scripts that `goto` a label outside a `for` loop (a
+`continue` label inside the same loop body was not affected).

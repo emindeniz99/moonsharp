@@ -12,19 +12,36 @@ namespace MoonSharp.Interpreter
 	{
 		static int s_RefIDCounter = 0;
 
-		private int m_RefID = ++s_RefIDCounter;
-		private int m_HashCode = -1;
-
-		private bool m_ReadOnly;
-		private double m_Number;
+		// 40 bytes on 64-bit runtimes: the object, the number, the reference id, the type as a byte and the
+		// read-only flag. The reference id is assigned on first read, so creating a value writes no shared
+		// counter, and the hash code is computed when asked instead of cached.
 		private object m_Object;
-		private DataType m_Type;
+		private double m_Number;
+		private int m_RefID;
+		private byte m_TypeCode;
+		private bool m_ReadOnly;
+
+		private DataType m_Type
+		{
+			get { return (DataType)m_TypeCode; }
+			set { m_TypeCode = (byte)value; }
+		}
 
 
 		/// <summary>
-		/// Gets a unique reference identifier. This is guaranteed to be unique only for dynvalues created in a single thread as it's not thread-safe.
+		/// Gets a unique reference identifier, assigned the first time it is read. This is guaranteed to be
+		/// unique only for dynvalues created in a single thread as it's not thread-safe.
 		/// </summary>
-		public int ReferenceID { get { return m_RefID; } }
+		public int ReferenceID
+		{
+			get
+			{
+				if (m_RefID == 0)
+					m_RefID = ++s_RefIDCounter;
+
+				return m_RefID;
+			}
+		}
 
 		/// <summary>
 		/// Gets the type of the value.
@@ -210,7 +227,6 @@ namespace MoonSharp.Interpreter
 			{
 				m_Number = num,
 				m_Type = DataType.Number,
-				m_HashCode = -1,
 			};
 		}
 
@@ -502,7 +518,6 @@ namespace MoonSharp.Interpreter
 			DynValue v = new DynValue();
 			v.m_Object = this.m_Object;
 			v.m_Number = this.m_Number;
-			v.m_HashCode = this.m_HashCode;
 			v.m_Type = this.m_Type;
 			v.m_ReadOnly = readOnly;
 			return v;
@@ -663,60 +678,44 @@ namespace MoonSharp.Interpreter
 		/// </returns>
 		public override int GetHashCode()
 		{
-			if (m_HashCode != -1)
-				return m_HashCode;
-
 			int baseValue = ((int)(Type)) << 27;
 
 			switch (Type)
 			{
 				case DataType.Void:
 				case DataType.Nil:
-					m_HashCode = 0;
-					break;
+					return 0;
 				case DataType.Boolean:
-					m_HashCode = Boolean ? 1 : 2;
-					break;
+					return Boolean ? 1 : 2;
 				case DataType.Number:
-					m_HashCode = baseValue ^ Number.GetHashCode();
-					break;
+					return baseValue ^ Number.GetHashCode();
 				case DataType.String:
-					m_HashCode = baseValue ^ String.GetHashCode();
-					break;
+					return baseValue ^ String.GetHashCode();
 				case DataType.Function:
-					m_HashCode = baseValue ^ Function.GetHashCode();
-					break;
+					return baseValue ^ Function.GetHashCode();
 				case DataType.ClrFunction:
-					m_HashCode = baseValue ^ Callback.GetHashCode();
-					break;
+					return baseValue ^ Callback.GetHashCode();
 				case DataType.Table:
-					m_HashCode = baseValue ^ Table.GetHashCode();
-					break;
+					return baseValue ^ Table.GetHashCode();
 				case DataType.Tuple:
 				case DataType.TailCallRequest:
-					m_HashCode = baseValue ^ Tuple.GetHashCode();
-					break;
+					return baseValue ^ Tuple.GetHashCode();
 				case DataType.UserData:
 					{
 						// int64 and uint64 values are immutable and equal by value, so they can hash
 						// by value too. Other userdata never hash by the object's own GetHashCode: their
-						// Equals may depend on mutable state, and this hash is cached.
+						// Equals may depend on mutable state.
 						object o = UserData.Object;
 						if (o is LuaInt64 || o is LuaUInt64)
-							m_HashCode = baseValue ^ o.GetHashCode();
+							return baseValue ^ o.GetHashCode();
 						else
-							m_HashCode = baseValue ^ UserData.GetHashCodeForEquals();
+							return baseValue ^ UserData.GetHashCodeForEquals();
 					}
-					break;
 				case DataType.Thread:
-					m_HashCode = baseValue ^ System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Coroutine);
-					break;
+					return baseValue ^ System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Coroutine);
 				default:
-					m_HashCode = 999;
-					break;
+					return 999;
 			}
-
-			return m_HashCode;
 		}
 
 		/// <summary>
@@ -876,7 +875,6 @@ namespace MoonSharp.Interpreter
 			this.m_Number = value.m_Number;
 			this.m_Object = value.m_Object;
 			this.m_Type = value.Type;
-			this.m_HashCode = -1;
 		}
 
 

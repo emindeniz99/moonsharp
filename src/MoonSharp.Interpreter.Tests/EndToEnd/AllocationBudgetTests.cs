@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Reflection;
 using MoonSharp.Interpreter.Interop;
 using NUnit.Framework;
@@ -131,62 +131,62 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void AllocationBudget_EmptyLoop()
 		{
-			AssertLuaBudget("empty_loop", "return function(n) for i = 1, n do end end", 48);
+			AssertLuaBudget("empty_loop", "return function(n) for i = 1, n do end end", 0);
 		}
 
 		[Test]
 		public void AllocationBudget_FunctionCall()
 		{
-			AssertLuaBudget("function_call", "local function f(a) return a + 1 end\nreturn function(n) local x = 0 for i = 1, n do x = f(x) end return x end", 416);
+			AssertLuaBudget("function_call", "local function f(a) return a + 1 end\nreturn function(n) local x = 0 for i = 1, n do x = f(x) end return x end", 0);
 		}
 
 		[Test]
 		public void AllocationBudget_MethodCall()
 		{
-			AssertLuaBudget("method_call", "local C = {} C.__index = C\nfunction C:inc() self.v = self.v + 1 end\nlocal o = setmetatable({ v = 0 }, C)\nreturn function(n) for i = 1, n do o:inc() end return o.v end", 512);
+			AssertLuaBudget("method_call", "local C = {} C.__index = C\nfunction C:inc() self.v = self.v + 1 end\nlocal o = setmetatable({ v = 0 }, C)\nreturn function(n) for i = 1, n do o:inc() end return o.v end", 40);
 		}
 
 		[Test]
 		public void AllocationBudget_TableArrayRead()
 		{
-			AssertLuaBudget("table_array_read", "local t = {} for i = 1, 1024 do t[i] = i end\nreturn function(n) local s, j = 0, 1 for i = 1, n do s = s + t[j] j = j + 1 if j > 1024 then j = 1 end end return s end", 384);
+			AssertLuaBudget("table_array_read", "local t = {} for i = 1, 1024 do t[i] = i end\nreturn function(n) local s, j = 0, 1 for i = 1, n do s = s + t[j] j = j + 1 if j > 1024 then j = 1 end end return s end", 0);
 		}
 
 		[Test]
 		public void AllocationBudget_TableHashSetGet()
 		{
-			AssertLuaBudget("table_hash_set_get", "local keys = {} for i = 1, 64 do keys[i] = 'key' .. i end\nreturn function(n) local t, s, j = {}, 0, 1 for i = 1, n do local k = keys[j] t[k] = i s = s + t[k] j = j + 1 if j > 64 then j = 1 end end return s end", 720);
+			AssertLuaBudget("table_hash_set_get", "local keys = {} for i = 1, 64 do keys[i] = 'key' .. i end\nreturn function(n) local t, s, j = {}, 0, 1 for i = 1, n do local k = keys[j] t[k] = i s = s + t[k] j = j + 1 if j > 64 then j = 1 end end return s end", 40);
 		}
 
 		[Test]
 		public void AllocationBudget_IntMath()
 		{
-			AssertLuaBudget("int_math", "return function(n) local x = 1 for i = 1, n do x = (x * 31 + i) % 1000003 end return x end", 288);
+			AssertLuaBudget("int_math", "return function(n) local x = 1 for i = 1, n do x = (x * 31 + i) % 1000003 end return x end", 0);
 		}
 
 		[Test]
 		public void AllocationBudget_FloatMath()
 		{
-			AssertLuaBudget("float_math", "return function(n) local x, y = 0.5, 0.25 for i = 1, n do x = x * 0.5 + y * 0.25 y = y * 0.5 + x / 3.0 + 0.001 end return x + y end", 576);
+			AssertLuaBudget("float_math", "return function(n) local x, y = 0.5, 0.25 for i = 1, n do x = x * 0.5 + y * 0.25 y = y * 0.5 + x / 3.0 + 0.001 end return x + y end", 0);
 		}
 
 		[Test]
 		public void AllocationBudget_ClosureCreateCall()
 		{
-			AssertLuaBudget("closure_create_call", "return function(n) local s = 0 for i = 1, n do local f = function() return i end s = s + f() end return s end", 584);
+			AssertLuaBudget("closure_create_call", "return function(n) local s = 0 for i = 1, n do local f = function() return i end s = s + f() end return s end", 152);
 		}
 
 		[Test]
 		public void AllocationBudget_FibRecursive()
 		{
 			// One iteration is fib(12): 465 Lua calls.
-			AssertLuaBudget("fib_recursive", "local function fib(n) if n < 2 then return n end return fib(n - 1) + fib(n - 2) end\nreturn function(n) local s = 0 for i = 1, n do s = s + fib(12) end return s end", 193488, 40);
+			AssertLuaBudget("fib_recursive", "local function fib(n) if n < 2 then return n end return fib(n - 1) + fib(n - 2) end\nreturn function(n) local s = 0 for i = 1, n do s = s + fib(12) end return s end", 0, 40);
 		}
 
 		[Test]
 		public void AllocationBudget_CoroutineSwitch()
 		{
-			AssertLuaBudget("coroutine_switch", "return function(n) local co = coroutine.wrap(function() local i = 0 while true do i = i + 1 coroutine.yield(i) end end)\nlocal s = 0 for i = 1, n do s = s + co() end return s end", 1056);
+			AssertLuaBudget("coroutine_switch", "return function(n) local co = coroutine.wrap(function() local i = 0 while true do i = i + 1 coroutine.yield(i) end end)\nlocal s = 0 for i = 1, n do s = s + co() end return s end", 400);
 		}
 
 		[Test]
@@ -195,7 +195,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			SkipUnlessMeasurable();
 			Script script = new Script();
 			script.Globals["f"] = DynValue.NewCallback((ctx, args) => DynValue.NewNumber(args[0].Number + 1));
-			AssertBudget("lua_to_cs_call1", LuaLoop(script, "local f = f\nreturn function(n) local s = 0 for i = 1, n do s = s + f(i) end return s end"), N, 504);
+			AssertBudget("lua_to_cs_call1", LuaLoop(script, "local f = f\nreturn function(n) local s = 0 for i = 1, n do s = s + f(i) end return s end"), N, 192);
 		}
 
 		[Test]
@@ -210,7 +210,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			{
 				for (long i = 0; i < n; i++)
 					script.Call(fn, DynValue.NewNumber(i), two, three);
-			}, N, 720);
+			}, N, 224);
 		}
 
 		[Test]
@@ -224,7 +224,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			{
 				Script script = new Script();
 				script.Globals["obj"] = new Calc();
-				AssertBudget("clr_interop_reflection", LuaLoop(script, "return function(n) local s = 0 for i = 1, n do s = s + obj:Add(i, 2) + obj.Value end return s end"), N, 928);
+				AssertBudget("clr_interop_reflection", LuaLoop(script, "return function(n) local s = 0 for i = 1, n do s = s + obj:Add(i, 2) + obj.Value end return s end"), N, 424);
 			}
 			finally
 			{

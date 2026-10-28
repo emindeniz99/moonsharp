@@ -37,6 +37,23 @@ namespace MoonSharp.Interpreter.Execution.VM
 			return DynValue.NewCoroutine(new Coroutine(P));
 		}
 
+		// The yield request of coroutine.yield, reused by every yield of this coroutine: Coroutine_Resume
+		// takes its values before the coroutine can run again.
+		DynValue m_YieldRequest;
+
+		/// <summary>
+		/// A request to yield <paramref name="values"/> from this coroutine.
+		/// </summary>
+		internal DynValue YieldRequestFor(DynValue[] values)
+		{
+			if (m_YieldRequest == null)
+				m_YieldRequest = DynValue.NewYieldReq(values);
+			else
+				m_YieldRequest.YieldRequest.ReturnValues = values;
+
+			return m_YieldRequest;
+		}
+
 		public CoroutineState State { get { return m_State; } }
 		public Coroutine AssociatedCoroutine { get; set; }
 
@@ -88,8 +105,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 				}
 				else
 				{
+					// The values of this resume are the results of the yield call: none reads as nil.
 					if (previous == CoroutineState.Suspended)
-						m_ValueStack.Push(DynValue.NewTuple(args));
+					{
+						if (args.Length == 0)
+							m_ValueStack.Push(LuaValue.Nil);
+						else
+							m_ValueStack.Push(DynValue.NewTuple(args));
+					}
 
 					retVal = Processing_Loop(m_SavedInstructionPtr);
 				}
@@ -106,7 +129,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 					else
 					{
 						m_State = CoroutineState.Suspended;
-						return DynValue.NewTuple(retVal.YieldRequest.ReturnValues);
+						DynValue[] values = retVal.YieldRequest.ReturnValues;
+
+						// the reused request must not keep the values alive
+						if (retVal == m_YieldRequest)
+							retVal.YieldRequest.ReturnValues = null;
+
+						return DynValue.NewTuple(values);
 					}
 				}
 				else

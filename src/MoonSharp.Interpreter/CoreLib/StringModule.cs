@@ -100,7 +100,7 @@ namespace MoonSharp.Interpreter.CoreLib
 			return PerformByteLike(vs, vi, vj, i => i);
 		}
 
-		private static int Unicode2Ascii(int i)
+		internal static int Unicode2Ascii(int i)
 		{
 			if (i >= 0 && i <= 255)
 				return i;

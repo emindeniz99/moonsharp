@@ -380,5 +380,49 @@ checkresume(6, false, 'cannot resume dead coroutine');
 			Assert.AreEqual(42, co.Coroutine.Resume(DynValue.NewNumber(21)).Number);
 			Assert.AreEqual(CoroutineState.Dead, co.Coroutine.State);
 		}
+
+		[Test]
+		public void Coroutine_ValuesInBothDirections()
+		{
+			// Every count of values through yield and resume, nil holes included, with one coroutine
+			// yielding many times (it reuses its yield request) and a host resume in between.
+			Script s = new Script();
+			DynValue r = s.DoString(@"
+				local function pack(...) return select('#', ...), table.concat((function(...) local t = {} for i = 1, select('#', ...) do t[i] = tostring((select(i, ...))) end return t end)(...), ',') end
+				local log = {}
+				local co = coroutine.create(function(...)
+					log[#log + 1] = table.concat({ pack(...) }, ':')
+					log[#log + 1] = table.concat({ pack(coroutine.yield()) }, ':')
+					log[#log + 1] = table.concat({ pack(coroutine.yield(1)) }, ':')
+					log[#log + 1] = table.concat({ pack(coroutine.yield(1, nil, 3)) }, ':')
+					return 'done', nil
+				end)
+				local out = {}
+				out[#out + 1] = table.concat({ pack(select(2, coroutine.resume(co, 'a'))) }, ':')
+				out[#out + 1] = table.concat({ pack(select(2, coroutine.resume(co))) }, ':')
+				out[#out + 1] = table.concat({ pack(select(2, coroutine.resume(co, 'x', nil))) }, ':')
+				out[#out + 1] = table.concat({ pack(select(2, coroutine.resume(co, nil, 'y'))) }, ':')
+				local w = coroutine.wrap(function(a) local b, c = coroutine.yield(a + 1) return b + c end)
+				out[#out + 1] = w(1) .. ',' .. w(2, 3)
+				return table.concat(log, ' | '), table.concat(out, ' | ')");
+
+			// No values arrive as one nil, as before (upstream #287, an ignored test in UpstreamIssueTests).
+			Assert.AreEqual("1:a | 1:nil | 2:x,nil | 2:nil,y", r.Tuple[0].String);
+			Assert.AreEqual("1:nil | 1:1 | 3:1,nil,3 | 2:done,nil | 2,5", r.Tuple[1].String);
+		}
+
+		[Test]
+		public void Coroutine_YieldRequestsOfTwoCoroutinesStaySeparate()
+		{
+			// Each coroutine reuses its own yield request; a coroutine resuming another one in between must
+			// not see the other's values.
+			DynValue r = new Script().DoString(@"
+				local inner = coroutine.wrap(function() for i = 1, 3 do coroutine.yield('in' .. i) end end)
+				local outer = coroutine.wrap(function() for i = 1, 3 do local v = inner() coroutine.yield('out' .. i .. v) end end)
+				return outer() .. outer() .. outer()");
+
+			Assert.AreEqual("out1in1out2in2out3in3", r.String);
+		}
+
 	}
 }

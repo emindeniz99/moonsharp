@@ -134,7 +134,7 @@ keys 1..n (`77c8662`).
 | [#183](https://github.com/moonsharp-devs/moonsharp/issues/183) | Proxy operator overloads | feature | feature: not planned | No roadmap item |
 | [#181](https://github.com/moonsharp-devs/moonsharp/issues/181) | Non-global TypeDescriptorRegistry and ExtensionMethodsRegistry | feature | needs owner | Per-script registration would let one process run scripts with different trust levels; it changes the static `UserData` API |
 | [#180](https://github.com/moonsharp-devs/moonsharp/issues/180) | JsonTableConverter.JsonToTable can't handle escaped forward slash | bug | does not reproduce | Fixed upstream in 714c265, before the fork base |
-| [#175](https://github.com/moonsharp-devs/moonsharp/issues/175) | Inheritance for static objects | question | needs owner | Reproduces: `CreateStatic<Derived>()` does not see `Base`'s static methods. See below |
+| [#175](https://github.com/moonsharp-devs/moonsharp/issues/175) | Inheritance for static objects | question | fixed | Branch `fix/interop-decisions`: base classes' statics are added, except those declared in the core library; `Issue175_DerivedTypeSeesStaticMembersOfBaseClasses`, parity probe and LuaCATS sample |
 | [#169](https://github.com/moonsharp-devs/moonsharp/issues/169) | Winrt (Windows Store App) not working with version 2.0 | bug | out of scope | Windows Store 8.1 and PCL builds are gone |
 | [#161](https://github.com/moonsharp-devs/moonsharp/issues/161) | io.write() does not print standard console | bug | fixed | `d02864b`; `Issue161_StandardOutputIsWrittenWithoutFlush` |
 | [#160](https://github.com/moonsharp-devs/moonsharp/issues/160) | TableTestReverseSafer example does not work | docs | out of scope | Upstream website sample |

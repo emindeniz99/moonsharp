@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using MoonSharp.Interpreter.Loaders;
@@ -585,6 +586,52 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion(DataType.String, typeof(Tag), null);
 				Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion(DataType.Number, typeof(Tag), null);
 			}
+		}
+
+		public class ShapeBase
+		{
+			public static int Count = 3;
+			public static string Unit { get { return "cm"; } }
+			public static string Make() { return "base"; }
+			public static string Kind() { return "base kind"; }
+			public static string Scale(int x) { return "base " + x; }
+		}
+
+		public class Square : ShapeBase
+		{
+			public static new string Kind() { return "square kind"; }
+			public static string Scale(string x) { return "square " + x; }
+		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/175 (PR #336): C# finds a base class's
+		// static members through a derived type (Square.Make()), but scripts did not, because
+		// reflection leaves inherited statics out. A static the derived type hides with "new" stays
+		// hidden, overloads of one name merge, and the statics of framework base types
+		// (object.ReferenceEquals, object.Equals(a, b)) stay out of the member list.
+		[Test]
+		public void Issue175_DerivedTypeSeesStaticMembersOfBaseClasses()
+		{
+			UserData.RegisterType<Square>();
+
+			Script s = new Script();
+			s.Globals["Square"] = UserData.CreateStatic<Square>();
+
+			DynValue r = s.DoString("return Square.Make(), Square.Count, Square.Unit, Square.Kind(), Square.Scale(2), Square.Scale('x')");
+
+			Assert.AreEqual("base", r.Tuple[0].String);
+			Assert.AreEqual(3.0, r.Tuple[1].Number);
+			Assert.AreEqual("cm", r.Tuple[2].String);
+			Assert.AreEqual("square kind", r.Tuple[3].String);
+			Assert.AreEqual("base 2", r.Tuple[4].String);
+			Assert.AreEqual("square x", r.Tuple[5].String);
+
+			var descriptor = (MoonSharp.Interpreter.Interop.StandardUserDataDescriptor)UserData.GetDescriptorForType<Square>(false);
+			// Reflection returns the hidden ShapeBase.Kind too; which one ran above would depend on the sort order.
+			Assert.AreEqual(1, ((MoonSharp.Interpreter.Interop.OverloadedMethodMemberDescriptor)descriptor.FindMember("Kind")).OverloadCount);
+
+			var names = descriptor.MemberNames.ToList();
+			Assert.IsFalse(names.Contains("ReferenceEquals"));
+			Assert.IsTrue(names.Contains("Equals")); // the instance method object.Equals(object) stays
 		}
 	}
 }

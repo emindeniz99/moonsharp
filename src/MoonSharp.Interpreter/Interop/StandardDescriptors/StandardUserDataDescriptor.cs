@@ -81,6 +81,38 @@ namespace MoonSharp.Interpreter.Interop
 			return EventMemberDescriptor.TryCreateIfVisible((EventInfo)member, this.AccessMode);
 		}
 
+		private const BindingFlags INHERITED_STATICS = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.FlattenHierarchy;
+
+		/// <summary>
+		/// Adds the static members of base classes, which C# finds through a derived type
+		/// (Derived.StaticOfBase()) but reflection returns only with FlattenHierarchy. Those declared
+		/// in the core library (object.ReferenceEquals, object.Equals(a, b), Enum.Parse, ...) stay
+		/// out of every member list (upstream #175).
+		/// </summary>
+		private T[] WithInheritedStatics<T>(T[] members, T[] flattenedStatics) where T : MemberInfo
+		{
+			Assembly coreLibrary = typeof(object).Assembly;
+			T[] inherited = flattenedStatics.Where(m => m.DeclaringType != Type && m.DeclaringType.Assembly != coreLibrary).ToArray();
+			return inherited.Length == 0 ? members : members.Concat(inherited).ToArray();
+		}
+
+		/// <summary>
+		/// Whether a more derived type declares a static method with the same name and parameters,
+		/// as C# "new" does; reflection returns both.
+		/// </summary>
+		private static bool IsHiddenBySignature(MethodInfo inherited, Type type)
+		{
+			Type[] parameters = inherited.GetParameters().Select(p => p.ParameterType).ToArray();
+
+			for (Type t = type; t != inherited.DeclaringType; t = t.BaseType)
+			{
+				if (t.GetMethod(inherited.Name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly, null, parameters, null) != null)
+					return true;
+			}
+
+			return false;
+		}
+
 		/// <summary>
 		/// Fills the member list.
 		/// </summary>
@@ -115,8 +147,11 @@ namespace MoonSharp.Interpreter.Interop
 
 
 			// add methods to method list and metamethods
-			foreach (MethodInfo mi in Framework.Do.GetMethods(type))
+			foreach (MethodInfo mi in WithInheritedStatics(Framework.Do.GetMethods(type), type.GetMethods(INHERITED_STATICS)))
 			{
+				if (mi.DeclaringType != type && mi.IsStatic && IsHiddenBySignature(mi, type))
+					continue;
+
 				if (membersToIgnore.Contains(mi.Name)) continue;
 
 				MethodMemberDescriptor md = MethodMemberDescriptor.TryCreateIfVisible(mi, this.AccessMode);
@@ -144,9 +179,9 @@ namespace MoonSharp.Interpreter.Interop
 
 			// properties, fields and events; reflection also returns the inherited members a derived
 			// type hides with "new"
-			PropertyInfo[] properties = Framework.Do.GetProperties(type);
-			FieldInfo[] fields = Framework.Do.GetFields(type);
-			EventInfo[] events = Framework.Do.GetEvents(type);
+			PropertyInfo[] properties = WithInheritedStatics(Framework.Do.GetProperties(type), type.GetProperties(INHERITED_STATICS));
+			FieldInfo[] fields = WithInheritedStatics(Framework.Do.GetFields(type), type.GetFields(INHERITED_STATICS));
+			EventInfo[] events = WithInheritedStatics(Framework.Do.GetEvents(type), type.GetEvents(INHERITED_STATICS));
 
 			foreach (PropertyInfo pi in properties)
 			{

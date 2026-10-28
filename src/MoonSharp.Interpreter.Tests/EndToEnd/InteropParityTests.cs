@@ -10,7 +10,13 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 	[TestFixture]
 	public class InteropParityTests
 	{
-		public class ParityClass
+		public class ParityBase
+		{
+			public static int Thrice(int x) { return x * 3; }
+			public static int Base { get { return 4; } }
+		}
+
+		public class ParityClass : ParityBase
 		{
 			public int Field;
 			public int Prop { get; set; }
@@ -45,6 +51,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			obj.Prop = 5 add(obj.Prop)
 			obj.Field = 6 add(obj.Field)
 			add(Cls.Twice(4))
+			add(Cls.Thrice(2)) add(Cls.Base)
 			add(obj:Over(1) .. obj:Over('x'))
 			add(obj:Sum(1, 2, 3))
 			local a, y, z = obj:OutPair(1, 5) add(a) add(y) add(z)
@@ -56,7 +63,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			local made = obj:MakeStruct(9) made:Bump() add(made.X)
 			return table.concat(r, ',')";
 
-		const string Expected = "5,a1,5,6,8,i1sx,6,nil,2,6,1,2,2,12,12,7,10";
+		const string Expected = "5,a1,5,6,8,6,4,i1sx,6,nil,2,6,1,2,2,12,12,7,10";
 
 		static string RunProbe(InteropAccessMode mode)
 		{

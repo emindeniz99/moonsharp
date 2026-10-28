@@ -632,3 +632,28 @@ the converter's overload as before
 converter's target type and the argument's own type, for example a
 number-to-`int` converter on a method with `F(int)` and `F(double)`, where a
 number now calls `F(double)`.
+
+## Static members of base classes are visible through derived types
+
+**Before:** a registered type exposed only the static members it declared
+itself. `Square.Make()` failed with "cannot access field Make" when `Make`
+was a static method of `Square`'s base class, although C# code can call it
+that way.
+
+**After:** a type also exposes the static methods, properties, fields and
+events of its base classes, as C# does. A static member that the derived
+type hides with `new` stays hidden, and same-named static methods of the
+derived and base types become overloads of one member. Static members
+declared in the core library (`object.ReferenceEquals`,
+`object.Equals(a, b)`, the statics of `Enum`, `EventArgs`, `Exception` and
+other framework base types) stay out, so member lists, Hardwire output and
+LuaCATS definitions do not fill up with them
+([upstream #175](https://github.com/moonsharp-devs/moonsharp/issues/175),
+[PR #336](https://github.com/moonsharp-devs/moonsharp/pull/336)).
+
+**Affected:** hosts that list a descriptor's members, scripts that relied
+on such a member being missing, and Hardwire and LuaCATS output for types
+whose base classes declare public statics: the new members appear on the
+derived type too. For example, a registered Unity component now also exposes
+the public static methods of `UnityEngine.Object`, such as `Destroy` and
+`Instantiate`.

@@ -1,9 +1,10 @@
 name: Hosting
 
 # Runs the conformance corpus (src/Hosting/fixtures) on every host: .NET CLI from source and from
-# precompiled bytecode, browser (headless Chromium) and Java (worker, CoreCLR and NativeAOT in process).
-# Each runner checks its results against fixtures/known-failures/<host>.json and fails on a new, changed
-# or fixed failure. The per-host counts go to the job summary.
+# precompiled bytecode, browsers (headless Chromium, Firefox and WebKit) and Java (worker, CoreCLR and
+# NativeAOT in process). Each runner checks its results against fixtures/known-failures/<host>.json and
+# fails on a new, changed or fixed failure. The per-host counts go to the job summary, and so does the
+# browser first-load budget (src/Hosting/browser/budget.json), which fails the job when exceeded.
 on:
   push:
     branches:
@@ -78,13 +79,14 @@ jobs:
           npx tsc -p tsconfig.json
           dotnet publish -c Release
 
-      - name: Fixtures in headless Chromium
+      # The browser builds pinned by the Playwright version in package-lock.json.
+      - name: Fixtures in headless Chromium, Firefox and WebKit
         working-directory: src/Hosting/browser
         run: |
           set -o pipefail
-          npx playwright install --with-deps chromium
-          node test/smoke.mjs bin/Release/net10.0/publish/wwwroot ../fixtures | tee fixtures.log
-          grep '^browser: ' fixtures.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
+          npx playwright install --with-deps chromium firefox webkit
+          node test/smoke.mjs bin/Release/net10.0/publish/wwwroot ../fixtures chromium firefox webkit | tee fixtures.log
+          grep '^browser-' fixtures.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build the in-process variants (CoreCLR component, NativeAOT library, JNI shim)
         run: |
@@ -100,3 +102,8 @@ jobs:
           set -o pipefail
           mvn -B test -Dmoonsharp.inprocess.required=true | tee fixtures.log
           grep -E '^java-(worker|coreclr|nativeaot): ' fixtures.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
+
+      # Last, so that a budget overrun does not hide the Java results. Writes its table to the job summary.
+      - name: Browser first-load budget
+        working-directory: src/Hosting/browser
+        run: node test/budget.mjs bin/Release/net10.0/publish/wwwroot ../fixtures

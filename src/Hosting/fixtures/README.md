@@ -7,7 +7,7 @@ Every host runs these suites and must produce the same results:
 | `dotnet` | `moonsharp-host test` (.NET CLI, also run with invariant globalization) |
 | `dotnet-tr-TR` | `moonsharp-host test --host dotnet-tr-TR` with `LANG=tr_TR.UTF-8`, a culture with a decimal comma |
 | `dotnet-bytecode` | `moonsharp-host test --bytecode`: every chunk is compiled first, as `moonsharp-host compile` does at publish time, and loaded as bytecode |
-| `browser` | `src/Hosting/browser/test/smoke.mjs` (headless Chromium, .NET WebAssembly) |
+| `browser-chromium`, `browser-firefox`, `browser-webkit` | `src/Hosting/browser/test/smoke.mjs` (headless browsers through Playwright, .NET WebAssembly) |
 | `java-worker`, `java-coreclr`, `java-nativeaot` | `FixtureConformanceTest` and its subclasses in `src/Hosting/java` |
 
 All of them run the same interpreter, so a case that fails on one host and passes
@@ -105,8 +105,8 @@ with its file and fails on any difference:
 So a fix must update the file, and a regression cannot hide behind an old entry.
 When a run fails this way, the runner prints the file content that matches the
 run; review it and copy it into the file. Each runner ends with a count line, for
-example `browser: 225 cases, 225 passed, 0 known failures; 0 new, 0 changed,
-0 fixed, 0 stale`, and CI copies those lines into the job summary.
+example `browser-firefox: 245 cases, 245 passed, 0 known failures; 0 new,
+0 changed, 0 fixed, 0 stale`, and CI copies those lines into the job summary.
 
 ## Adding a case
 

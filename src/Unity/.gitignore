@@ -19,6 +19,7 @@ sysinfo.txt
 # UnityTestBed: written by sync.sh, by Unity on first open and by the CI build
 /UnityTestBed/Assets/MoonSharp.Interpreter.Tests/**/*.cs
 /UnityTestBed/Assets/Resources/
+/UnityTestBed/Assets/Benchmarks/
 /UnityTestBed/Assets/TestBed.unity
 /UnityTestBed/Packages/packages-lock.json
 /UnityTestBed/ProjectSettings/

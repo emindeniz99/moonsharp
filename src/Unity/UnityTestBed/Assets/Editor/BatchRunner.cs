@@ -2,6 +2,7 @@ using System;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
+using UnityEditor.Compilation;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
@@ -11,7 +12,8 @@ namespace MoonSharp.UnityTestBed
 	/// Batch-mode entry points for CI (.github/workflows/unity.yml):
 	///   -executeMethod MoonSharp.UnityTestBed.BatchRunner.RunTests -moonsharpResults FILE
 	///   -executeMethod MoonSharp.UnityTestBed.BatchRunner.BuildLinuxIl2cpp -moonsharpBuild FILE
-	/// Both exit the editor with a non-zero code on failure.
+	///   -executeMethod MoonSharp.UnityTestBed.BatchRunner.RunBenchmarks -moonsharpBench FILE
+	/// All exit the editor with a non-zero code on failure.
 	/// </summary>
 	public static class BatchRunner
 	{
@@ -25,6 +27,29 @@ namespace MoonSharp.UnityTestBed
 			try
 			{
 				code = TestBed.Run();
+			}
+			catch (Exception ex)
+			{
+				Debug.LogException(ex);
+			}
+			EditorApplication.Exit(code);
+		}
+
+		/// <summary>
+		/// Runs the Lua workloads in the editor (Mono). Start the editor with -releaseCodeOptimization,
+		/// or the scripts run as debug builds; the log line names the mode.
+		/// </summary>
+		public static void RunBenchmarks()
+		{
+			int code = 2;
+			try
+			{
+				string path = TestBed.GetArg(TestBed.BenchArg);
+				if (string.IsNullOrEmpty(path))
+					throw new ArgumentException(TestBed.BenchArg + " <path to the results file> is required");
+
+				Debug.Log("BatchRunner: code optimization " + CompilationPipeline.codeOptimization);
+				code = TestBed.RunBenchmarks(path);
 			}
 			catch (Exception ex)
 			{

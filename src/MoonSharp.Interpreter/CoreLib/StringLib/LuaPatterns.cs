@@ -22,6 +22,7 @@
 
 using System;
 using System.Text;
+using MoonSharp.Interpreter.Execution.VM;
 
 namespace MoonSharp.Interpreter.CoreLib.StringLib
 {
@@ -108,12 +109,11 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 		internal static DynValue Find(CallbackArguments args, bool find)
 		{
 			string name = find ? "find" : "match";
-			string s = args.AsType(0, name, DataType.String, false).String;
-			string p = args.AsType(1, name, DataType.String, false).String;
-			DynValue vinit = args.AsType(2, name, DataType.Number, true);
+			string s = CheckString(args, 0, name);
+			string p = CheckString(args, 1, name);
 			int ls = s.Length;
 
-			int init = vinit.IsNil() ? 1 : (int)vinit.Number;
+			int init = OptInt(args, 2, name, 1);
 			if (init < 0)
 				init = (-init > ls) ? 0 : ls + init + 1;
 			if (init < 1)
@@ -121,7 +121,7 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 			else if (init > ls + 1)
 				return DynValue.Nil;
 
-			if (find && (args[3].CastToBool() || p.IndexOfAny(s_Specials) < 0))
+			if (find && (args.GetLuaValue(3).CastToBool() || p.IndexOfAny(s_Specials) < 0))
 			{
 				int at = s.IndexOf(p, init - 1, StringComparison.Ordinal);
 				if (at < 0)
@@ -203,8 +203,8 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 
 		internal static DynValue GMatch(CallbackArguments args)
 		{
-			string s = args.AsType(0, "gmatch", DataType.String, false).String;
-			string p = args.AsType(1, "gmatch", DataType.String, false).String;
+			string s = CheckString(args, 0, "gmatch");
+			string p = CheckString(args, 1, "gmatch");
 
 			var state = new GMatchState { Src = s, Pat = p };
 			return DynValue.NewCallback(new CallbackFunction(state.Step, "gmatch"));
@@ -212,23 +212,26 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 
 		internal static DynValue GSub(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			string src = args.AsType(0, "gsub", DataType.String, false).String;
-			string p = args.AsType(1, "gsub", DataType.String, false).String;
-			DynValue repl = args[2];
-			DynValue vmax = args.AsType(3, "gsub", DataType.Number, true);
-			int maxN = vmax.IsNil() ? src.Length + 1 : (int)vmax.Number;
+			string src = CheckString(args, 0, "gsub");
+			string p = CheckString(args, 1, "gsub");
+			DataType replType = args.GetLuaValue(2).Type;
+			int maxN = OptInt(args, 3, "gsub", src.Length + 1);
 
+			// Everything is read from args before the first callback runs: the arguments may be a view
+			// of the VM's stack, which a callback reuses.
 			string replString = null;
+			DynValue repl = null;
 
-			switch (repl.Type)
+			switch (replType)
 			{
 				case DataType.Number:
 				case DataType.String:
-					replString = args.AsType(2, "gsub", DataType.String, false).String;
+					replString = CheckString(args, 2, "gsub");
 					break;
 				case DataType.Table:
 				case DataType.Function:
 				case DataType.ClrFunction:
+					repl = args[2];
 					break;
 				default:
 					throw ScriptRuntimeException.BadArgument(2, "gsub", "string/function/table expected");
@@ -290,6 +293,26 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 
 			ms.Release();
 			return DynValue.NewTuple(DynValue.NewString(result), DynValue.NewNumber(n));
+		}
+
+		// Strings and numbers are read without creating a DynValue; anything else converts or fails as before.
+		static string CheckString(CallbackArguments args, int arg, string name)
+		{
+			LuaValue v = args.GetLuaValue(arg);
+			return v.Type == DataType.String ? (string)v.Object : args[arg].CheckType(name, DataType.String, arg, TypeValidationFlags.AutoConvert).String;
+		}
+
+		static int OptInt(CallbackArguments args, int arg, string name, int defaultValue)
+		{
+			LuaValue v = args.GetLuaValue(arg);
+
+			if (v.Type == DataType.Number)
+				return (int)v.Number;
+			if (v.Type == DataType.Nil)
+				return defaultValue;
+
+			DynValue d = args[arg].CheckType(name, DataType.Number, arg, TypeValidationFlags.AllowNil | TypeValidationFlags.AutoConvert);
+			return d.IsNil() ? defaultValue : (int)d.Number;
 		}
 
 		void AddString(StringBuilder b, string news, int s, int e)

@@ -775,6 +775,55 @@ dictionary methods (`list.Add`, `dict.ContainsKey`) or change the C#
 collection through it. Register the collection type with
 `UserData.RegisterType` to keep the userdata.
 
+## Some library functions run without a call frame
+
+`math.abs`, `ceil`, `floor`, `sqrt`, `sin`, `cos`, `exp`, `max` and `min`,
+`string.len`, `sub` and `byte`, `type`, `select('#', ...)` and
+`table.insert(t, v)` on a table without a metatable run inside the VM when
+their arguments have exactly the types they expect: numbers for `math`, a
+string and numbers for `string`, one value for `type`. They used to push a C#
+call frame and create an execution context and an argument list on every
+call. Any other call (a string where a number is expected, a missing argument,
+a call result as the last argument, a `string.byte` range that is not one
+character) takes the ordinary path, so results and error messages do not
+change.
+
+Such a call does not appear in a call stack while it runs. These functions
+call no script code on the fast path, so no traceback, debugger stop or hook
+can see the difference; the one error they can raise there, `table.insert`
+storing a value owned by another `Script`, has no `insert` frame in its stack. The fast path follows the
+function object, not its name: a script that assigns `math.floor = f` calls
+`f`, and a local copy of the library function keeps the fast path.
+
+## Fused instructions: dump format, instruction counts, debugger stops
+
+The compiler emits fewer, larger instructions. Results do not change; what a
+host can see:
+
+- **Binary dumps** (`Script.Dump`, `string.dump`) are format 0x154, or
+  0x153 without source locations. Older MoonSharp versions reject them with
+  "Invalid version". Dumps in the previous formats (0x152, 0x151) still load.
+- **Instruction counts** are lower, so `AutoYieldCounter` yields and
+  `ScriptOptions.InterruptHandler` calls come after more script work than
+  before. A numeric `for` iteration with an empty body was 5 instructions and
+  is now 1; the condition `if i < n then` with locals `i` and `n` was 5 and
+  is now 1, and so is `x = x + 1`. While a debugger is attached,
+  comparisons and arithmetic run unfused, so it sees the same instructions
+  and stops as before.
+- **Debugger stops in a numeric `for`.** The `for` line is a stop when the
+  loop starts; each later iteration stops on the `end` line only. Stepping
+  through `for i = 1, 2 do x = x + i end` written on lines 2 to 4 went
+  2, 3, 4, 2, 3, 4, 2, 4; it now goes 2, 3, 4, 3, 4. A breakpoint on the `for`
+  line is hit once per loop, not once per iteration.
+
+## `goto` out of a `for` loop
+
+A `goto` that left a numeric or generic `for` loop left the loop's control
+values on the value stack, so an enclosing `for` loop then read them as its
+own: it skipped or repeated iterations. The jump now removes them, as `break`
+does. Affected: scripts that `goto` a label outside a `for` loop (a
+`continue` label inside the same loop body was not affected).
+
 ## Lua patterns follow Lua 5.2
 
 `string.find`, `match`, `gmatch` and `gsub` no longer run KopiLua's port of the Lua 5.1 matcher.

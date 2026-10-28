@@ -16,6 +16,11 @@ namespace MoonSharp.Interpreter.Tree.Statements
 		Instruction m_Jump;
 		int m_LabelAddress = -1;
 
+		// Values that the loops this goto leaves keep on the value stack: the loops around the goto hold
+		// m_LoopStackValues, those around its label m_LabelLoopStackValues.
+		int m_LoopStackValues;
+		int m_LabelLoopStackValues;
+
 		public GotoStatement(ScriptLoadingContext lcontext)
 			: base(lcontext)
 		{
@@ -25,13 +30,22 @@ namespace MoonSharp.Interpreter.Tree.Statements
 			SourceRef = GotoToken.GetSourceRef(name);
 
 			Label = name.Text;
+			m_LoopStackValues = lcontext.LoopStackValues;
 
 			lcontext.Scope.RegisterGoto(this);
 		}
 
 		public override void Compile(ByteCode bc)
 		{
+			if (m_LoopStackValues > m_LabelLoopStackValues)
+				bc.Emit_Pop(m_LoopStackValues - m_LabelLoopStackValues);
+
 			m_Jump = bc.Emit_Jump(OpCode.Jump, m_LabelAddress);
+		}
+
+		internal void SetLabelLoopStackValues(int labelLoopStackValues)
+		{
+			m_LabelLoopStackValues = labelLoopStackValues;
 		}
 
 		internal void SetDefinedVars(int definedVarsCount, string lastDefinedVarsName)

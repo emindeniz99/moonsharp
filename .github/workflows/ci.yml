@@ -104,6 +104,7 @@ jobs:
       # the Unity workflow compares its editor and player runs with this one.
       - name: Embedded test suite (as compiled by Unity)
         run: |
+          set -euo pipefail
           dotnet build src/TestRunners/EmbeddedTestRunner/EmbeddedTestRunner.csproj -c Release -v minimal
           dotnet src/TestRunners/EmbeddedTestRunner/bin/Release/net8.0/EmbeddedTestRunner.dll | tail -n 3
 

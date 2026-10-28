@@ -900,3 +900,15 @@ subject string itself.
 Affected: scripts that relied on any "Before" column. The old matcher is kept in the tests
 (`KopiLuaPatternOracle`); `StringPatternTests` compares the two over 228,000 generated cases and
 allows only the differences above.
+
+## LuaBase, CharPtr and LuaLBuffer are gone
+
+The public classes `LuaBase`, `CharPtr` and `LuaLBuffer` in
+`MoonSharp.Interpreter.Interop.LuaStateInterop` were helpers for porting C library code: a C-string
+pointer emulation, `ctype.h` functions and `lua_*`/`luaL_*` look-alikes. MoonSharp's own ports used
+them (`string.format` and the pattern functions); neither does any more, so they left the
+interpreter (7 KB of the DLL). `LuaState` and `ScriptExecutionContext.EmulateClassicCall` stay.
+
+Affected: hosts that subclass `LuaBase` or use `CharPtr`. Copy the three files from MoonSharp 2.0
+([LuaStateInterop](https://github.com/moonsharp-devs/moonsharp/tree/fbd03678d5c0f731d731d099211c7f4a3a1ae8b7/src/MoonSharp.Interpreter/Interop/LuaStateInterop))
+into your project; they need only the public API. Scripts are not affected.

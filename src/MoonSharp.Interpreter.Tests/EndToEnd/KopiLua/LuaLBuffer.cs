@@ -2,10 +2,11 @@
 #pragma warning disable 1591
 
 using System.Text;
+using MoonSharp.Interpreter.Interop.LuaStateInterop;
 
-namespace MoonSharp.Interpreter.Interop.LuaStateInterop
+namespace MoonSharp.Interpreter.Tests.EndToEnd
 {
-	public class LuaLBuffer 
+	internal class LuaLBuffer
 	{
 		public StringBuilder StringBuilder { get; private set; }
 		public LuaState LuaState { get; private set; }

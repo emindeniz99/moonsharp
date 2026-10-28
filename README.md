@@ -31,6 +31,24 @@ For highlights on differences between MoonSharp and standard Lua, see http://www
 
 Please see http://www.moonsharp.org for downloads, infos, tutorials, etc.
 
+## Building from source
+
+Install the pinned tools with [mise](https://mise.jdx.dev/) first, then build and
+run the unit tests:
+
+```bash
+mise install
+dotnet build -c Release src/TestRunners/DotNetCoreTestRunner
+cd src/TestRunners/DotNetCoreTestRunner/bin/Release/net8.0
+dotnet DotNetCoreTestRunner.dll /unit
+```
+
+[`mise.toml`](mise.toml) lists the versions and why each tool is needed. Run the
+commands in a shell where mise is activated, or prefix them with `mise exec --`.
+clang and zlib for the NativeAOT build, and Mono for the net45 test runner, come
+from the distribution. [docs/hosting.md](docs/hosting.md) covers the browser and
+Java hosts.
+
 ## Unity Package (UPM)
 
 ### Build package locally

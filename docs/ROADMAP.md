@@ -45,14 +45,15 @@ chat or a pull request.
 | Browser (.NET 10 WebAssembly) | Chromium tested in CI with Playwright. Firefox and WebKit not tested. |
 | Java 17+ (worker process) | Tested in CI, with a Spring Boot 4 sample. |
 | Java in-process (hostfxr or NativeAOT) | Experimental, Linux x64: fixtures pass with CoreCLR and NativeAOT on branch `feat/jvm-in-process`. The worker stays the default ([hosting.md](hosting.md)). |
-| Unity 2021.3 / 2022.3 / 6 LTS, Mono and IL2CPP | **Not tested.** The inherited Unity CI job uses a 2019.4 editor and skips without licence secrets. |
+| Unity 2021.3 / 2022.3 / 6 LTS, Mono and IL2CPP | **Not run yet.** `.github/workflows/unity.yml` runs the suite in the editor and in a Linux IL2CPP player on 2021.3.45f2, 2022.3.62f3 and 6000.0.85f1 once the licence secrets exist. Without Unity: the test bed compiles with each line's own compiler and references, and its assemblies pass the suite on .NET. |
 
 What Unity 2021.3 support means for the code:
 
 - The interpreter targets `netstandard2.0` and `net45`; new code must build for both.
 - No code generation at run time on IL2CPP: no `Reflection.Emit`, no compiled expression trees on AOT paths.
 - Any Roslyn source generator must load in Unity 2021.3's compiler. Check the supported Roslyn version before building one.
-- The UPM manifest still declares `"unity": "2020.3"`; raise it to 2021.3 once the CI matrix runs.
+- Code that Unity compiles (the package, the test sources) must stay within C# 9, the newest version Unity 2021.3 to Unity 6 support.
+- The UPM manifest declares `"unity": "2021.3"`.
 
 ## Done (fork `master`)
 
@@ -67,6 +68,7 @@ What Unity 2021.3 support means for the code:
 | [#7](https://github.com/emindeniz99/moonsharp/pull/7) | Baseline measurements, upstream tracking, comparison with native Lua. |
 | [#8](https://github.com/emindeniz99/moonsharp/pull/8) | The `io` module works on browser WebAssembly; trimmed apps keep the standard library. |
 | [#9](https://github.com/emindeniz99/moonsharp/pull/9) | This roadmap. |
+| branch `ci/unity-matrix` | Unity CI matrix (`.github/workflows/unity.yml`): 2021.3, 2022.3 and 6000.0, editor (Mono) and Linux IL2CPP player, each compared test by test with the .NET run. The test sources compile without NUnit (`src/TestRunners/EmbeddedTestRunner`, run on every push) and the fixtures are found by reflection, so no list can miss one. Exceptions from reflection calls keep their type. The UPM package requires 2021.3. |
 | branch `feat/exact-int64` | Exact 64-bit integers: opt-in `int64`/`uint64` values (`CoreModules.Int64`), CLR `long`/`ulong` in both directions (`ScriptOptions.ExactInt64Interop` for CLR to Lua), exact JSON on request. See [int64.md](int64.md). |
 
 ## In progress
@@ -109,11 +111,12 @@ After step 4: the checkpoint in the decisions table.
 - Turn native stack exhaustion into a `ScriptRuntimeException` (`RuntimeHelpers.EnsureSufficientExecutionStack`).
 - A `Script` keeps every chunk it compiles, so a long-lived `Script` that compiles in a loop grows without bound.
 - `ScriptOptions(defaults)` does not copy `ColonOperatorClrCallbackBehaviour`.
-- The Unity test runner list misses `ProtectedCallMetamethodTests`, `TonumberTests` and `NewIndexAssignmentTests`.
+- Property getters and setters called through reflection (AOT platforms, `InteropAccessMode.Reflection`) still wrap a thrown exception in `TargetInvocationException`; methods no longer do. A setter's own `ArgumentException` is also reported as a type mismatch on the compiled path.
+- `PlatformAutoDetector` and `UnityAssetsScriptLoader` test `UNITY_5`, which Unity 2017 and later no longer define, so the package always takes the reflection path (`IsUnityNative` is false). The Unity test bed checks the default loader; replace the checks with `UNITY_5_3_OR_NEWER` if it fails or once the matrix is green.
 
 ## Later, and ideas
 
-- A Unity CI matrix: 2021.3, 2022.3 and 6 LTS editors, Mono and IL2CPP players.
+- Unity matrix additions, each a cost question: Unity 6000.3 LTS (newest Unity 6 line); the hardwire registration mode (`MyNamespace.MyClass.Initialize()`); Android and iOS IL2CPP players.
 - In-process JVM hosting as the default: needs the native stack guard above and an execution budget for plain calls, then a new measurement against the worker.
 - Browser: AOT-compiled WebAssembly against the interpreter build; Firefox and WebKit tests.
 - LuaCATS type definitions generated from registered C# types, for editor completion.
@@ -123,7 +126,12 @@ After step 4: the checkpoint in the decisions table.
 
 ## Needs the owner
 
-- Unity account secrets for CI, as `.github/workflows/ci.yml` reads them: `UNITY_EMAIL`, `UNITY_PASSWORD` and `UNITY_TOTP_KEY` (the secret key of authenticator-app 2FA on that Unity account; email 2FA does not work).
+- Unity account secrets for `.github/workflows/unity.yml`. Checklist:
+  1. On the Unity account (a Personal licence is enough), turn on two-factor sign-in with an authenticator app, not email. Keep the setup key (the base32 text behind the QR code); that is `UNITY_TOTP_KEY`, not a six-digit code.
+  2. Add repository secrets `UNITY_EMAIL`, `UNITY_PASSWORD` and `UNITY_TOTP_KEY` (Settings, Secrets and variables, Actions).
+  3. Merge `unity.yml` to `master`; a push to `master` starts it, and "Run workflow" on the Unity workflow page starts it by hand (GitHub offers that button only for workflows on the default branch). The three versions run one after another, about 30 to 45 minutes each.
+  4. If "Activate Unity (activation file and authenticator code)" fails with "did not return a licence": the Unity website no longer converts Personal activation files for every account ([game-ci/documentation#408](https://github.com/game-ci/documentation/issues/408)). Activate a Personal licence in Unity Hub on any machine, read the serial from its licence file (Linux `~/.local/share/unity3d/Unity/Unity_lic.ulf`, macOS `/Library/Application Support/Unity/Unity_lic.ulf`, Windows `C:\ProgramData\Unity\Unity_lic.ulf`) with `sed -n 's/.*DeveloperData Value="\([^"]*\)".*/\1/p' Unity_lic.ulf | base64 -d | tail -c +5`, and add it as `UNITY_SERIAL`; the workflow then activates with it and returns the seat at the end.
+  5. Each job uploads `unity-<version>-results` (one line per test). A red job lists the tests that failed or did not run; tests that skip themselves on Unity (the three trim-descriptor tests) are listed but allowed.
 - Android and iOS devices for IL2CPP player runs.
 - The `pairs` order decision, once the table measurements are in.
 - Approval before any upstream pull request.

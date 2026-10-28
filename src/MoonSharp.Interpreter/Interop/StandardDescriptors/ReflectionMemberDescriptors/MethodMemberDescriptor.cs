@@ -4,6 +4,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using MoonSharp.Interpreter.Compatibility;
 using MoonSharp.Interpreter.Diagnostics;
@@ -212,8 +213,11 @@ namespace MoonSharp.Interpreter.Interop
 
 				return BuildReturnValue(script, outParams, pars, retv);
 			}
-			catch
+			catch (TargetInvocationException ex) when (ex.InnerException != null)
 			{
+				// Reflection, the only way on AOT platforms such as IL2CPP, wraps what the method
+				// threw; the compiled paths do not. Rethrow the original with its stack trace.
+				ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
 				throw;
 			}
 		}

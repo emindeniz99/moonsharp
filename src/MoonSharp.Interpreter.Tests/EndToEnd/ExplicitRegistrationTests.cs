@@ -78,6 +78,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			try
 			{
 				UserData.RegistrationPolicy = InteropRegistrationPolicy.Default;
+				UnregisterListed();
 				UserData.RegisterType<Listed>();
 
 				Script s = new Script();
@@ -99,9 +100,9 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			}
 			finally
 			{
+				UserData.RegistrationPolicy = InteropRegistrationPolicy.Default;
+				UnregisterListed();
 				UserData.RegistrationPolicy = oldPolicy;
-				UserData.UnregisterType<Listed.Nested>();
-				UserData.UnregisterType<Listed>();
 			}
 		}
 
@@ -115,7 +116,10 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 			try
 			{
-				// Registered again below, under the policy, when a script loads the dynamic module.
+				// Start from a registry without these types, whatever ran before. The dynamic module's
+				// wrapper is registered again below, under the policy, when a script loads the module.
+				UserData.RegistrationPolicy = InteropRegistrationPolicy.Default;
+				UnregisterListed();
 				UserData.UnregisterType(dynamicWrapper);
 				UserData.RegistrationPolicy = new AllowListRegistrationPolicy(typeof(Listed), typeof(List<>));
 
@@ -143,8 +147,10 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			}
 			finally
 			{
-				UserData.RegistrationPolicy = oldPolicy;
-				UserData.UnregisterType<Listed>();
+				// Neither the allow list nor every runner's policy (HardwireAndLogPolicy in the console and
+				// Unity runners) lets a type be unregistered, so clean up under the default policy.
+				UserData.RegistrationPolicy = InteropRegistrationPolicy.Default;
+				UnregisterListed();
 
 				if (!listOfIntWasRegistered)
 					UserData.UnregisterType<List<int>>();
@@ -153,7 +159,17 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 					UserData.UnregisterType(typeof(List<>));
 
 				UserData.RegisterType(dynamicWrapper, InteropAccessMode.HideMembers);
+				UserData.RegistrationPolicy = oldPolicy;
 			}
+		}
+
+		/// <summary>Call under a policy that allows unregistering, such as the default one.</summary>
+		static void UnregisterListed()
+		{
+			UserData.UnregisterType<Listed.Nested>();
+			UserData.UnregisterType<Listed>();
+			UserData.UnregisterType<Unlisted>();
+			UserData.UnregisterType<Marked>();
 		}
 	}
 }

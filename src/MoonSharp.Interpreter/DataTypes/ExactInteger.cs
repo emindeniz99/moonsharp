@@ -26,7 +26,7 @@ namespace MoonSharp.Interpreter
 
 		internal static string FormatNumber(double d)
 		{
-			return d.ToString("R", CultureInfo.InvariantCulture);
+			return NumberFormatting.ToShortestString(d);
 		}
 
 		/// <summary>

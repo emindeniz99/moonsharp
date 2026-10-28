@@ -19,6 +19,7 @@ namespace MoonSharp.Interpreter.Tests
 
 	public class TestResult
 	{
+		public string FixtureName;
 		public string TestName;
 		public string Message;
 		public Exception Exception;
@@ -88,6 +89,7 @@ namespace MoonSharp.Interpreter.Tests
 						++Skipped;
 						TestResult trs = new TestResult()
 						{
+							FixtureName = t.Name,
 							TestName = mi.Name,
 							Message = "skipped (skip-list)",
 							Type = TestResultType.Skipped
@@ -97,6 +99,7 @@ namespace MoonSharp.Interpreter.Tests
 					}
 
 					TestResult tr = RunTest(t, mi);
+					tr.FixtureName = t.Name;
 
 					if (tr.Type != TestResultType.Message)
 					{

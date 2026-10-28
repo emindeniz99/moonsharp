@@ -173,6 +173,7 @@ $RECYCLE.BIN/
 
 .idea/
 .upm-staging/
+.sourcegen-check/
 
 # Unity mirrored/source-synced trees (generated via src/rsync_unity_projects.sh)
 src/Unity/MoonSharp/Assets/Plugins/MoonSharp/Interpreter/

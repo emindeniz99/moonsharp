@@ -8,9 +8,9 @@ using NUnit.Framework;
 namespace MoonSharp.Interpreter.Tests.EndToEnd
 {
 	[TestFixture]
-	public class VtUserDataPropertiesTests
+	public partial class VtUserDataPropertiesTests
 	{
-		public struct SomeClass
+		public partial struct SomeClass
 		{
 			public int IntProp { get; set; }
 			public int? NIntProp { get; set; }

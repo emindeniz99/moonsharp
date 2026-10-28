@@ -242,6 +242,8 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void AllocationBudget_CsToLuaCall3()
 		{
+			// Left: the host's params array, the host's DynValue for i and the result's DynValue. The call's
+			// calling location is shared and the arguments are pushed without an adjusted copy (224 before).
 			SkipUnlessMeasurable();
 			Script script = new Script();
 			DynValue fn = script.DoString("return function(a, b, c) return a * b + c end");
@@ -251,7 +253,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			{
 				for (long i = 0; i < n; i++)
 					script.Call(fn, DynValue.NewNumber(i), two, three);
-			}, N, 224);
+			}, N, 128);
 		}
 
 		[Test]

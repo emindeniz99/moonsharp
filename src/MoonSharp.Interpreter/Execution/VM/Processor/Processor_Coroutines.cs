@@ -88,12 +88,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				{
 					// A C# function as the body (coroutine.create(select)): call it as the VM calls one. A tail
 					// call it returns runs here as the coroutine's code; a yield it returns suspends it.
-					DynValue[] a = Internal_AdjustTuple(args);
-
-					for (int i = 0; i < a.Length; i++)
-						m_ValueStack.Push(a[i]);
-
-					int ip = Internal_ExecCall(a.Length, -1);
+					int ip = Internal_ExecCall(PushHostArguments(args), -1);
 
 					if (ip == YIELD_SPECIAL_TRAP)
 						retVal = m_ValueStack.Pop().ToScalar().ToDynValue();

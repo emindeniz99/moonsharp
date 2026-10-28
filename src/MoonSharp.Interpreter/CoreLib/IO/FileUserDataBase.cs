@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using MoonSharp.Interpreter.Compatibility;
 
@@ -172,7 +173,7 @@ namespace MoonSharp.Interpreter.CoreLib.IO
 
 			double d;
 
-			if (double.TryParse(chr, out d))
+			if (double.TryParse(chr, NumberStyles.Float, CultureInfo.InvariantCulture, out d))
 			{
 				return d;
 			}

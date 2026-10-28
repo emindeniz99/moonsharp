@@ -19,6 +19,9 @@ stage_core_package() {
 
   upm_link_top_level_entries "$CORE_SRC_DIR" "$CORE_OUT_DIR/Runtime"
 
+  # The trimming descriptor embedded in the .NET assembly doubles as Unity's link.xml.
+  ln -s "$CORE_SRC_DIR/ILLink.Descriptors.xml" "$CORE_OUT_DIR/Runtime/link.xml"
+
   cat > "$CORE_OUT_DIR/package.json" <<JSON
 {
   "name": "org.moonsharp.moonsharp",

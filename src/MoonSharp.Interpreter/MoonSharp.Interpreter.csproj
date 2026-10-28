@@ -16,6 +16,11 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <!-- Read by the .NET trimmer/NativeAOT when an app references this assembly. See the file for why. -->
+        <EmbeddedResource Include="ILLink.Descriptors.xml" LogicalName="ILLink.Descriptors.xml" />
+    </ItemGroup>
+
+    <ItemGroup>
         <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
         <PackageReference Include="MinVer" Version="7.0.0" PrivateAssets="All" />
     </ItemGroup>

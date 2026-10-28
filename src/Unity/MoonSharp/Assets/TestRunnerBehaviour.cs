@@ -165,6 +165,7 @@ public class TestRunnerBehaviour : MonoBehaviour
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.ExactInt64JsonTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.ExactInt64Tests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.GotoTests),
+            typeof(MoonSharp.Interpreter.Tests.EndToEnd.IoTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.JsonSerializationTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.LuaTestSuiteExtract),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.MetatableTests),

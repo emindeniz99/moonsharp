@@ -107,6 +107,12 @@ namespace NUnit.Framework
 			throw new AssertionException("Test failed : " + (message ?? "Assert.Fail"));
 		}
 
+		// The test counts as skipped, as an ignored test does in NUnit.
+		public static void Ignore(string message = null)
+		{
+			throw new MoonSharp.Interpreter.Tests.SkipThisTestException();
+		}
+
 		// Exactly T, as NUnit's Assert.Throws.
 		public static T Throws<T>(Action code) where T : Exception
 		{
@@ -202,6 +208,12 @@ namespace NUnit.Framework
 		{
 			if (actual == null || !actual.StartsWith(expected, StringComparison.Ordinal))
 				Assert.Fail(message ?? string.Format("a string starting with \"{0}\" was expected, \"{1}\" was returned", expected, actual));
+		}
+
+		public static void EndsWith(string expected, string actual, string message = null)
+		{
+			if (actual == null || !actual.EndsWith(expected, StringComparison.Ordinal))
+				Assert.Fail(message ?? string.Format("a string ending with \"{0}\" was expected, \"{1}\" was returned", expected, actual));
 		}
 	}
 

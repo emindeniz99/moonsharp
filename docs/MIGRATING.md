@@ -130,3 +130,26 @@ thread, which ends the process. The work item now walks copies of the
 lists and ignores a failure: members it did not optimize keep running
 through reflection, as they do before it finishes. Affected: hosts using
 `BackgroundOptimized` with overloaded methods.
+
+## `table.remove` on an empty table follows Lua 5.2
+
+With `#t == 0`, `table.remove(t)` stored nil under an internal key 0 that
+script key 0 cannot reach. Once that entry came first in the table,
+`pairs(t)` failed with "invalid key to 'next'". It now does what Lua 5.2
+does: it returns `t[0]` and sets `t[0]` to nil, and a position below 1
+other than `#t` is an error.
+
+```lua
+local t = {}
+table.remove(t); t[1] = 'a'
+for k, v in pairs(t) do end   -- before: error "invalid key to 'next'"   now: works
+
+local u = { [0] = 'x' }
+print(table.remove(u), u[0])  -- before: nil  x   now: x  nil
+
+table.remove({}, -2)          -- before: returned nil   now: error "position out of bounds"
+```
+
+Affected: scripts that call `table.remove` on tables that may be empty
+(stacks, queues). `Table.Pairs` no longer returns a `0 = nil` entry to
+hosts after such a call.

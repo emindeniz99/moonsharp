@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <!-- netstandard2.0 and C# 7.3, so the same library can run in a Unity Editor. -->
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <LangVersion>7.3</LangVersion>
+        <RootNamespace>MoonSharp.LuaCats</RootNamespace>
+        <Description>Writes LuaCATS definition files (for lua-language-server) from the C# types and modules a MoonSharp script can reach.</Description>
+        <IsPackable>false</IsPackable>
+        <NoWarn>1591</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\MoonSharp.Interpreter\MoonSharp.Interpreter.csproj" />
+    </ItemGroup>
+
+</Project>

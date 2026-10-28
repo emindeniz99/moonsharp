@@ -420,5 +420,99 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual("two", keeper.Kept[1].String);
 			Assert.AreEqual(3, keeper.Kept[2].Number);
 		}
+			// Every shape of '...' (Lua 5.2's results, from lua5.2 5.2.4): the values stay on the value stack
+		// where the caller pushed them, and each consumer reads them there or copies them out before the
+		// frame goes.
+		const string VarArgsShapes = @"
+				local out = {}
+				local function put(...) local t = {} for i = 1, select('#', ...) do t[i] = tostring((select(i, ...))) end out[#out + 1] = table.concat(t, ',') end
+				local function none() end
+				local function two() return 'b', 'c' end
+				local function f(a, ...) local b, c = ... return a + b + c end
+				put(f(1, 2, 3), f(1, 2, 3, 4))
+				local function count(...) return select('#', ...) end
+				put(count(), count(nil), count(nil, nil), count(1, none()), count(none(), 1), count(two()), count(1, two()))
+				local function pack(...) return {...} end
+				local function packn(...) return {n = select('#', ...), ...} end
+				put(#pack(1, 2, 3), #pack(), packn(1, nil, 3).n, packn(1, nil, 3)[3])
+				local function mixed(...) local t = {0, ...} local u = {..., 9} return #t, t[4], #u, u[1], u[2] end
+				put(mixed(1, 2, 3))
+				local function fwd(...) return count(...), string.format(string.rep('%s', select('#', ...)), ...) end
+				put(fwd('x', 'y', 'z'))
+				local function ret(...) return ... end
+				put(ret()) put(ret(1)) put(ret(1, 2, 3)) put(ret(nil, nil))
+				local function scalar(...) return (...) end
+				put(scalar(4, 5, 6), scalar())
+				local function mid(...) return count(..., 'z'), (select(2, ..., 'z')) end
+				put(mid(1, 2, 3)) put(mid())
+				local function orv(...) local a = ... or 5 return a end
+				put(orv(), orv(false, 1), orv(7))
+				local function arith(...) return ... + 1, ... .. '!' end
+				put(arith(10, 20))
+				local function loop(n, ...) if n == 0 then return select('#', ...), ... end return loop(n - 1, ...) end
+				put(loop(300, 'a', nil, 'c'))
+				local function loopmid(n, ...) if n == 0 then return select('#', ...), ... end return loopmid(n - 1, ..., n) end
+				put(loopmid(3, 'q'))
+				local function iter(...) local r = {} for i, v in ... do r[#r + 1] = v end return table.concat(r, ',') end
+				put(iter(ipairs({'a', 'b'})))
+				local function pc(...) return pcall(count, ...) end
+				put(pc(1, 2, 3))
+				local co = coroutine.wrap(function(...) local a, b = ... local x = coroutine.yield(select('#', ...), ...) return x, ... end)
+				put(co(1, 2)) put(co('r'))
+				local function nested(...) local function g(...) return select('#', ...), ... end return g(g(...)) end
+				put(nested(5, 6))
+				local function holes(a, b, ...) return a, b, select('#', ...), ... end
+				put(holes(1)) put(holes(1, 2, nil)) put(holes(1, 2, nil, 4))
+				local function asargs(...) return math.max(...), select(-1, ...) end
+				put(asargs(3, 9, 4))
+				local function unpacked(...) return table.unpack({...}) end
+				put(unpacked(1, 2, 3))
+				local function deep(...) local a = {...} local function inner(...) return #a + select('#', ...) end return inner(...) end
+				put(deep(1, 2))
+				return table.concat(out, '\n')";
+
+		const string VarArgsShapesExpected =
+				"6,6\n" +
+				"0,1,2,1,2,2,3\n" +
+				"3,0,3,3\n" +
+				"4,3,2,1,9\n" +
+				"3,xyz\n" +
+				"\n" +
+				"1\n" +
+				"1,2,3\n" +
+				"nil,nil\n" +
+				"4,nil\n" +
+				"2,z\n" +
+				"2,z\n" +
+				"5,5,7\n" +
+				"11,10!\n" +
+				"3,a,nil,c\n" +
+				"2,q,1\n" +
+				"a,b\n" +
+				"true,3\n" +
+				"2,1,2\n" +
+				"r,1,2\n" +
+				"3,2,5,6\n" +
+				"1,nil,0\n" +
+				"1,2,1,nil\n" +
+				"1,2,2,nil,4\n" +
+				"9,4\n" +
+				"1,2,3\n" +
+				"4\n";
+
+		[Test]
+		public void CallPath_VarArgsShapesFollowLua52()
+		{
+			Assert.AreEqual(VarArgsShapesExpected.TrimEnd('\n'), new Script().DoString(VarArgsShapes).String);
+		}
+
+		[Test]
+		public void CallPath_VarArgsShapesFollowLua52UnderTailCalls()
+		{
+			// Every tail call reuses its frame: '...' values passed on must not point into the frame it removes.
+			Script s = new Script();
+			s.Options.TailCallOptimizationThreshold = 1;
+			Assert.AreEqual(VarArgsShapesExpected.TrimEnd('\n'), s.DoString(VarArgsShapes).String);
+		}
 	}
 }

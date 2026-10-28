@@ -75,28 +75,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 			LuaValue[] st = m_ValueStack.Items;
 			int first = m_ValueStack.Count - argc;
 
-			// select('#', ...) counts the values of a trailing call result, as the library does.
+			// select('#', ...): the call expanded a trailing call result or '...', so every slot is a value.
 			if (id == BuiltinSelect)
 			{
 				if (argc == 0 || st[first].Type != DataType.String || (string)st[first].Object != "#")
 					return false;
 
-				ref LuaValue last = ref st[first + argc - 1];
-				int count = argc;
-
-				if (last.Type == DataType.Tuple)
-				{
-					if (last.TupleValue == null)
-						return false;
-
-					count = last.TupleValue.Tuple.Length - 1 + argc;
-				}
-				else if (last.Type == DataType.Void)
-				{
-					count = argc - 1;
-				}
-
-				return FastResult(argc, LuaValue.FromNumber(count - 1));
+				return FastResult(argc, LuaValue.FromNumber(argc - 1));
 			}
 
 			for (int k = 0; k < argc; k++)

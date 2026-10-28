@@ -61,21 +61,16 @@ namespace MoonSharp.Interpreter
 			}
 		}
 
-		private protected bool LastIsTuple
-		{
-			get { return m_LastIsTuple; }
-		}
-
 		/// <summary>
 		/// The arguments of a call to a C# function that uses them only during the call, read in place from
-		/// the value stack: the <c>slots</c> values from <c>first</c>. The processor reuses one view per call
-		/// depth (<see cref="Reuse"/>).
+		/// the value stack: the <c>slots</c> values from <c>first</c>, one argument each (the call expanded a
+		/// last argument holding several values or none). The processor reuses one view per call depth
+		/// (<see cref="Reuse"/>).
 		/// </summary>
 		internal sealed class StackArguments : CallbackArguments
 		{
 			ValueStack m_Stack;
 			int m_First;
-			int m_Slots;
 
 			internal StackArguments(ValueStack stack, int first, int slots, bool isMethodCall)
 				: base(isMethodCall)
@@ -87,33 +82,24 @@ namespace MoonSharp.Interpreter
 			{
 				m_Stack = stack;
 				m_First = first;
-				m_Slots = slots;
 				IsMethodCall = isMethodCall;
-
-				if (slots > 0)
-				{
-					ref LuaValue last = ref stack.Items[first + slots - 1];
-					CountArguments(slots, last.Type, last.Type == DataType.Tuple ? last.TupleValue.Tuple.Length : 0);
-				}
-				else
-				{
-					CountArguments(0, DataType.Nil, 0);
-				}
+				CountArguments(slots, DataType.Nil, 0);
 			}
 
-			// The same value RawGet reads in list mode: a tuple gives its first value, or nil when empty.
+			// The same value RawGet reads in list mode: a tuple (a call or '...' in the middle of the argument
+			// list) gives its first value, or nil when empty.
 			internal LuaValue Value(int index)
 			{
-				LuaValue v;
-
-				if (!LastIsTuple || index < m_Slots - 1)
-					v = m_Stack.Items[m_First + index];
-				else
-					v = m_Stack.Items[m_First + m_Slots - 1].TupleValue.Tuple[index - (m_Slots - 1)].ToLuaValue();
+				LuaValue v = m_Stack.Items[m_First + index];
 
 				if (v.Type == DataType.Tuple)
 				{
-					DynValue[] tuple = v.ToDynValue().Tuple;
+					ValueStack varArgs = v.Object as ValueStack;
+
+					if (varArgs != null)
+						return ValueStack.VarArgsCount(ref v) > 0 ? varArgs.VarArgsItem(ref v, 0) : LuaValue.Nil;
+
+					DynValue[] tuple = v.TupleValue.Tuple;
 					v = tuple.Length > 0 ? tuple[0].ToLuaValue() : LuaValue.Nil;
 				}
 

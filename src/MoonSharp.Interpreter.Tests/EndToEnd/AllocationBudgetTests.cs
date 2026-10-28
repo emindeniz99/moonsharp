@@ -189,6 +189,22 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
+		public void AllocationBudget_CallsVarArgs()
+		{
+			// Lua-CSharp's calls-varargs case. '...' stays on the value stack where the caller pushed it: no
+			// argument list, no array and no tuple per call (248 bytes before).
+			AssertLuaBudget("calls_varargs", "local function f(a, ...) local b, c = ... return a + b + c end\nreturn function(n) local s = 0 for i = 1, n do s = s + f(i, 2, 3) end return s end", NoAllocation);
+		}
+
+		[Test]
+		public void AllocationBudget_VarArgsForward()
+		{
+			// '...' passed on to another vararg function, to select('#') and to a library function, and
+			// counted: the call copies the values from where they are (808 bytes before).
+			AssertLuaBudget("varargs_forward", "local function g(...) return select('#', ...) + math.max(...) end\nlocal function f(...) return g(...) end\nreturn function(n) local s = 0 for i = 1, n do s = s + f(1, 2, 3) end return s end", NoAllocation);
+		}
+
+		[Test]
 		public void AllocationBudget_CoroutineSwitch()
 		{
 			// Each coroutine reuses its yield request, a resume with no values pushes nil without a DynValue,

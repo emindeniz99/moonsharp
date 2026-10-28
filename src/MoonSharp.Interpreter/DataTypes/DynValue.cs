@@ -206,6 +206,12 @@ namespace MoonSharp.Interpreter
 						if (d != null)
 							return d;
 
+						// The '...' of a running function.
+						Execution.VM.ValueStack stack = v.Object as Execution.VM.ValueStack;
+
+						if (stack != null)
+							return stack.VarArgsToDynValue(ref v);
+
 						// The generic for's iterator state.
 						Execution.VM.LuaValue[] values = (Execution.VM.LuaValue[])v.Object;
 						DynValue[] tuple = new DynValue[values.Length];

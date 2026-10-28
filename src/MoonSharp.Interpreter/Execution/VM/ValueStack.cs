@@ -110,5 +110,66 @@ namespace MoonSharp.Interpreter.Execution.VM
 			Array.Clear(Items, 0, Count);
 			Count = 0;
 		}
+
+		// '...' of a running vararg function: its values stay where the caller pushed them, below the
+		// function's locals, and the '...' local holds a Tuple pointing at them (start and count packed in
+		// Number, exact in a double), so a call allocates nothing for them. Such a value is valid only while
+		// that function's frame is on this stack: the VM resolves it before the frame goes (a call expands it
+		// in place, return turns it into a DynValue, a store reads one of its values), and DynValue.FromLuaValue
+		// copies it into a DynValue tuple.
+		const double VARARGS_SCALE = 262144; // 2^18, more than the maximum stack size
+
+		/// <summary>
+		/// A Tuple holding the <paramref name="count"/> values from <paramref name="start"/>.
+		/// </summary>
+		public LuaValue VarArgs(int start, int count)
+		{
+			LuaValue v;
+			v.Object = this;
+			v.Number = start * VARARGS_SCALE + count;
+			v.Type = DataType.Tuple;
+			return v;
+		}
+
+		public static int VarArgsStart(ref LuaValue v)
+		{
+			return (int)(v.Number / VARARGS_SCALE);
+		}
+
+		public static int VarArgsCount(ref LuaValue v)
+		{
+			return (int)(v.Number % VARARGS_SCALE);
+		}
+
+		/// <summary>
+		/// The value at <paramref name="index"/> of a '...' Tuple from this stack, void past its end.
+		/// </summary>
+		public LuaValue VarArgsItem(ref LuaValue varArgs, int index)
+		{
+			return index < VarArgsCount(ref varArgs) ? Items[VarArgsStart(ref varArgs) + index] : LuaValue.Void;
+		}
+
+		/// <summary>
+		/// The values of a '...' Tuple from this stack as a DynValue, as the '...' local held them before:
+		/// an empty tuple, the value itself, or a tuple.
+		/// </summary>
+		public DynValue VarArgsToDynValue(ref LuaValue varArgs)
+		{
+			int start = VarArgsStart(ref varArgs);
+			int count = VarArgsCount(ref varArgs);
+
+			if (count == 0)
+				return DynValue.EmptyTuple;
+
+			if (count == 1)
+				return Items[start].ToDynValue();
+
+			DynValue[] values = new DynValue[count];
+
+			for (int i = 0; i < count; i++)
+				values[i] = Items[start + i].ToDynValue();
+
+			return DynValue.NewTuple(values);
+		}
 	}
 }

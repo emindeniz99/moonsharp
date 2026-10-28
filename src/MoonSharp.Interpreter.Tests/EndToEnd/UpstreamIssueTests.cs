@@ -414,5 +414,16 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 			Assert.AreEqual(0.0, s.DoString("return select('#', table.unpack({}, 1, 0))").Number);
 		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/198 (upstream PR #324): a vararg function
+		// called with no arguments saw one nil, so select('#', ...) was 1.
+		[Test]
+		[Ignore("waits for VM core work: https://github.com/moonsharp-devs/moonsharp/issues/198")]
+		public void Issue198_VarargsWithoutArgumentsAreEmpty()
+		{
+			Script s = new Script();
+
+			Assert.AreEqual(0.0, s.DoString("local function count(...) return select('#', ...) end return count()").Number);
+		}
 	}
 }

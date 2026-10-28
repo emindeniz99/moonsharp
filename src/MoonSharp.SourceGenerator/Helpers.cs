@@ -73,12 +73,59 @@ namespace MoonSharp.SourceGenerator
 			return "((" + name + ")(" + v + ").ToObject(typeof(" + name + ")))";
 		}
 
+		/// <summary>
+		/// Script -> CLR for argument <paramref name="i"/> of <c>args</c>: what <see cref="ToClr"/> gives for
+		/// <c>args.RawGet(i, false) ?? DynValue.Void</c>, read without creating a DynValue when the argument has
+		/// the type the fast path takes (CallbackArguments.TypeAt, NumberAt, ...).
+		/// </summary>
+		public string ToClrArgument(ITypeSymbol t, string i, string prefix)
+		{
+			string name = Names.Of(t);
+			string v = "args.RawGet(" + i + ", false) ?? global::MoonSharp.Interpreter.DynValue.Void";
+			string a = "args, " + i;
+
+			switch (t.SpecialType)
+			{
+				case SpecialType.System_Double: return UseArgument(prefix, "ToDouble", a, NumberArgumentHelper("double", "ToDouble", null, null, "d"));
+				case SpecialType.System_Single: return UseArgument(prefix, "ToSingle", a, NumberArgumentHelper("float", "ToSingle", null, null, "(float)d"));
+				case SpecialType.System_Int32: return UseArgument(prefix, "ToInt32", a, NumberArgumentHelper("int", "ToInt32", "-2147483648.0", "2147483647.0", "global::System.Convert.ToInt32(d)"));
+				case SpecialType.System_UInt32: return UseArgument(prefix, "ToUInt32", a, NumberArgumentHelper("uint", "ToUInt32", "0.0", "4294967295.0", "global::System.Convert.ToUInt32(d)"));
+				case SpecialType.System_Int16: return UseArgument(prefix, "ToInt16", a, NumberArgumentHelper("short", "ToInt16", "-32768.0", "32767.0", "global::System.Convert.ToInt16(d)"));
+				case SpecialType.System_UInt16: return UseArgument(prefix, "ToUInt16", a, NumberArgumentHelper("ushort", "ToUInt16", "0.0", "65535.0", "global::System.Convert.ToUInt16(d)"));
+				case SpecialType.System_SByte: return UseArgument(prefix, "ToSByte", a, NumberArgumentHelper("sbyte", "ToSByte", "-128.0", "127.0", "global::System.Convert.ToSByte(d)"));
+				case SpecialType.System_Byte: return UseArgument(prefix, "ToByte", a, NumberArgumentHelper("byte", "ToByte", "0.0", "255.0", "global::System.Convert.ToByte(d)"));
+				case SpecialType.System_Int64: return UseArgument(prefix, "ToInt64", a, NumberArgumentHelper("long", "ToInt64", "-9223372036854775808.0", null, "global::System.Convert.ToInt64(d)", "d < 9223372036854775808.0"));
+				case SpecialType.System_UInt64: return UseArgument(prefix, "ToUInt64", a, NumberArgumentHelper("ulong", "ToUInt64", "0.0", null, "global::System.Convert.ToUInt64(d)", "d < 18446744073709551616.0"));
+				case SpecialType.System_Boolean: return UseArgument(prefix, "ToBoolean", a, SimpleArgument("bool", "ToBoolean", "Boolean", "args.BooleanAt(i)"));
+				case SpecialType.System_String: return UseArgument(prefix, "ToStringValue", a, SimpleArgument("string", "ToStringValue", "String", "args.StringAt(i)"));
+			}
+
+			if (t.TypeKind == TypeKind.Enum)
+				return UseArgument(prefix, EnumHelperName(t), a, EnumHelper((INamedTypeSymbol)t, true));
+
+			if (KnownSymbols.Is(t, m_Known.Table))
+				return UseArgument(prefix, "ToTable", a, SimpleArgument("global::MoonSharp.Interpreter.Table", "ToTable", "Table", "args.TableAt(i)"));
+			if (KnownSymbols.Is(t, m_Known.Closure))
+				return UseArgument(prefix, "ToClosure", a, SimpleArgument("global::MoonSharp.Interpreter.Closure", "ToClosure", "Function", "args.FunctionAt(i)"));
+
+			bool nullable = t.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
+
+			if (t.TypeKind == TypeKind.Class || t.TypeKind == TypeKind.Interface)
+				return UseArgument(prefix, "ToUserData<" + name + ">", a, UserDataArgumentHelper(false));
+
+			if (t.TypeKind == TypeKind.Struct && !nullable && t.SpecialType == SpecialType.None)
+				return UseArgument(prefix, "ToUserDataValue<" + name + ">", a, UserDataArgumentHelper(true));
+
+			// DynValue, object, enums, nullable, decimal, char, arrays, delegates: through the DynValue.
+			return ToClr(t, "(" + v + ")", prefix);
+		}
+
 		/// <summary>CLR -> script: an expression converting <paramref name="x"/> as ClrToScriptConversions.ObjectToDynValue does.</summary>
 		public string FromClr(ITypeSymbol t, string x, string prefix)
 		{
 			switch (t.SpecialType)
 			{
-				case SpecialType.System_Boolean: return Use(prefix, "FromBoolean", "script, " + x, FromHelper("bool", "FromBoolean", "global::MoonSharp.Interpreter.DynValue.NewBoolean(x)"));
+				case SpecialType.System_Boolean: return Use(prefix, "FromBoolean", "script, " + x, FromHelper("bool", "FromBoolean", "(x ? global::MoonSharp.Interpreter.DynValue.True : global::MoonSharp.Interpreter.DynValue.False)"));
 				case SpecialType.System_String: return Use(prefix, "FromString", "script, " + x, FromStringHelper());
 				case SpecialType.System_Char: return Use(prefix, "FromChar", "script, " + x, FromHelper("char", "FromChar", "global::MoonSharp.Interpreter.DynValue.NewString(x.ToString())"));
 				case SpecialType.System_Double: return Use(prefix, "FromDouble", "script, " + x, FromHelper("double", "FromDouble", "global::MoonSharp.Interpreter.DynValue.NewNumber(x)"));
@@ -103,22 +150,61 @@ namespace MoonSharp.SourceGenerator
 		}
 
 		/// <summary>
-		/// Whether an optional parameter takes its default value: DynValueToObjectOfNonByRefType returns the
-		/// default for a missing argument, and for nil when the parameter is a non-nullable value type.
-		/// Null when the default is never used that way (DynValue and object parameters).
+		/// CLR -> script for the result of a method: <see cref="FromClr"/>, except that numbers and strings go
+		/// back through ScriptExecutionContext.Return (the generated code's <c>context</c>), which hands them to
+		/// the VM without a DynValue when the VM made the call.
 		/// </summary>
-		public string TakesDefault(ITypeSymbol t, string v, string prefix)
+		public string FromClrResult(ITypeSymbol t, string x, string prefix)
+		{
+			string ctx = "context, script, " + x;
+
+			switch (t.SpecialType)
+			{
+				case SpecialType.System_String: return Use(prefix, "ReturnString", ctx, ReturnStringHelper());
+				case SpecialType.System_Double: return Use(prefix, "ReturnDouble", ctx, ReturnHelper("double", "ReturnDouble", "x"));
+				case SpecialType.System_Single: return Use(prefix, "ReturnSingle", ctx, ReturnHelper("float", "ReturnSingle", "x"));
+				case SpecialType.System_Int32: return Use(prefix, "ReturnInt32", ctx, ReturnHelper("int", "ReturnInt32", "x"));
+				case SpecialType.System_UInt32: return Use(prefix, "ReturnUInt32", ctx, ReturnHelper("uint", "ReturnUInt32", "x"));
+				case SpecialType.System_Int16: return Use(prefix, "ReturnInt16", ctx, ReturnHelper("short", "ReturnInt16", "x"));
+				case SpecialType.System_UInt16: return Use(prefix, "ReturnUInt16", ctx, ReturnHelper("ushort", "ReturnUInt16", "x"));
+				case SpecialType.System_SByte: return Use(prefix, "ReturnSByte", ctx, ReturnHelper("sbyte", "ReturnSByte", "x"));
+				case SpecialType.System_Byte: return Use(prefix, "ReturnByte", ctx, ReturnHelper("byte", "ReturnByte", "x"));
+			}
+
+			return FromClr(t, x, prefix);
+		}
+
+		/// <summary>
+		/// Whether an optional parameter takes its default value from argument <paramref name="i"/> of
+		/// <c>args</c>: DynValueToObjectOfNonByRefType returns the default for a missing argument, and for nil
+		/// when the parameter is a non-nullable value type. Null when the default is never used that way
+		/// (DynValue and object parameters).
+		/// </summary>
+		public string TakesDefaultArgument(ITypeSymbol t, string i, string prefix)
 		{
 			if (KnownSymbols.Is(t, m_Known.DynValue) || t.SpecialType == SpecialType.System_Object)
 				return null;
 
 			NoConv();
+			string type = "args.TypeAt(" + i + ")";
 			bool valueType = t.IsValueType && t.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T;
 			string test = valueType
-				? "(" + v + ".Type == global::MoonSharp.Interpreter.DataType.Void || " + v + ".Type == global::MoonSharp.Interpreter.DataType.Nil)"
-				: v + ".Type == global::MoonSharp.Interpreter.DataType.Void";
+				? "(" + type + " == global::MoonSharp.Interpreter.DataType.Void || " + type + " == global::MoonSharp.Interpreter.DataType.Nil)"
+				: type + " == global::MoonSharp.Interpreter.DataType.Void";
 
-			return "(" + test + " && " + prefix + "NoConv(" + v + ".Type, typeof(" + Names.Of(t) + ")))";
+			return "(" + test + " && " + prefix + "NoConv(" + type + ", typeof(" + Names.Of(t) + ")))";
+		}
+
+		// Argument helpers overload the DynValue ones by name, so they are kept under their own key.
+		string UseArgument(string prefix, string name, string args, string code)
+		{
+			int generic = name.IndexOf('<');
+			string key = (generic < 0 ? name : name.Substring(0, generic)) + "(args)";
+
+			if (!m_Used.ContainsKey(key))
+				m_Used[key] = code;
+
+			return prefix + name + "(" + args + ")";
 		}
 
 		string Use(string prefix, string name, string args, string code)
@@ -167,6 +253,92 @@ namespace MoonSharp.SourceGenerator
 body +
 "			}\n" +
 "			return (" + type + ")v.ToObject(typeof(" + type + "));\n" +
+"		}\n";
+		}
+
+		string NumberArgumentHelper(string type, string name, string min, string max, string convert, string extraTest = null)
+		{
+			NoConv();
+			var tests = new List<string>();
+			if (min != null) tests.Add("d >= " + min);
+			if (max != null) tests.Add("d <= " + max);
+			if (extraTest != null) tests.Add(extraTest);
+			string body = tests.Count == 0
+				? "				return " + convert + ";\n"
+				: "				if (" + string.Join(" && ", tests) + ")\n					return " + convert + ";\n";
+
+			return
+"		internal static " + type + " " + name + "(global::MoonSharp.Interpreter.CallbackArguments args, int i)\n" +
+"		{\n" +
+"			if (args.TypeAt(i) == global::MoonSharp.Interpreter.DataType.Number && NoConv(global::MoonSharp.Interpreter.DataType.Number, typeof(" + type + ")))\n" +
+"			{\n" +
+"				double d = args.NumberAt(i);\n" +
+body +
+"			}\n" +
+"			return (" + type + ")(args.RawGet(i, false) ?? global::MoonSharp.Interpreter.DynValue.Void).ToObject(typeof(" + type + "));\n" +
+"		}\n";
+		}
+
+		string SimpleArgument(string type, string name, string dataType, string read)
+		{
+			NoConv();
+			return
+"		internal static " + type + " " + name + "(global::MoonSharp.Interpreter.CallbackArguments args, int i)\n" +
+"		{\n" +
+"			if (args.TypeAt(i) == global::MoonSharp.Interpreter.DataType." + dataType + " && NoConv(global::MoonSharp.Interpreter.DataType." + dataType + ", typeof(" + type + ")))\n" +
+"				return " + read + ";\n" +
+"			return (" + type + ")(args.RawGet(i, false) ?? global::MoonSharp.Interpreter.DynValue.Void).ToObject(typeof(" + type + "));\n" +
+"		}\n";
+		}
+
+		string UserDataArgumentHelper(bool valueType)
+		{
+			NoConv();
+			string name = valueType ? "ToUserDataValue" : "ToUserData";
+			string constraint = valueType ? "struct" : "class";
+			return
+"		internal static T " + name + "<T>(global::MoonSharp.Interpreter.CallbackArguments args, int i) where T : " + constraint + "\n" +
+"		{\n" +
+"			if (args.TypeAt(i) == global::MoonSharp.Interpreter.DataType.UserData && NoConv(global::MoonSharp.Interpreter.DataType.UserData, typeof(T)))\n" +
+"			{\n" +
+"				global::MoonSharp.Interpreter.UserData ud = args.UserDataAt(i);\n" +
+"				object o = ud.Object;\n" +
+"				if (o is T && ud.Descriptor.IsTypeCompatible(typeof(T), o))\n" +
+"					return (T)o;\n" +
+"			}\n" +
+"			return (T)(args.RawGet(i, false) ?? global::MoonSharp.Interpreter.DynValue.Void).ToObject(typeof(T));\n" +
+"		}\n";
+		}
+
+		static string ReturnHelper(string type, string name, string number)
+		{
+			// As FromHelper: a custom converter for the CLR type wins.
+			return
+"		internal static global::MoonSharp.Interpreter.DynValue " + name + "(global::MoonSharp.Interpreter.ScriptExecutionContext context, global::MoonSharp.Interpreter.Script script, " + type + " x)\n" +
+"		{\n" +
+"			var conv = global::MoonSharp.Interpreter.Script.GlobalOptions.CustomConverters.GetClrToScriptCustomConversion(typeof(" + type + "));\n" +
+"			if (conv != null)\n" +
+"			{\n" +
+"				var r = conv(script, x);\n" +
+"				if (r != null) return r;\n" +
+"			}\n" +
+"			return context != null ? context.Return(" + number + ") : global::MoonSharp.Interpreter.DynValue.NewNumber(" + number + ");\n" +
+"		}\n";
+		}
+
+		static string ReturnStringHelper()
+		{
+			return
+"		internal static global::MoonSharp.Interpreter.DynValue ReturnString(global::MoonSharp.Interpreter.ScriptExecutionContext context, global::MoonSharp.Interpreter.Script script, string x)\n" +
+"		{\n" +
+"			if (x == null) return global::MoonSharp.Interpreter.DynValue.Nil;\n" +
+"			var conv = global::MoonSharp.Interpreter.Script.GlobalOptions.CustomConverters.GetClrToScriptCustomConversion(typeof(string));\n" +
+"			if (conv != null)\n" +
+"			{\n" +
+"				var r = conv(script, x);\n" +
+"				if (r != null) return r;\n" +
+"			}\n" +
+"			return context != null ? context.Return(x) : global::MoonSharp.Interpreter.DynValue.NewString(x);\n" +
 "		}\n";
 		}
 
@@ -225,7 +397,7 @@ body +
 			return name;
 		}
 
-		string EnumHelper(INamedTypeSymbol t)
+		string EnumHelper(INamedTypeSymbol t, bool argument = false)
 		{
 			NoConv();
 			string type = Names.Of(t);
@@ -247,16 +419,21 @@ body +
 			string tests = "d >= " + min + (max != null ? " && d <= " + max : "") + (extra != null ? " && " + extra : "");
 			string name = EnumHelperName(t);
 
+			string parameters = argument ? "global::MoonSharp.Interpreter.CallbackArguments args, int i" : "global::MoonSharp.Interpreter.DynValue v";
+			string isNumber = argument ? "args.TypeAt(i)" : "v.Type";
+			string number = argument ? "args.NumberAt(i)" : "v.Number";
+			string value = argument ? "(args.RawGet(i, false) ?? global::MoonSharp.Interpreter.DynValue.Void)" : "v";
+
 			return
-"		internal static " + type + " " + name + "(global::MoonSharp.Interpreter.DynValue v)\n" +
+"		internal static " + type + " " + name + "(" + parameters + ")\n" +
 "		{\n" +
-"			if (v.Type == global::MoonSharp.Interpreter.DataType.Number && NoConv(global::MoonSharp.Interpreter.DataType.Number, typeof(" + type + ")))\n" +
+"			if (" + isNumber + " == global::MoonSharp.Interpreter.DataType.Number && NoConv(global::MoonSharp.Interpreter.DataType.Number, typeof(" + type + ")))\n" +
 "			{\n" +
-"				double d = v.Number;\n" +
+"				double d = " + number + ";\n" +
 "				if (" + tests + ")\n" +
 "					return (" + type + ")global::System.Convert." + convert + "(d);\n" +
 "			}\n" +
-"			return (" + type + ")v.ToObject(typeof(" + type + "));\n" +
+"			return (" + type + ")" + value + ".ToObject(typeof(" + type + "));\n" +
 "		}\n";
 		}
 

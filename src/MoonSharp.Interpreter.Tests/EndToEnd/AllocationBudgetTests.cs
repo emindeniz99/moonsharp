@@ -316,6 +316,24 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
+		public void AllocationBudget_ClrInteropGenerated()
+		{
+			// The source generator's descriptors (the IL2CPP path) read their arguments in place
+			// (CallbackArguments.TypeAt, NumberAt) and give a number or string result through
+			// ScriptExecutionContext.Return: no allocation for a method call (248 bytes per call before this
+			// branch, docs/source-generator.md).
+			SkipUnlessMeasurable();
+
+			using (new RegistrySnapshot(typeof(InteropParityTests.ParityClass)))
+			{
+				UserData.RegisterType(MoonSharp.Generated.GeneratedUserData.CreateDescriptor(typeof(InteropParityTests.ParityClass)));
+				Script script = new Script();
+				script.Globals["obj"] = new InteropParityTests.ParityClass();
+				AssertBudget("clr_interop_generated", LuaLoop(script, "return function(n) local s = 0 for i = 1, n do s = s + obj:Add(i, 2) + obj:Add(i, i) end return s end"), N, NoAllocation);
+			}
+		}
+
+		[Test]
 		public void AllocationBudget_ClrInteropReflection()
 		{
 			SkipUnlessMeasurable();

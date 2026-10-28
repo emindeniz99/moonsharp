@@ -274,6 +274,10 @@ namespace MoonSharp.SourceGenerator
 
 			if (byRef.Count == 0)
 			{
+				// A plain result goes through the context, without a DynValue where it can.
+				if (returnsValue)
+					result = helpers.FromClrResult(s.ReturnType, "r", prefix);
+
 				w.Append(indent).Append("return ").Append(result ?? MS + "DynValue.Void").Append(";\n");
 				return;
 			}
@@ -288,16 +292,16 @@ namespace MoonSharp.SourceGenerator
 		static void EmitArgument(StringBuilder w, IParameterSymbol p, string local, Helpers helpers, string prefix, string indent, bool declare)
 		{
 			string ptype = Names.Of(p.Type);
-			string v = "v" + local.Substring(1);
-			w.Append(indent).Append(MS).Append("DynValue ").Append(v).Append(" = args.RawGet(j++, false) ?? ").Append(MS).Append("DynValue.Void;\n");
+			string i = "i" + local.Substring(1);
+			w.Append(indent).Append("int ").Append(i).Append(" = j++;\n");
 			w.Append(indent).Append(declare ? ptype + " " : "").Append(local).Append(" = ");
 
-			string takesDefault = p.IsOptional ? helpers.TakesDefault(p.Type, v, prefix) : null;
+			string takesDefault = p.IsOptional ? helpers.TakesDefaultArgument(p.Type, i, prefix) : null;
 
 			if (takesDefault != null)
 				w.Append(takesDefault).Append(" ? ").Append(Literals.Default(p)).Append(" : ");
 
-			w.Append(helpers.ToClr(p.Type, v, prefix)).Append(";\n");
+			w.Append(helpers.ToClrArgument(p.Type, i, prefix)).Append(";\n");
 		}
 
 		static void EmitVarArgs(StringBuilder w, IArrayTypeSymbol array, string local, Helpers helpers, string prefix, string indent)

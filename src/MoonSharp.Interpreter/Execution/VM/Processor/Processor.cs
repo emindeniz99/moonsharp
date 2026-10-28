@@ -18,7 +18,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		ByteCode m_RootChunk;
 
 		FastStack<DynValue> m_ValueStack;
-		FastStack<CallStackItem> m_ExecutionStack;
+		CallStack m_ExecutionStack;
 		List<Processor> m_CoroutinesStack;
 
 		Table m_GlobalTable;
@@ -33,7 +33,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		public Processor(Script script, Table globalContext, ByteCode byteCode)
 		{
 			m_ValueStack = new FastStack<DynValue>(INITIAL_VALUE_STACK_SIZE, STACK_SIZE);
-			m_ExecutionStack = new FastStack<CallStackItem>(INITIAL_EXECUTION_STACK_SIZE, STACK_SIZE);
+			m_ExecutionStack = new CallStack(INITIAL_EXECUTION_STACK_SIZE, STACK_SIZE);
 			m_CoroutinesStack = new List<Processor>();
 
 			m_Debug = new DebugContext();
@@ -47,7 +47,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		private Processor(Processor parentProcessor)
 		{
 			m_ValueStack = new FastStack<DynValue>(INITIAL_VALUE_STACK_SIZE, STACK_SIZE);
-			m_ExecutionStack = new FastStack<CallStackItem>(INITIAL_EXECUTION_STACK_SIZE, STACK_SIZE);
+			m_ExecutionStack = new CallStack(INITIAL_EXECUTION_STACK_SIZE, STACK_SIZE);
 			m_Debug = parentProcessor.m_Debug;
 			m_RootChunk = parentProcessor.m_RootChunk;
 			m_GlobalTable = parentProcessor.m_GlobalTable;
@@ -135,16 +135,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 			for (int i = 0; i < args.Length; i++)
 				m_ValueStack.Push(args[i]);
 
-			m_ExecutionStack.Push(new CallStackItem()
-			{
-				BasePointer = m_ValueStack.Count,
-				ArgCount = args.Length,
-				Debug_EntryPoint = function.Function.EntryPointByteCodeLocation,
-				ReturnAddress = -1,
-				ClosureScope = function.Function.ClosureContext,
-				CallingSourceRef = SourceRef.GetClrLocation(),
-				Flags = flags
-			});
+			ref CallStackItem frame = ref m_ExecutionStack.Push();
+			frame.BasePointer = m_ValueStack.Count;
+			frame.ArgCount = args.Length;
+			frame.Debug_EntryPoint = function.Function.EntryPointByteCodeLocation;
+			frame.ReturnAddress = -1;
+			frame.ClosureScope = function.Function.ClosureContext;
+			frame.CallingSourceRef = SourceRef.GetClrLocation();
+			frame.Flags = flags;
 
 			return function.Function.EntryPointByteCodeLocation;
 		}

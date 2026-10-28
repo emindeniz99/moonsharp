@@ -354,9 +354,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 		private List<WatchItem> Debugger_RefreshLocals(int stackFrameIndex)
 		{
 			List<WatchItem> locals = new List<WatchItem>();
-			var frame = m_ExecutionStack.Peek(stackFrameIndex);
 
-			if (frame != null && frame.Debug_Symbols != null && frame.LocalScope != null)
+			if (stackFrameIndex >= m_ExecutionStack.Count)
+				return locals;
+
+			ref CallStackItem frame = ref m_ExecutionStack.Peek(stackFrameIndex);
+
+			if (frame.Debug_Symbols != null && frame.LocalScope != null)
 			{
 				int len = Math.Min(frame.Debug_Symbols.Length, frame.LocalScope.Length);
 
@@ -378,9 +382,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 		private List<WatchItem> Debugger_RefreshClosure(int stackFrameIndex)
 		{
 			List<WatchItem> variables = new List<WatchItem>();
-			var frame = m_ExecutionStack.Peek(stackFrameIndex);
 
-			var closure = frame?.ClosureScope;
+			if (stackFrameIndex >= m_ExecutionStack.Count)
+				return variables;
+
+			ref CallStackItem frame = ref m_ExecutionStack.Peek(stackFrameIndex);
+
+			var closure = frame.ClosureScope;
 
 			if (closure != null)
 			{
@@ -434,7 +442,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			for (int i = 0; i < m_ExecutionStack.Count; i++)
 			{
-				var c = m_ExecutionStack.Peek(i);
+				ref CallStackItem c = ref m_ExecutionStack.Peek(i);
 
 				var I = m_RootChunk.Code[c.Debug_EntryPoint];
 

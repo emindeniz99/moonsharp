@@ -276,12 +276,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 					// handles it or to this loop's entry point, not past them.
 					for (int i = 0; i < m_ExecutionStack.Count; i++)
 					{
-						var c = m_ExecutionStack.Peek(i);
+						// Copies, not a ref: the message handler runs script code, which can move the frames.
+						CallStackItemHandlers handlers = m_ExecutionStack.Peek(i).Handlers;
+						CallStackItemFlags flags = m_ExecutionStack.Peek(i).Flags;
 
-						if (c.ErrorHandlerBeforeUnwind != null)
-							ex.DecoratedMessage = PerformMessageDecorationBeforeUnwind(c.ErrorHandlerBeforeUnwind, ex.DecoratedMessage, GetCurrentSourceRef(instructionPtr));
+						if (handlers != null && handlers.ErrorHandlerBeforeUnwind != null)
+							ex.DecoratedMessage = PerformMessageDecorationBeforeUnwind(handlers.ErrorHandlerBeforeUnwind, ex.DecoratedMessage, GetCurrentSourceRef(instructionPtr));
 
-						if (c.ErrorHandler != null || (c.Flags & CallStackItemFlags.EntryPoint) != 0)
+						if ((handlers != null && handlers.ErrorHandler != null) || (flags & CallStackItemFlags.EntryPoint) != 0)
 							break;
 					}
 
@@ -390,7 +392,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private void AssignLocal(SymbolRef symref, DynValue value)
 		{
-			var stackframe = m_ExecutionStack.Peek();
+			ref CallStackItem stackframe = ref m_ExecutionStack.Peek();
 
 			DynValue v = stackframe.LocalScope[symref.i_Index];
 			if (v == null)
@@ -412,7 +414,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			DynValue value = GetStoreValue(i);
 			SymbolRef symref = i.Symbol;
 
-			var stackframe = m_ExecutionStack.Peek();
+			ref CallStackItem stackframe = ref m_ExecutionStack.Peek();
 
 			DynValue v = stackframe.ClosureScope[symref.i_Index];
 			if (v == null)
@@ -455,17 +457,17 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			if (symbols.Length > 0)
 			{
-				CallStackItem frame = m_ExecutionStack.Peek();
+				ref CallStackItem frame = ref m_ExecutionStack.Peek();
 				context = new ClosureContext(symbols);
 
 				for (int k = 0; k < symbols.Length; k++)
-					context.Add(GetUpvalueSymbol(frame, symbols[k]));
+					context.Add(GetUpvalueSymbol(ref frame, symbols[k]));
 			}
 
 			m_ValueStack.Push(DynValue.NewClosure(new Closure(this.m_Script, i.NumVal, context)));
 		}
 
-		private static DynValue GetUpvalueSymbol(CallStackItem frame, SymbolRef s)
+		private static DynValue GetUpvalueSymbol(ref CallStackItem frame, SymbolRef s)
 		{
 			if (s.Type == SymbolRefType.Local)
 				return frame.LocalScope[s.i_Index];
@@ -627,7 +629,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private void ExecBeginFn(Instruction i)
 		{
-			CallStackItem cur = m_ExecutionStack.Peek();
+			ref CallStackItem cur = ref m_ExecutionStack.Peek();
 
 			cur.Debug_Symbols = i.SymbolList;
 			cur.LocalScope = new DynValue[i.NumVal];
@@ -645,11 +647,15 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private int PopExecStackAndCheckVStack(int vstackguard)
 		{
-			var xs = m_ExecutionStack.Pop();
-			if (vstackguard != xs.BasePointer)
+			ref CallStackItem xs = ref m_ExecutionStack.Peek();
+			int returnAddress = xs.ReturnAddress;
+			int basePointer = xs.BasePointer;
+			m_ExecutionStack.RemoveLast();
+
+			if (vstackguard != basePointer)
 				throw new InternalErrorException("StackGuard violation");
 
-			return xs.ReturnAddress;
+			return returnAddress;
 		}
 
 		static readonly DynValue[] s_NoArgs = new DynValue[0];
@@ -682,7 +688,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		private void ExecArgs(Instruction I)
 		{
 			// The arguments sit right below the frame's base pointer; the count is in the frame.
-			CallStackItem frame = m_ExecutionStack.Peek();
+			ref CallStackItem frame = ref m_ExecutionStack.Peek();
 			int numargs = frame.ArgCount;
 			int argsBase = frame.BasePointer - numargs;
 			SymbolRef[] symbols = I.SymbolList;
@@ -760,11 +766,11 @@ namespace MoonSharp.Interpreter.Execution.VM
 					// and we are followed *exactly* by a RET 1
 					if (I.OpCode == OpCode.Ret && I.NumVal == 1)
 					{
-						CallStackItem csi = m_ExecutionStack.Peek();
+						ref CallStackItem csi = ref m_ExecutionStack.Peek();
 
 						// if the current stack item has no "odd" things pending and neither has the new coming one..
-						if (csi.ClrFunction == null && csi.Continuation == null && csi.ErrorHandler == null
-							&& csi.ErrorHandlerBeforeUnwind == null && continuation == null && unwindHandler == null && handler == null)
+						if (csi.ClrFunction == null && csi.Handlers == null
+							&& continuation == null && unwindHandler == null && handler == null)
 						{
 							instructionPtr = PerformTCO(instructionPtr, argsCount);
 							flags |= CallStackItemFlags.TailCall;
@@ -786,42 +792,34 @@ namespace MoonSharp.Interpreter.Execution.VM
 				// but we need the current instruction here
 				SourceRef sref = GetCurrentSourceRef(instructionPtr - 1);
 
-				m_ExecutionStack.Push(new CallStackItem()
-				{
-					ClrFunction = fn.Callback,
-					ReturnAddress = instructionPtr,
-					CallingSourceRef = sref,
-					BasePointer = -1,
-					ErrorHandler = handler,
-					Continuation = continuation,
-					ErrorHandlerBeforeUnwind = unwindHandler,
-					Flags = flags,
-				});
+				ref CallStackItem frame = ref m_ExecutionStack.Push();
+				frame.ClrFunction = fn.Callback;
+				frame.ReturnAddress = instructionPtr;
+				frame.CallingSourceRef = sref;
+				frame.BasePointer = -1;
+				frame.Handlers = CallStackItemHandlers.Create(continuation, handler, unwindHandler);
+				frame.Flags = flags;
 
 				var ret = fn.Callback.Invoke(new ScriptExecutionContext(this, fn.Callback, sref), args,
 					isMethodCall: thisCall);
 				m_ValueStack.RemoveLast(argsCount + 1);
 				m_ValueStack.Push(ret);
 
-				m_ExecutionStack.Pop();
+				m_ExecutionStack.RemoveLast();
 
 				return Internal_CheckForTailRequests(null, instructionPtr);
 			}
 			else if (fn.Type == DataType.Function)
 			{
-				m_ExecutionStack.Push(new CallStackItem()
-				{
-					BasePointer = m_ValueStack.Count,
-					ArgCount = argsCount,
-					ReturnAddress = instructionPtr,
-					Debug_EntryPoint = fn.Function.EntryPointByteCodeLocation,
-					CallingSourceRef = GetCurrentSourceRef(instructionPtr - 1), // See right above in GetCurrentSourceRef(instructionPtr - 1)
-					ClosureScope = fn.Function.ClosureContext,
-					ErrorHandler = handler,
-					Continuation = continuation,
-					ErrorHandlerBeforeUnwind = unwindHandler,
-					Flags = flags,
-				});
+				ref CallStackItem frame = ref m_ExecutionStack.Push();
+				frame.BasePointer = m_ValueStack.Count;
+				frame.ArgCount = argsCount;
+				frame.ReturnAddress = instructionPtr;
+				frame.Debug_EntryPoint = fn.Function.EntryPointByteCodeLocation;
+				frame.CallingSourceRef = GetCurrentSourceRef(instructionPtr - 1); // See right above in GetCurrentSourceRef(instructionPtr - 1)
+				frame.ClosureScope = fn.Function.ClosureContext;
+				frame.Handlers = CallStackItemHandlers.Create(continuation, handler, unwindHandler);
+				frame.Flags = flags;
 				return fn.Function.EntryPointByteCodeLocation;
 			}
 

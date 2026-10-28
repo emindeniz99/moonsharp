@@ -64,6 +64,32 @@ jobs:
           name: nativeaot-unit-logs
           path: .artifacts/nativeaot/*.log
 
+  # The interpreter DLL against tools/size/interpreter-dll.baseline (fails beyond 512 bytes either
+  # way), and what MoonSharp adds to a NativeAOT binary (report only). Both go to the job summary.
+  size:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      # The .NET SDK and runtime pinned in mise.toml.
+      - name: Setup tools from mise.toml
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
+        with:
+          # A mise release older than seven days.
+          version: 2026.10.11
+          install_args: dotnet
+
+      # The NativeAOT linker needs clang and zlib, which come from apt (see mise.toml).
+      - name: Install clang and zlib
+        run: sudo apt-get update -q && sudo apt-get install -y -q clang zlib1g-dev
+
+      - name: Interpreter DLL against its baseline, NativeAOT size
+        run: tools/size/size.sh --nativeaot .artifacts/size
+
   upm-artifact:
     runs-on: ubuntu-latest
     needs: docker-ci

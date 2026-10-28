@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- ../probe without MoonSharp: the size of the runtime and the console alone. See tools/size/size.sh. -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <PublishAot>true</PublishAot>
+    </PropertyGroup>
+
+</Project>

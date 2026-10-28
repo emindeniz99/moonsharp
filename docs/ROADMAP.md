@@ -112,7 +112,7 @@ After step 4: the checkpoint in the decisions table.
 
 ## Needs the owner
 
-- Unity licence secrets for CI (`UNITY_EMAIL`, `UNITY_PASSWORD`, `UNITY_LICENSE`).
+- Unity account secrets for CI, as `.github/workflows/ci.yml` reads them: `UNITY_EMAIL`, `UNITY_PASSWORD` and `UNITY_TOTP_KEY` (the secret key of authenticator-app 2FA on that Unity account; email 2FA does not work).
 - Android and iOS devices for IL2CPP player runs.
 - The `pairs` order decision, once the table measurements are in.
 - Approval before any upstream pull request.

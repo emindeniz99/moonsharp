@@ -20,8 +20,8 @@ again; planned work goes in [ROADMAP.md](ROADMAP.md), and fork-only changes in
 
 | Status | Issues | Pull requests |
 |---|---|---|
-| fixed in the fork | 14 | 5 |
-| reproduces, waits for other work | 12 | 4 |
+| fixed in the fork | 16 | 5 |
+| reproduces, waits for other work | 10 | 4 |
 | needs the owner | 5 | 2 |
 | does not reproduce | 16 | 3 |
 | question, answered | 8 | 0 |
@@ -30,7 +30,8 @@ again; planned work goes in [ROADMAP.md](ROADMAP.md), and fork-only changes in
 | total | 92 | 22 |
 
 Fixed on branch `fix/upstream-issues`: #70, #102 (with #305, #328), #161, #173, #219 (with #257),
-#229 (`tonumber`), #286, #291, #307. Fixed earlier in the fork: #221, #304, #348,
+#229 (`tonumber`), #286, #291, #307. Fixed on branch `perf/vm-group-a`: #229 (arithmetic),
+#258, #263. Fixed earlier in the fork: #221, #304, #348,
 and #300 in part (opt-in 64-bit integers). Two JSON bugs found by the
 conformance corpus have no upstream issue: `\u` escapes in `json.parse`
 (`5788be3`) and `json.serialize` dropping string keys of a table that also has
@@ -95,9 +96,9 @@ keys 1..n (`77c8662`).
 | [#274](https://github.com/moonsharp-devs/moonsharp/issues/274) | CLR types don't get converted correctly when allowing auto-registration of userdata | bug | needs owner | Reproduces: with `InteropRegistrationPolicy.Automatic`, `List<int>` and `Dictionary<,>` become userdata instead of tables. The fork's mobile hosts register types explicitly, so the choice matters only for automatic hosts |
 | [#270](https://github.com/moonsharp-devs/moonsharp/issues/270) | Json is not in indent | enhancement | feature: not planned | No roadmap item |
 | [#265](https://github.com/moonsharp-devs/moonsharp/issues/265) | Sync Unity code files Powershell script version | enhancement | out of scope | Unity packaging goes through `tools/upm` |
-| [#263](https://github.com/moonsharp-devs/moonsharp/issues/263) | unassigned local variable can sometimes hold values other than nil | bug | waits: compiler | Reproduces. Ignored test `UpstreamIssueTests.Issue263_LocalWithoutValueIsNil`; upstream [PR #280](https://github.com/moonsharp-devs/moonsharp/pull/280) has a fix |
+| [#263](https://github.com/moonsharp-devs/moonsharp/issues/263) | unassigned local variable can sometimes hold values other than nil | bug | fixed | `local x` compiles as `local x = nil`; `UpstreamIssueTests.Issue263_LocalWithoutValueIsNil` |
 | [#261](https://github.com/moonsharp-devs/moonsharp/issues/261) | Debugger Signal(Byte\|Source)CodeChange should use GetDebuggerCaps() | enhancement | feature: worth adding | A two-line check in `Script.cs`, which the parallel VM and registration work owns now |
-| [#258](https://github.com/moonsharp-devs/moonsharp/issues/258) | lua 'type' function called with void variable error | bug | waits: compiler | Reproduces: `local v = nothing() type(v)` fails. Ignored test `UpstreamIssueTests.Issue258_LocalFromVoidCallIsNil` |
+| [#258](https://github.com/moonsharp-devs/moonsharp/issues/258) | lua 'type' function called with void variable error | bug | fixed | A variable assigned no value holds nil; `UpstreamIssueTests.Issue258_LocalFromVoidCallIsNil` |
 | [#257](https://github.com/moonsharp-devs/moonsharp/issues/257) | Json parse error | duplicate | fixed | `103a2d4` (duplicate of #219) |
 | [#255](https://github.com/moonsharp-devs/moonsharp/issues/255) | Hardwiring throws errors | bug | does not reproduce | The errors are only in screenshots; not reproduced |
 | [#253](https://github.com/moonsharp-devs/moonsharp/issues/253) | Custom return types and error help | question | answered | A returned CLR type must be registered (`UserData.RegisterType`); [registration.md](registration.md) explains registration |
@@ -108,8 +109,8 @@ keys 1..n (`77c8662`).
 | [#240](https://github.com/moonsharp-devs/moonsharp/issues/240) | "debug" module is not available on the Unity | bug | answered | By design: `new Script()` uses `Preset_Default`, which leaves `debug` out; `Preset_Complete` has it |
 | [#235](https://github.com/moonsharp-devs/moonsharp/issues/235) | Add .lua file import support for Unity | feature | feature: worth adding | A `ScriptedImporter` for `.lua`; belongs with the Unity package and CI matrix work |
 | [#232](https://github.com/moonsharp-devs/moonsharp/issues/232) | System.IndexOutOfRangeException randomly when calling Closure | bug | does not reproduce | iOS only, no reproduction. A stack overflow (#221, fixed) or a Script used from two threads gives this exception |
-| [#231](https://github.com/moonsharp-devs/moonsharp/issues/231) | Script timeout/cancellation support | feature | feature: planned | Coroutines have `AutoYieldCounter`; an execution budget for plain calls is on the roadmap |
-| [#229](https://github.com/moonsharp-devs/moonsharp/issues/229) | tonumber("0x23") does not work | bug | fixed | `8a4ca33` for `tonumber`; string coercion in arithmetic waits for VM core work (ignored `UpstreamIssueTests.Issue229_ArithmeticCoercesLuaNumerals`) |
+| [#231](https://github.com/moonsharp-devs/moonsharp/issues/231) | Script timeout/cancellation support | feature | feature: added | `ScriptOptions.InterruptHandler` stops any call after an instruction budget (`perf/vm-group-a`); coroutines also have `AutoYieldCounter` |
+| [#229](https://github.com/moonsharp-devs/moonsharp/issues/229) | tonumber("0x23") does not work | bug | fixed | `8a4ca33` for `tonumber`; string coercion in arithmetic on `perf/vm-group-a` (`UpstreamIssueTests.Issue229_ArithmeticCoercesLuaNumerals`) |
 | [#228](https://github.com/moonsharp-devs/moonsharp/issues/228) | Async / await support | feature | feature: not planned | `AsyncExtensions` covers calling Lua from async C#; awaiting a `Task` from Lua is not on the roadmap |
 | [#221](https://github.com/moonsharp-devs/moonsharp/issues/221) | MoonSharp does not catch stack overflows | bug | fixed | Fork [PR #1](https://github.com/emindeniz99/moonsharp/pull/1) |
 | [#219](https://github.com/moonsharp-devs/moonsharp/issues/219) | json.parse lexer fails on 2D arrays | bug | fixed | `103a2d4`; `Issue219_JsonParsesNestedArrays` |
@@ -171,7 +172,7 @@ keys 1..n (`77c8662`).
 | [#316](https://github.com/moonsharp-devs/moonsharp/pull/316) | FIX (net6.0-ios, net6.0-wasm) | bug | does not reproduce | The fork's browser build runs the netstandard2.0 interpreter (fork [PR #8](https://github.com/emindeniz99/moonsharp/pull/8)) |
 | [#283](https://github.com/moonsharp-devs/moonsharp/pull/283) | Fix of incorrect work of the split string with the Cyrillic symbols | bug | does not reproduce | `gmatch('[^ ]+')` splits Cyrillic text |
 | [#281](https://github.com/moonsharp-devs/moonsharp/pull/281) | Enumerator based coroutine yielding | feature | feature: not planned | No roadmap item |
-| [#280](https://github.com/moonsharp-devs/moonsharp/pull/280) | Bunch of fixes and compatibility tweaks (fix #275, #263, #229) | bug | fixed (part) | #229 fixed (`8a4ca33`); #275 and #263 wait |
+| [#280](https://github.com/moonsharp-devs/moonsharp/pull/280) | Bunch of fixes and compatibility tweaks (fix #275, #263, #229) | bug | fixed (part) | #229 and #263 fixed; #275 waits |
 | [#246](https://github.com/moonsharp-devs/moonsharp/pull/246) | Implement script async execution control | feature | feature: planned | Same need as #231 |
 | [#202](https://github.com/moonsharp-devs/moonsharp/pull/202) | m_IsRunningOnAOT doesn't be used | tech debt | out of scope | A compiler warning under IL2CPP defines; waits for the Unity CI matrix |
 | [#191](https://github.com/moonsharp-devs/moonsharp/pull/191) | Make TimeZone changeable | feature | feature: not planned | No roadmap item |

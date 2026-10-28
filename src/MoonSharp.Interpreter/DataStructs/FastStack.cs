@@ -11,7 +11,11 @@ namespace MoonSharp.Interpreter.DataStructs
 	/// <typeparam name="T"></typeparam>
 	internal class FastStack<T> : IList<T>
 	{
-		T[] m_Storage;
+		// Items sit in a struct so stores skip the array covariance check: a T[] of a reference type
+		// is checked on every store because shared generic code cannot know the array's real type.
+		struct Slot { public T Value; }
+
+		Slot[] m_Storage;
 		int m_HeadIdx = 0;
 		readonly int m_MaxCapacity;
 
@@ -22,25 +26,25 @@ namespace MoonSharp.Interpreter.DataStructs
 
 		public FastStack(int initialCapacity, int maxCapacity)
 		{
-			m_Storage = new T[initialCapacity];
+			m_Storage = new Slot[initialCapacity];
 			m_MaxCapacity = maxCapacity;
 		}
 
 		public T this[int index]
 		{
-			get { return m_Storage[index]; }
-			set { m_Storage[index] = value; }
+			get { return m_Storage[index].Value; }
+			set { m_Storage[index].Value = value; }
 		}
 
 		public T Push(T item)
 		{
-			T[] storage = m_Storage;
+			Slot[] storage = m_Storage;
 			int head = m_HeadIdx;
 
 			if ((uint)head >= (uint)storage.Length)
 				storage = Grow(head + 1);
 
-			storage[head] = item;
+			storage[head].Value = item;
 			m_HeadIdx = head + 1;
 			return item;
 		}
@@ -53,7 +57,7 @@ namespace MoonSharp.Interpreter.DataStructs
 			m_HeadIdx += size;
 		}
 
-		private T[] Grow(int requiredCapacity)
+		private Slot[] Grow(int requiredCapacity)
 		{
 			if (requiredCapacity > m_MaxCapacity)
 				throw new ScriptRuntimeException("stack overflow");
@@ -64,25 +68,28 @@ namespace MoonSharp.Interpreter.DataStructs
 		}
 
 		// Clears the range [from, to), so a full stack can be cleared without indexing past its end.
+		// A loop is cheaper than Array.Clear for the few slots a pop usually frees.
 		private void Zero(int from, int to)
 		{
-			Array.Clear(m_Storage, from, to - from);
-		}
-
-		private void Zero(int index)
-		{
-			m_Storage[index] = default(T);
+			if (to - from <= 8)
+			{
+				for (int i = from; i < to; i++)
+					m_Storage[i].Value = default(T);
+			}
+			else
+			{
+				Array.Clear(m_Storage, from, to - from);
+			}
 		}
 
 		public T Peek(int idxofs = 0)
 		{
-			T item = m_Storage[m_HeadIdx - 1 - idxofs];
-			return item;
+			return m_Storage[m_HeadIdx - 1 - idxofs].Value;
 		}
 
 		public void Set(int idxofs, T item)
 		{
-			m_Storage[m_HeadIdx - 1 - idxofs] = item;
+			m_Storage[m_HeadIdx - 1 - idxofs].Value = item;
 		}
 
 		public void CropAtCount(int p)
@@ -96,7 +103,7 @@ namespace MoonSharp.Interpreter.DataStructs
 			if (cnt == 1)
 			{
 				--m_HeadIdx;
-				m_Storage[m_HeadIdx] = default(T);
+				m_Storage[m_HeadIdx].Value = default(T);
 			}
 			else
 			{
@@ -109,8 +116,8 @@ namespace MoonSharp.Interpreter.DataStructs
 		public T Pop()
 		{
 			--m_HeadIdx;
-			T retval = m_Storage[m_HeadIdx];
-			m_Storage[m_HeadIdx] = default(T);
+			T retval = m_Storage[m_HeadIdx].Value;
+			m_Storage[m_HeadIdx].Value = default(T);
 			return retval;
 		}
 

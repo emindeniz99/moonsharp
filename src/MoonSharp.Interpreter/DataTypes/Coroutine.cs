@@ -21,11 +21,11 @@ namespace MoonSharp.Interpreter
 			/// </summary>
 			Coroutine,
 			/// <summary>
-			/// A CLR callback assigned to a coroutine. 
+			/// No longer produced: a coroutine whose body is a CLR callback is a <see cref="Coroutine"/> now.
 			/// </summary>
 			ClrCallback,
 			/// <summary>
-			/// A CLR callback assigned to a coroutine and already executed.
+			/// No longer produced: a coroutine whose body is a CLR callback is a <see cref="Coroutine"/> now.
 			/// </summary>
 			ClrCallbackDead,
 			/// <summary>
@@ -39,16 +39,7 @@ namespace MoonSharp.Interpreter
 		/// </summary>
 		public  CoroutineType Type { get; private set; }
 
-		private CallbackFunction m_ClrCallback;
 		private Processor m_Processor;
-
-
-		internal Coroutine(CallbackFunction function)
-		{
-			Type = CoroutineType.ClrCallback;
-			m_ClrCallback = function;
-			OwnerScript = null;
-		}
 
 		internal Coroutine(Processor proc)
 		{
@@ -56,14 +47,6 @@ namespace MoonSharp.Interpreter
 			m_Processor = proc;
 			m_Processor.AssociatedCoroutine = this;
 			OwnerScript = proc.GetScript();
-		}
-
-		internal void MarkClrCallbackAsDead()
-		{
-			if (Type != CoroutineType.ClrCallback)
-				throw new InvalidOperationException("State must be CoroutineType.ClrCallback");
-
-			Type = CoroutineType.ClrCallbackDead;
 		}
 
 		internal DynValue Recycle(Processor mainProcessor, Closure closure)
@@ -167,12 +150,6 @@ namespace MoonSharp.Interpreter
 
 			if (Type == CoroutineType.Coroutine)
 				return m_Processor.Coroutine_Resume(args);
-			else if (Type == CoroutineType.ClrCallback)
-			{
-				DynValue ret = m_ClrCallback.Invoke(context, args);
-				MarkClrCallbackAsDead();
-				return ret;
-			}
 			else
 				throw ScriptRuntimeException.CannotResumeNotSuspended(CoroutineState.Dead);
 		}
@@ -246,12 +223,7 @@ namespace MoonSharp.Interpreter
 		{
 			get
 			{
-				if (Type == CoroutineType.ClrCallback)
-					return CoroutineState.NotStarted;
-				else if (Type == CoroutineType.ClrCallbackDead)
-					return CoroutineState.Dead;
-				else 
-					return m_Processor.State;
+				return m_Processor.State;
 			}
 		}
 

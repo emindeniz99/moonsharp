@@ -380,7 +380,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		// https://github.com/moonsharp-devs/moonsharp/issues/315: a script can store t[0] and t[-1],
 		// pairs from C# lists them, but Table.Get(0) and Table.Get(-1) returned nil.
 		[Test]
-		[Ignore("waits for table work (Table.cs): https://github.com/moonsharp-devs/moonsharp/issues/315")]
 		public void Issue315_TableGetReadsZeroAndNegativeKeys()
 		{
 			Script s = new Script();
@@ -394,7 +393,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		// https://github.com/moonsharp-devs/moonsharp/issues/308 (upstream PR #355): the error of a
 		// multi-key Table.Get showed the template "Key '{0}' ..." instead of the key.
 		[Test]
-		[Ignore("waits for table work (Table.cs): https://github.com/moonsharp-devs/moonsharp/issues/308")]
 		public void Issue308_MultiKeyGetNamesTheMissingKey()
 		{
 			Script s = new Script();
@@ -408,7 +406,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		// Upstream PR #179 (https://github.com/moonsharp-devs/moonsharp/pull/179): Table.Set(key, null)
 		// threw NullReferenceException deep in the table code; a null value means nil, as t[k] = nil.
 		[Test]
-		[Ignore("waits for table work (Table.cs): https://github.com/moonsharp-devs/moonsharp/pull/179")]
 		public void PR179_TableSetWithNullRemovesTheKey()
 		{
 			Script s = new Script();

@@ -181,16 +181,11 @@ namespace MoonSharp.Interpreter.CoreLib
 
 			int pos = vpos.IsNil() ? len : (int)vpos.Number;
 
-			// Lua 5.2 with #t <= 0: return t[#t] and set it to nil. That key is outside 1..n, so it goes
-			// through the script's key path; Get(int)/Set(int) would use a separate entry for it.
+			// Lua 5.2 with #t <= 0: return t[#t] and set it to nil.
 			if (pos == len && len < 1)
 			{
-				DynValue key = DynValue.NewNumber(pos);
-				ret = list.Get(key);
-
-				if (ret.IsNotNil())
-					list.Set(key, DynValue.Nil);
-
+				ret = list.Get(pos);
+				list.Set(pos, DynValue.Nil);
 				return ret;
 			}
 

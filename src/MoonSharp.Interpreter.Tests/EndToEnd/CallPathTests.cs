@@ -174,6 +174,30 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
+		public void CallPath_TailCallsKeepTheEntryFrame()
+		{
+			// The threshold also counts value stack slots, so a tail call in the function C# called could
+			// remove that entry frame: a tail-called C# function then returned to address -1 and the loop
+			// failed with IndexOutOfRangeException, and an error in a tail-called Lua function unwound past
+			// the entry frame into the frames of the C# caller's own loop.
+			Script s = new Script();
+			s.Options.TailCallOptimizationThreshold = 1;
+			s.Globals["callLua"] = DynValue.NewCallback((ctx, args) => ctx.GetScript().Call(args[0]));
+
+			DynValue r = s.DoString(@"
+				local function boom() error('boom') end
+				local function viaTail() return boom() end
+				local ok, err = pcall(callLua, viaTail)
+				local t = { 'a', 'b' }
+				return ok, err, table.concat(t, ',')");
+
+			Assert.AreEqual(false, r.Tuple[0].Boolean);
+			StringAssert.EndsWith("boom", r.Tuple[1].String);
+			Assert.AreEqual("a,b", r.Tuple[2].String);
+			Assert.AreEqual("1", s.DoString("return tostring(1)").String);
+		}
+
+		[Test]
 		public void CallPath_ErrorsInsideCallsUnwindCleanly()
 		{
 			// pcall and xpcall around failing Lua functions with arguments, many times over: the stack must

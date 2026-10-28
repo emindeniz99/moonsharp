@@ -1274,7 +1274,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 						ref CallStackItem csi = ref m_ExecutionStack.Peek();
 
 						// if the current stack item has no "odd" things pending and neither has the new coming one..
-						if (csi.ClrFunction == null && csi.Handlers == null
+						// An entry frame stays: the loop that runs it returns to C# when it returns, and errors
+						// unwind down to it.
+						if (csi.ClrFunction == null && csi.Handlers == null && (csi.Flags & CallStackItemFlags.EntryPoint) == 0
 							&& continuation == null && unwindHandler == null && handler == null)
 						{
 							instructionPtr = PerformTCO(instructionPtr, argsCount);

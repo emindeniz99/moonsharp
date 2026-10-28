@@ -51,6 +51,19 @@ class WorkerBehaviourTest {
         }
     }
 
+    // create() replaces a context of the same name, and only a context created with int64 has the module.
+    @Test
+    void createReplacesTheContextWithTheChosenModules() {
+        try (MoonSharpWorker w = MoonSharpWorker.startDll(Fixtures.hostDll())) {
+            w.load("c", "m", "return { f = function() return 1 end }");
+            w.create("c", true);
+            assertEquals("host", w.invoke("c", "m", "f").error().kind());
+            assertEquals("9223372036854775807", w.run("c", "max", "return tostring(int64.max)", null).valueOrThrow().asText());
+            w.create("c", false);
+            assertEquals("runtime", w.run("c", "max", "return tostring(int64.max)", null).error().kind());
+        }
+    }
+
     @Test
     void scriptErrorsDoNotKillTheWorker() {
         try (MoonSharpWorker w = MoonSharpWorker.startDll(Fixtures.hostDll())) {

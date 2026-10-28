@@ -44,6 +44,15 @@ namespace MoonSharp.Hosting
 		{
 		}
 
+		/// <summary>
+		/// A context with <see cref="PortableModules"/>, plus the int64 and uint64 modules when int64 is true
+		/// (see docs/int64.md). Every transport creates contexts through this method, so they offer the same choice.
+		/// </summary>
+		public static ScriptHost Create(bool int64)
+		{
+			return new ScriptHost(int64 ? PortableModules | CoreModules.Int64 : PortableModules);
+		}
+
 		public ScriptHost(CoreModules modules)
 		{
 			m_Script = new Script(modules);

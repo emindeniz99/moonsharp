@@ -18,6 +18,9 @@ namespace MoonSharp.Benchmarks
 			foreach (int n in new[] { 1, 10, 100, 1000 })
 				Report("Script (default modules)", n, () => new Script());
 
+			foreach (int n in new[] { 1, 10, 100, 1000 })
+				Report("Script (soft sandbox)", n, () => new Script(CoreModules.Preset_SoftSandbox));
+
 			var host = new Script();
 			var body = host.DoString("return function() coroutine.yield(1) end");
 

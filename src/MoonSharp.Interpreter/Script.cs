@@ -123,12 +123,29 @@ namespace MoonSharp.Interpreter
 		{
 			this.CheckScriptOwnership(globalTable);
 
+			return CompileFunctionSource(AddFunctionSource(code, funcFriendlyName), globalTable);
+		}
+
+		/// <summary>
+		/// Registers the source of a function as LoadFunction does, without compiling it yet, so that the
+		/// numbering of later chunks does not depend on when it is compiled.
+		/// </summary>
+		internal SourceCode AddFunctionSource(string code, string funcFriendlyName)
+		{
 			string chunkName = string.Format("libfunc_{0}", funcFriendlyName ?? m_Sources.Count.ToString());
 
 			SourceCode source = new SourceCode(chunkName, code, m_Sources.Count, this);
 
 			m_Sources.Add(source);
 
+			return source;
+		}
+
+		/// <summary>
+		/// Compiles a source registered with AddFunctionSource.
+		/// </summary>
+		internal DynValue CompileFunctionSource(SourceCode source, Table globalTable)
+		{
 			int address = Loader_Fast.LoadFunction(this, source, m_ByteCode, globalTable != null || m_GlobalTable != null);
 
 			SignalSourceCodeChange(source);
@@ -498,7 +515,14 @@ namespace MoonSharp.Interpreter
 			}
 			else if (function.Type == DataType.ClrFunction)
 			{
-				return function.Callback.ClrCallback(this.CreateDynamicExecutionContext(function.Callback), new CallbackArguments(args, false));
+				DynValue ret = function.Callback.ClrCallback(this.CreateDynamicExecutionContext(function.Callback), new CallbackArguments(args, false));
+
+				// A C# function can end with a plain tail call (dofile, require): finish it rather than
+				// handing the request to the host.
+				if (ret.Type == DataType.TailCallRequest && ret.TailCallData.Continuation == null && ret.TailCallData.ErrorHandler == null)
+					return Call(ret.TailCallData.Function, ret.TailCallData.Args);
+
+				return ret;
 			}
 
 			return m_MainProcessor.Call(function, args);

@@ -12,7 +12,10 @@ namespace MoonSharp.Hosting.Cli
 	/// Each request is one line of JSON:
 	///   { "id": 1, "op": "load", "context": "c1", "module": "offers", "source": "..." }
 	///   { "id": 2, "op": "invoke", "context": "c1", "module": "offers", "function": "select", "args": [ ... ] }
-	///   ops: load, invoke, run, validate, unload, dispose, version
+	///   { "id": 3, "op": "create", "context": "c2", "int64": true }
+	///   ops: create, load, invoke, run, validate, unload, dispose, version
+	/// A context is created on first use; "create" makes a new one (replacing any context of that name),
+	/// optionally with the int64 and uint64 modules.
 	/// Each response is one line: { "id": 1, "result": { ...ScriptHost envelope... } }
 	/// The worker answers requests in order. Run several workers for parallelism.
 	/// </summary>
@@ -76,6 +79,9 @@ namespace MoonSharp.Hosting.Cli
 			{
 				case "version":
 					return Ok("\"" + ScriptHost.EngineVersion + "\"");
+				case "create":
+					m_Contexts[contextId] = ScriptHost.Create((bool?)r["int64"] ?? false);
+					return Ok("true");
 				case "dispose":
 					return Ok(m_Contexts.Remove(contextId) ? "true" : "false");
 				case "unload":

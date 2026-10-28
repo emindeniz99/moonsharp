@@ -15,12 +15,17 @@ export type HostResult<T = unknown> =
   | { ok: true; value: T; output: string; timing: { compileMs?: number; runMs?: number } }
   | { ok: false; error: HostError; output: string };
 
+export interface ContextOptions {
+  /** Adds the int64 and uint64 modules (exact 64-bit integers). */
+  int64?: boolean;
+}
+
 /** Arguments as JS values, or raw JSON text when a JS number cannot hold the value exactly. */
 export type Args = unknown[] | { json: string };
 
 interface Exports {
   Version(): string;
-  CreateContext(): number;
+  CreateContext(int64: boolean): number;
   DisposeContext(context: number): boolean;
   Validate(context: number, chunk: string, source: string): string;
   Load(context: number, moduleId: string, source: string): string;
@@ -67,8 +72,12 @@ export class ScriptContext {
 
   /** Compiles and runs a chunk; if it returns a function, calls it with the input. */
   run<T = unknown>(chunk: string, source: string, input?: unknown): HostResult<T> {
-    const json = input === undefined ? null : toJson(input);
-    return JSON.parse(this.live().Run(this.id, chunk, source, json));
+    return this.runJson(chunk, source, input === undefined ? null : toJson(input));
+  }
+
+  /** Like run, with the input as JSON text (or null for none), for values a JS number cannot hold exactly. */
+  runJson<T = unknown>(chunk: string, source: string, inputJson: string | null): HostResult<T> {
+    return JSON.parse(this.live().Run(this.id, chunk, source, inputJson));
   }
 
   dispose(): void {
@@ -91,8 +100,9 @@ export class MoonSharpRuntime {
     return this.exports.Version();
   }
 
-  createContext(): ScriptContext {
-    return new ScriptContext(this.exports, this.exports.CreateContext());
+  /** A new Lua state. With int64: true it has the int64 and uint64 modules (docs/int64.md). */
+  createContext(options: ContextOptions = {}): ScriptContext {
+    return new ScriptContext(this.exports, this.exports.CreateContext(options.int64 ?? false));
   }
 }
 

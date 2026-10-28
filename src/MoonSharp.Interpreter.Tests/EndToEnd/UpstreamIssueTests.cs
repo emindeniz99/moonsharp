@@ -469,5 +469,20 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				Thread.CurrentThread.CurrentCulture = old;
 			}
 		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/285: the package table had only loaded
+		// and config. Code that registers modules in package.preload (module bundlers, compilers
+		// to Lua) could not run.
+		[Test]
+		[Ignore("waits for module registration work (require): https://github.com/moonsharp-devs/moonsharp/issues/285")]
+		public void Issue285_RequireUsesPackagePreload()
+		{
+			Script s = new Script();
+
+			DynValue r = s.DoString("package.preload['app.config'] = function(name) return { name = name } end return require('app.config').name, type(package.path)");
+
+			Assert.AreEqual("app.config", r.Tuple[0].String);
+			Assert.AreEqual("string", r.Tuple[1].String);
+		}
 	}
 }

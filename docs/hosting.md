@@ -268,7 +268,8 @@ contexts, but the .NET runtime stays loaded until the JVM exits.
 
 Measured with `CrashProbe` (test sources), which runs each case in a child JVM,
 on 2026-10-28 with Temurin 17.0.20.1, .NET 8.0.32 and this branch (the native
-stack guard and the limits in "The contract"). The JVM's threads have the
+stack guard and the limits in "The contract"), after merging `next` with the
+fused loop opcodes; the run before that merge gave the same outcomes. The JVM's threads have the
 default 1 MB stack unless the case says otherwise.
 
 | Case | Worker | In process, CoreCLR | In process, NativeAOT |
@@ -278,10 +279,10 @@ default 1 MB stack unless the case says otherwise.
 | Recursion through a CLR callback (`string.gsub(s, '.', f)` where `f` calls `gsub` again), on a 1 MB and an 8 MB Java thread | `runtime` error "C stack overflow"; the context keeps working | same | same |
 | The same through a `table.sort` comparator | same | same | same |
 | Script that never returns, no limits, then `Thread.interrupt()` | the thread stays blocked; `close()` kills the worker and frees it | the thread keeps running; only ending the JVM stops it | same as CoreCLR |
-| The same script with a 100 ms time limit | `interrupted` error after 122 ms; the context keeps working | after 126 ms | after 115 ms |
-| The same script with a 1,000,000 instruction limit | `interrupted` error after 31 ms | after 24 ms | after 19 ms |
-| One long library call under a 100 ms time limit (`gsub` over 20 million characters) | returns normally after 2.8 s: the limit is checked only between VM instructions | after 3.1 s | after 3.3 s |
-| Allocation without bound, no limits, .NET heap capped at 256 MB (`DOTNET_GCHeapHardLimit=10000000`) | `host` error `System.OutOfMemoryException` after 1.2 s; the context keeps working | same, after 1.5 s | same, after 1.2 s |
+| The same script with a 100 ms time limit | `interrupted` error after 115 ms; the context keeps working | after 121 ms | after 126 ms |
+| The same script with a 1,000,000 instruction limit | `interrupted` error after 26 ms | after 33 ms | after 22 ms |
+| One long library call under a 100 ms time limit (`gsub` over 20 million characters) | returns normally after 2.6 s: the limit is checked only between VM instructions | after 2.9 s | after 3.4 s |
+| Allocation without bound, no limits, .NET heap capped at 256 MB (`DOTNET_GCHeapHardLimit=10000000`) | `host` error `System.OutOfMemoryException` after 1.2 s; the context keeps working | same, after 1.5 s | same, after 1.4 s |
 | The same without a heap cap | not run (the worker process grows, not the JVM) | not run | the JVM process grew to 2.6 GB in 12 s before the probe stopped it |
 | SIGTERM / SIGINT to the JVM | shutdown hooks run (exit 143 / 130) | shutdown hooks run, because the shim restores the JVM's SIGTERM handler (see below) | shutdown hooks run |
 | SIGQUIT (thread dump) | works | works | works |
@@ -487,7 +488,7 @@ option on Linux x64, no longer an experiment, under these conditions:
    one, it gets a `host` error and the JVM lives on. The cap covers every
    context in the process.
 3. Accept what the limits do not stop: a single long library call holds its
-   thread until it returns (2.8–3.3 s for one `gsub` over 20 million
+   thread until it returns (2.6–3.4 s for one `gsub` over 20 million
    characters above, with a 100 ms limit).
 
 Prefer the NativeAOT backend there: no .NET install, 38 ms start, full speed
@@ -548,10 +549,11 @@ changes with the MoonSharp version.
 
 ## Browser notes
 
-- The build publishes untrimmed `MoonSharp.Interpreter`
-  (`TrimmerRootAssembly`). MoonSharp registers its standard library through
-  reflection, and trimming removes those methods: `string`, `table` and
-  `require` come back nil.
+- The build trims `MoonSharp.Interpreter` like any other assembly. MoonSharp
+  registers its standard library through reflection; the interpreter's
+  embedded `ILLink.Descriptors.xml` keeps those methods, which trimming would
+  otherwise remove (`string`, `table` and `require` came back nil). The whole
+  corpus passes on the trimmed build in all three browsers.
 - The worker script listens with `addEventListener("message")`. The .NET runtime
   replaces `self.onmessage` inside a Web Worker, so a handler assigned to
   `onmessage` never runs.
@@ -563,33 +565,88 @@ changes with the MoonSharp version.
   there, or run it in the Web Worker (`WorkerClient.createContext(options)`).
   The playground uses a 5 s time limit.
 
+## Browser budget
+
+The owner's target: the first load takes under 5 s on a mid-range phone over
+slow 4G (ROADMAP.md, decisions). `src/Hosting/browser/budget.json` turns it into
+numbers, and `test/budget.mjs` measures the published page in headless Chromium
+with an empty cache (CI runs it last in `hosting.yml` and writes the table to
+the job summary):
+
+- **Bytes**: every file the page fetches before the runtime is ready (19 files),
+  counted as the `.br` file `dotnet publish` writes next to it, which is what a
+  production server sends.
+- **Desktop start**: navigation to a usable runtime (`window.moonsharp`), median
+  of 5 runs.
+- **Phone model**: 9 round trips of 150 ms (DNS, TCP, TLS and the page's chain
+  of dependent requests) + bytes at 1.6 Mbit/s + 4 × desktop start. 150 ms,
+  1.6 Mbit/s and the 4× CPU factor for a mid-tier phone are what Lighthouse and
+  Chrome DevTools call slow 4G
+  ([Lighthouse throttling](https://github.com/GoogleChrome/lighthouse/blob/main/docs/throttling.md)).
+
+Measured on 2026-10-28 in headless Chromium 153, the build before this branch
+(`7bb1550`) and after it in alternating rounds, 3 rounds of 5 cold loads each,
+on a shared 4-core VM (load average 6–8):
+
+| Measurement | Before | After | Enforced budget |
+|---|---|---|---|
+| Bytes, brotli | 1,948,563 | 1,774,807 | 1,850,000 |
+| Bytes, raw | 6,044,828 | 5,565,590 | |
+| Files | 23 | 19 | |
+| Desktop start, median of 5, per round | 693, 1,073, 755 ms | 1,111, 845, 671 ms | 1,500 ms |
+| Phone model | 13.4–14.9 s | 12.5–14.3 s | target 5 s, reported only |
+
+The start time did not change measurably; the rounds differ more than the
+builds. The old build fails the byte budget, which is how the check was tested.
+
+**The 5 s target cannot be met with .NET WebAssembly under these assumptions.**
+`dotnet.native.wasm` alone is 976 KB brotli, 4.7 s at 1.6 Mbit/s; with the round
+trips that is 6 s before any assembly arrives or any code runs. Within 5 s the
+model leaves 346 KB brotli for everything, with a 0.5 s desktop start. The
+ROADMAP decision assumed the target was met ("today 1.91 MB brotli, about
+0.6 s start"); under the standard slow 4G it is missed by more than 2×. So CI
+enforces the measured state with a margin (the "Enforced budget" column) and
+reports the phone model against the target without failing on it, until the
+owner picks one of: a faster network assumption (on WebPageTest's "4G" profile,
+9 Mbit/s and 170 ms, the model gives about 6 s with a 0.7 s desktop start), a cached or deferred runtime
+(the playground could render before the runtime starts), or a smaller engine for
+the web.
+
+What this branch removed from the download: `System.Text.RegularExpressions`
+(94 KB brotli), which only `ScriptHost` used to read an error's position and
+which plain string code now replaces, and the trimmer root on
+`MoonSharp.Interpreter` (71 KB brotli across the interpreter and CoreLib;
+`System.ComponentModel.Primitives`, `System.Diagnostics.Process` and
+`netstandard` went with it). What is left: `dotnet.native.wasm` 976 KB,
+`System.Private.CoreLib` 425 KB, `MoonSharp.Interpreter` 127 KB,
+`System.Linq.Expressions` 112 KB (kept by the interpreter's CLR interop) and the
+runtime scripts. Shrinking `dotnet.native.wasm` needs a native relink with the
+`wasm-tools` workload.
+
 ## Status
 
 Measured on 2026-10-28 on a 4-core Intel Xeon 2.1 GHz cloud VM, Ubuntu 24.04.
 
 | Check | Result |
 |---|---|
-| Conformance corpus, 225 cases in 8 suites (2026-10-28, `mise.toml` tools): `dotnet`, `dotnet-bytecode`, .NET with invariant globalization, Chromium 153 main thread, Java 17 worker, CoreCLR 8.0.32 and NativeAOT in process | 225/225 on each; every known-failures file is empty |
+| Conformance corpus, 245 cases in 10 suites (2026-10-28, `mise.toml` tools, branch `feat/hosting-hardening`): `dotnet`, `dotnet-bytecode`, .NET with invariant globalization and with `tr_TR`, Chromium 153, Firefox 155 and WebKit 26.6 (Playwright 1.63, main thread), Java 17 worker, CoreCLR 8.0.32 and NativeAOT in process | 245/245 on each; every known-failures file is empty |
 | Conformance corpus, .NET with `LANG=tr_TR.UTF-8` | all pass since numbers convert to text without the process culture; earlier 223/225 (`1.5 .. ''` gave `1,5`) |
 | Shared fixtures, .NET 8 CLI | 24/24 under `C.UTF-8`, `tr_TR`, `de_DE` and invariant globalization |
 | Shared fixtures, headless Chromium 153 (Playwright 1.63), main thread | 24/24 |
-| Web Worker path, Chromium | pass (eligibility call, 2^53 + 1 rejected) |
+| Web Worker path, Chromium, Firefox and WebKit | pass (eligibility call, 2^53 + 1 rejected, instruction limit) |
 | Shared fixtures, Java 21 through the worker | 24/24, plus 6 worker behaviour tests |
 | Shared fixtures, Java 21, in process through CoreCLR 8.0.33 (hostfxr + JNI) | 24/24, plus 10 in-process behaviour tests |
 | Shared fixtures, Java 21, in process through NativeAOT (.NET 8) | 24/24, plus 10 in-process behaviour tests |
 | MoonSharp unit tests compiled with NativeAOT (first run, before the fixes in "The unit suite under NativeAOT") | 680/732; 49 failures were CLR interop, 3 are descriptor tests that cannot pass when trimmed |
 | Spring Boot 4.1 sample over HTTP | 4/4 |
 | Fixtures on .NET (default culture and invariant globalization), Chromium, the Java worker, CoreCLR and NativeAOT in process, and the Spring Boot sample, rerun with the `mise.toml` tools (SDK 10.0.402, .NET 8.0.32, Temurin 17.0.20.1, Maven 3.10.0, Node 24.22.1, CMake 4.4.4) | all pass |
-| Firefox, Safari/WebKit, iOS Safari | not run (only Chromium is installed here) |
+| iOS Safari, Android Chrome, desktop Safari | not run; Playwright's WebKit build on Linux stands in for Safari's engine, not for Safari on a device |
 | Unity Editor, Android/iOS IL2CPP | not run (no Unity licence or devices here) |
 | Windows/macOS hosts | not run |
 
-Browser download (`dotnet publish`, .NET 10, interpreter mode, no AOT): 18
-files, 5,940,862 bytes raw, 2,343,322 gzip, 1,914,963 brotli. The largest is
-`dotnet.native.wasm` (3.0 MB raw, 977 KB brotli); `MoonSharp.Interpreter` is
-370 KB raw, 132 KB brotli. Runtime start in headless Chromium from a local
-server: about 550–610 ms. Cached `invoke` from JavaScript, including JSON in
-both directions: 78–89 µs per call.
+Browser download: see "Browser budget". Cached `invoke` from JavaScript,
+including JSON in both directions, 20,000 calls after 2,000 warm-up on a shared
+machine: 62–88 µs in Chromium, 117–135 µs in Firefox, 54–89 µs in WebKit.
 
 Java worker (Java 21, .NET 8 worker, eligibility rule from the fixtures):
 

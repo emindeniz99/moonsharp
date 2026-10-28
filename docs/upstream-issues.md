@@ -30,7 +30,8 @@ again; planned work goes in [ROADMAP.md](ROADMAP.md), and fork-only changes in
 | total | 92 | 22 |
 
 Fixed on branch `fix/upstream-issues`: #70, #102 (with #305, #328), #161, #173, #219 (with #257),
-#229 (`tonumber`), #286, #291, #307. Fixed earlier in the fork: #221, #304, #348,
+#229 (`tonumber`), #286, #291, #307. Fixed on branch `perf/vm-group-a`: #229 (arithmetic).
+Fixed earlier in the fork: #221, #304, #348,
 and #300 in part (opt-in 64-bit integers). Two JSON bugs found by the
 conformance corpus have no upstream issue: `\u` escapes in `json.parse`
 (`5788be3`) and `json.serialize` dropping string keys of a table that also has
@@ -109,7 +110,7 @@ keys 1..n (`77c8662`).
 | [#235](https://github.com/moonsharp-devs/moonsharp/issues/235) | Add .lua file import support for Unity | feature | feature: worth adding | A `ScriptedImporter` for `.lua`; belongs with the Unity package and CI matrix work |
 | [#232](https://github.com/moonsharp-devs/moonsharp/issues/232) | System.IndexOutOfRangeException randomly when calling Closure | bug | does not reproduce | iOS only, no reproduction. A stack overflow (#221, fixed) or a Script used from two threads gives this exception |
 | [#231](https://github.com/moonsharp-devs/moonsharp/issues/231) | Script timeout/cancellation support | feature | feature: planned | Coroutines have `AutoYieldCounter`; an execution budget for plain calls is on the roadmap |
-| [#229](https://github.com/moonsharp-devs/moonsharp/issues/229) | tonumber("0x23") does not work | bug | fixed | `8a4ca33` for `tonumber`; string coercion in arithmetic waits for VM core work (ignored `UpstreamIssueTests.Issue229_ArithmeticCoercesLuaNumerals`) |
+| [#229](https://github.com/moonsharp-devs/moonsharp/issues/229) | tonumber("0x23") does not work | bug | fixed | `8a4ca33` for `tonumber`; string coercion in arithmetic on `perf/vm-group-a` (`UpstreamIssueTests.Issue229_ArithmeticCoercesLuaNumerals`) |
 | [#228](https://github.com/moonsharp-devs/moonsharp/issues/228) | Async / await support | feature | feature: not planned | `AsyncExtensions` covers calling Lua from async C#; awaiting a `Task` from Lua is not on the roadmap |
 | [#221](https://github.com/moonsharp-devs/moonsharp/issues/221) | MoonSharp does not catch stack overflows | bug | fixed | Fork [PR #1](https://github.com/emindeniz99/moonsharp/pull/1) |
 | [#219](https://github.com/moonsharp-devs/moonsharp/issues/219) | json.parse lexer fails on 2D arrays | bug | fixed | `103a2d4`; `Issue219_JsonParsesNestedArrays` |

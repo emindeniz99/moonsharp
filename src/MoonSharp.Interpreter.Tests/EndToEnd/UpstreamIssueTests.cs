@@ -211,7 +211,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		// Arithmetic coerces strings with the same rules as tonumber; DynValue.CastToNumber still
 		// uses .NET parsing and should call BasicModule.TryParseLuaNumber.
 		[Test]
-		[Ignore("waits for VM core work (DynValue.CastToNumber): https://github.com/moonsharp-devs/moonsharp/issues/229")]
 		public void Issue229_ArithmeticCoercesLuaNumerals()
 		{
 			Script s = new Script();

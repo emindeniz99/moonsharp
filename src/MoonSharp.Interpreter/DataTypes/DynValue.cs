@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -729,8 +728,9 @@ namespace MoonSharp.Interpreter
 			}
 			else if (rv.Type == DataType.String)
 			{
+				// Lua numerals only, as tonumber reads them: "0x10" is 16, "1,000" and "$5" are not numbers.
 				double num;
-				if (double.TryParse(rv.String, NumberStyles.Any, CultureInfo.InvariantCulture, out num))
+				if (CoreLib.BasicModule.TryParseLuaNumber(rv.String, out num))
 					return num;
 			}
 			return null;

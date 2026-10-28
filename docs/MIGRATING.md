@@ -403,9 +403,10 @@ fraction and `p` exponent), an optional sign and surrounding whitespace.
 print(tonumber("0x23"), tonumber("1,000"))   -- before: nil 1000   now: 35 nil
 ```
 
-String coercion in arithmetic (`"0x10" + 1`) still uses the old parsing
-until the VM work changes it. Affected: scripts that passed formatted
-numbers to `tonumber`
+Strings that arithmetic and the library functions turn into numbers
+(`DynValue.CastToNumber`) follow the same rules: `"0x10" + 1` is 17,
+and `"1,000" + 1` is an error where it was 1001. Affected: scripts that
+passed formatted numbers to `tonumber` or used them in arithmetic
 ([upstream #229](https://github.com/moonsharp-devs/moonsharp/issues/229)).
 
 ## Standard streams set after a script is created are used

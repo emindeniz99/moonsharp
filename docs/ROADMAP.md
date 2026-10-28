@@ -128,7 +128,6 @@ After step 4: the checkpoint in the decisions table.
   - `math.huge` is `Double.MaxValue`, so `math.huge == 1/0` is false.
   - `error(t)` with a table, and `error()`, raise "bad argument #1 to 'error'"; `pcall` never sees the error object.
   - The lexer reads `1e15+0.5` as one malformed number.
-  - Arithmetic does not coerce hexadecimal strings (`'0x10' + 1`) and accepts .NET forms such as `'1,000'`: `DynValue.CastToNumber` should call `BasicModule.TryParseLuaNumber`, which `tonumber` uses (ignored test `Issue229_ArithmeticCoercesLuaNumerals`).
   - `string.format`: `%e` writes three exponent digits, `%d` of 2^63 wraps instead of failing, `%s` rejects nil.
   - `string.find(s, '', init)` with `init` past the end still matches.
   - `tostring` writes shortest round-trip digits, `NaN` and `Infinity`, where Lua 5.2 writes `%.14g`, `nan` and `inf`.

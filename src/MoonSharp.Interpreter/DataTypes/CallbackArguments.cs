@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using MoonSharp.Interpreter.DataStructs;
+using MoonSharp.Interpreter.Execution.VM;
 
 namespace MoonSharp.Interpreter
 {
@@ -8,6 +9,10 @@ namespace MoonSharp.Interpreter
 	/// </summary>
 	public class CallbackArguments
 	{
+		// The arguments: a list, or (m_Args null) a StackArguments view over the top slots of the VM's value
+		// stack, which the standard library reads in place while the call runs. A view is valid only during
+		// the call; library functions never keep it. The view is a subclass so that list arguments, which
+		// any host callback gets, stay as small as they were.
 		IList<DynValue> m_Args;
 		int m_Count;
 		bool m_LastIsTuple = false;
@@ -24,27 +29,86 @@ namespace MoonSharp.Interpreter
 			if (m_Args.Count > 0)
 			{
 				var last = m_Args[m_Args.Count - 1];
-
-				if (last.Type == DataType.Tuple)
-				{
-					m_Count = last.Tuple.Length - 1 + m_Args.Count;
-					m_LastIsTuple = true;
-				}
-				else if (last.Type == DataType.Void)
-				{
-					m_Count = m_Args.Count - 1;
-				}
-				else
-				{
-					m_Count = m_Args.Count;
-				}
-			}
-			else
-			{
-				m_Count = 0;
+				CountArguments(m_Args.Count, last.Type, last.Type == DataType.Tuple ? last.Tuple.Length : 0);
 			}
 
 			IsMethodCall = isMethodCall;
+		}
+
+		private protected CallbackArguments(bool isMethodCall)
+		{
+			IsMethodCall = isMethodCall;
+		}
+
+		private protected void CountArguments(int slots, DataType lastType, int lastTupleLength)
+		{
+			if (lastType == DataType.Tuple)
+			{
+				m_Count = lastTupleLength - 1 + slots;
+				m_LastIsTuple = true;
+			}
+			else if (lastType == DataType.Void)
+			{
+				m_Count = slots - 1;
+			}
+			else
+			{
+				m_Count = slots;
+			}
+		}
+
+		private protected bool LastIsTuple
+		{
+			get { return m_LastIsTuple; }
+		}
+
+		/// <summary>
+		/// The arguments of a call to a library function, read in place from the value stack: the
+		/// <c>slots</c> values from <c>first</c>.
+		/// </summary>
+		internal sealed class StackArguments : CallbackArguments
+		{
+			readonly ValueStack m_Stack;
+			readonly int m_First;
+			readonly int m_Slots;
+
+			internal StackArguments(ValueStack stack, int first, int slots, bool isMethodCall)
+				: base(isMethodCall)
+			{
+				m_Stack = stack;
+				m_First = first;
+				m_Slots = slots;
+
+				if (slots > 0)
+				{
+					ref LuaValue last = ref stack.Items[first + slots - 1];
+					CountArguments(slots, last.Type, last.Type == DataType.Tuple ? last.TupleValue.Tuple.Length : 0);
+				}
+			}
+
+			// The same value RawGet reads in list mode: a tuple gives its first value, or nil when empty.
+			internal LuaValue Value(int index)
+			{
+				LuaValue v;
+
+				if (!LastIsTuple || index < m_Slots - 1)
+					v = m_Stack.Items[m_First + index];
+				else
+					v = m_Stack.Items[m_First + m_Slots - 1].TupleValue.Tuple[index - (m_Slots - 1)].ToLuaValue();
+
+				if (v.Type == DataType.Tuple)
+				{
+					DynValue[] tuple = v.ToDynValue().Tuple;
+					v = tuple.Length > 0 ? tuple[0].ToLuaValue() : LuaValue.Nil;
+				}
+
+				return v;
+			}
+
+			internal StackArguments SkipFirst()
+			{
+				return new StackArguments(m_Stack, m_First + 1, m_Slots - 1, false);
+			}
 		}
 
 		/// <summary>
@@ -85,6 +149,16 @@ namespace MoonSharp.Interpreter
 			if (index >= m_Count)
 				return null;
 
+			if (m_Args == null)
+			{
+				LuaValue lv = ((StackArguments)this).Value(index);
+
+				if (translateVoids && lv.Type == DataType.Void)
+					return DynValue.Nil;
+
+				return lv.ToDynValue();
+			}
+
 			if (!m_LastIsTuple || index < m_Args.Count - 1)
 				v = m_Args[index];
 			else
@@ -106,6 +180,18 @@ namespace MoonSharp.Interpreter
 			return v;
 		}
 
+		/// <summary>
+		/// The argument at <paramref name="index"/> as the VM holds it, without creating a DynValue: nil when
+		/// absent or void, the first value of a tuple.
+		/// </summary>
+		internal LuaValue GetLuaValue(int index)
+		{
+			if (index >= m_Count)
+				return LuaValue.Nil;
+
+			LuaValue v = m_Args == null ? ((StackArguments)this).Value(index) : RawGet(index, false).ToLuaValue();
+			return v.Type == DataType.Void ? LuaValue.Nil : v;
+		}
 
 		/// <summary>
 		/// Converts the arguments to an array
@@ -217,6 +303,9 @@ namespace MoonSharp.Interpreter
 		{
 			if (this.IsMethodCall)
 			{
+				if (m_Args == null)
+					return ((StackArguments)this).SkipFirst();
+
 				Slice<DynValue> slice = new Slice<DynValue>(m_Args, 1, m_Args.Count - 1, false);
 				return new CallbackArguments(slice, false);
 			}

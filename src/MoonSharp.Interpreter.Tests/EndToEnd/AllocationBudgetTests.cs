@@ -195,6 +195,15 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
+		public void AllocationBudget_StringFormat()
+		{
+			// The library reads its arguments in place: no argument array and no DynValue per string or
+			// number argument (368 bytes before). What is left: the call's context and argument view, the
+			// result string and its DynValue, and the DynValue the table stores.
+			AssertLuaBudget("string_format", "local format = string.format\nreturn function(n) local buf, j = {}, 1 for i = 1, n do buf[j] = format('%d:%s', i, 'x') j = j + 1 if j > 64 then j = 1 end end return buf[64] end", 216);
+		}
+
+		[Test]
 		public void AllocationBudget_LuaToCsCall1()
 		{
 			SkipUnlessMeasurable();

@@ -957,7 +957,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			if (fn.Type == DataType.ClrFunction)
 			{
 				CallbackFunction callback = (CallbackFunction)fn.Object;
-				DynValue[] args = CreateArgsListForFunctionCall(argsCount);
+				DynValue[] args = callback.ReadsArgumentsInPlace ? null : CreateArgsListForFunctionCall(argsCount);
 
 				// instructionPtr - 1: instructionPtr already points to the next instruction at this moment
 				// but we need the current instruction here
@@ -971,8 +971,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 				frame.Handlers = CallStackItemHandlers.Create(continuation, handler, unwindHandler);
 				frame.Flags = flags;
 
-				var ret = callback.Invoke(new ScriptExecutionContext(this, callback, sref), args,
-					isMethodCall: thisCall);
+				var ctx = new ScriptExecutionContext(this, callback, sref);
+				var ret = args == null
+					? callback.InvokeOnStack(ctx, m_ValueStack, m_ValueStack.Count - argsCount, argsCount, thisCall)
+					: callback.Invoke(ctx, args, isMethodCall: thisCall);
 				m_ValueStack.RemoveLast(argsCount + 1);
 				m_ValueStack.Push(ret);
 

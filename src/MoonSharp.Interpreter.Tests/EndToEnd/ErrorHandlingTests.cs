@@ -242,6 +242,27 @@ return a()
 			Assert.AreEqual(30000, res.Number);
 		}
 
+		[Test]
+		public void Errors_XpcallHandlerIgnoresErrorsAnInnerPcallCatches()
+		{
+			// The message handler runs for errors that reach its xpcall, once, as in Lua; it used to run for
+			// every error raised anywhere below it, even ones an inner pcall had already caught.
+			Script S = new Script();
+			DynValue res = S.DoString(@"
+				local calls = 0
+				local function handler(m) calls = calls + 1 return 'handled: ' .. m end
+				local ok1 = xpcall(function() pcall(function() error('inner') end) return 'fine' end, handler)
+				local before = calls
+				local ok2, msg = xpcall(function() local function deep(n) if n == 0 then error('boom') end return deep(n - 1) + 1 end return deep(5) end, handler)
+				return before, ok1, calls, ok2, msg");
+
+			Assert.AreEqual(0, res.Tuple[0].Number);
+			Assert.IsTrue(res.Tuple[1].Boolean);
+			Assert.AreEqual(1, res.Tuple[2].Number);
+			Assert.IsFalse(res.Tuple[3].Boolean);
+			StringAssert.StartsWith("handled: ", res.Tuple[4].String);
+		}
+
 		private static void AssertOriginalExceptionFrame(Exception exception, Type declaringType)
 		{
 			var frames = new StackTrace(exception).GetFrames();

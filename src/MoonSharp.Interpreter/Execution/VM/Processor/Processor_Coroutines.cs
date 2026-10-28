@@ -40,7 +40,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		public DynValue Coroutine_Resume(DynValue[] args)
 		{
+			EnterNative();
 			EnterProcessor();
+			bool completed = false;
 
 			try
 			{
@@ -69,6 +71,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 				m_State = CoroutineState.Running;
 				DynValue retVal = Processing_Loop(entrypoint);
 
+				completed = true;
+
 				if (retVal.Type == DataType.YieldRequest)
 				{
 					if (retVal.YieldRequest.Forced)
@@ -88,15 +92,15 @@ namespace MoonSharp.Interpreter.Execution.VM
 					return retVal;
 				}
 			}
-			catch (Exception)
-			{
-				// Unhandled exception - move to dead
-				m_State = CoroutineState.Dead;
-				throw;
-			}
 			finally
 			{
+				// An unhandled exception leaves the coroutine dead. A finally block, not catch and rethrow:
+				// see Processing_Loop.
+				if (!completed)
+					m_State = CoroutineState.Dead;
+
 				LeaveProcessor();
+				t_NativeNesting--;
 			}
 		}
 

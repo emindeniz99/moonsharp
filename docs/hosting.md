@@ -364,9 +364,12 @@ Making in process the default would need two changes in MoonSharp, after which
 this comparison should be repeated:
 
 - a stack guard on the CLR recursion paths (`Processor.Call`, callbacks from
-  `gsub`, `sort`, metamethods), for example
-  `RuntimeHelpers.EnsureSufficientExecutionStack()`, so the overflow becomes a
-  Lua error;
+  `gsub`, `sort`, metamethods), so the overflow becomes a Lua error. This now
+  exists: at most 200 nested entries into the VM per thread (Lua 5.2's limit,
+  also applied to the parser and `json`), backed by
+  `RuntimeHelpers.EnsureSufficientExecutionStack()`. In a .NET process the
+  `gsub` case above ends in a "C stack overflow" error that `pcall` catches.
+  The crash table above predates it; the JVM probe has not been rerun;
 - an execution budget (instruction count or cancellation) for plain calls, so a
   runaway script returns an error instead of holding the thread.
 

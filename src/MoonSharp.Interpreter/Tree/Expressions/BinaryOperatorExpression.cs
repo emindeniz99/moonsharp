@@ -295,6 +295,9 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 
 		public override void Compile(Execution.VM.ByteCode bc)
 		{
+			// A chain like 1+1+...+1 parses in a loop but compiles as a tree as deep as the chain.
+			System.Runtime.CompilerServices.RuntimeHelpers.EnsureSufficientExecutionStack();
+
 			m_Exp1.Compile(bc);
 
 			if (m_Operator == Operator.Or)

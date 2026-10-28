@@ -56,3 +56,48 @@ Positive divisors give the same results as before, except where the two formulas
 in the last bit for fractional operands.
 
 **Affected:** scripts that use `%` with a negative or infinite divisor.
+
+## Native recursion is limited to 200 levels and fails with an error
+
+**Before:** recursion that runs through C# (a Lua function passed to `string.gsub` or `table.sort`
+that calls them again, a C# callback that calls back into Lua, `coroutine.wrap` inside a coroutine),
+source nested tens of thousands of levels deep, and deeply nested or cyclic data in `json.parse` and
+`json.serialize` overflowed the native stack. The runtime then ended the whole process; no `catch` or
+`pcall` could stop it.
+
+**After:** the same limit as Lua 5.2 (`LUAI_MAXCCALLS`, 200) applies everywhere, as a count, so every
+host stops at the same depth:
+
+| What | Error |
+|---|---|
+| More than 200 nested entries into the VM from C# on one thread (`Script.Call`, callbacks, `coroutine.resume`) | `ScriptRuntimeException` "C stack overflow" (Lua 5.2's text); `pcall` catches it |
+| Source with more than 200 nested expressions and blocks (`load`, `Script.LoadString`) | `SyntaxErrorException` "chunk has too many syntax levels" |
+| `json.parse` input or `json.serialize` tables more than 200 levels deep, or cyclic tables | `json nesting exceeds 200 levels` (a `ScriptRuntimeException` from Lua) |
+
+A stack probe (`RuntimeHelpers.EnsureSufficientExecutionStack`) stays behind the counts for threads
+with a small stack, and stops very long operator chains such as a generated `1+1+...+1` with a million
+terms, which parse in a loop but compile recursively.
+
+**Affected:** code nested deeper than Lua 5.2 allows, which MoonSharp used to accept as long as the
+stack held. On IL2CPP the stack probe depends on the runtime's support, which has not been verified;
+the counts work everywhere.
+
+## `xpcall` message handlers only see errors that reach them
+
+**Before:** an error raised below an `xpcall` ran its message handler even when an inner `pcall`
+caught the error first, and an error crossing several C# callbacks could run a handler once per
+callback level.
+
+**After:** the handler runs once, for errors that reach its `xpcall`, as in Lua.
+
+**Affected:** scripts whose message handlers have side effects (logging, counters).
+
+## `InterpreterException.CallStack` keeps the innermost frames
+
+**Before:** when an error crossed C# callbacks (for example a Lua function called from `string.gsub`),
+each level overwrote `CallStack`, and the host saw only the outermost frames.
+
+**After:** `CallStack` is filled once, where the error is first caught, and lists every frame from
+the error outwards.
+
+**Affected:** hosts that print `CallStack`; the list is longer and starts where the error happened.

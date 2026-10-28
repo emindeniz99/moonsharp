@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using MoonSharp.Interpreter.DataStructs;
 using MoonSharp.Interpreter.Debugging;
@@ -76,6 +77,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			if (coroutinesStack.Count > 0 && coroutinesStack[coroutinesStack.Count - 1] != this)
 				return coroutinesStack[coroutinesStack.Count - 1].Call(function, args);
 
+			EnterNative();
 			EnterProcessor();
 
 			int valueStackBase = m_ValueStack.Count;
@@ -86,22 +88,26 @@ namespace MoonSharp.Interpreter.Execution.VM
 				var stopwatch = this.m_Script.PerformanceStats.StartStopwatch(Diagnostics.PerformanceCounter.Execution);
 
 				m_CanYield = false;
+				bool completed = false;
 
 				try
 				{
 					int entrypoint = PushClrToScriptStackFrame(CallStackItemFlags.CallEntryPoint, function, args);
-					return Processing_Loop(entrypoint);
-				}
-				catch
-				{
-					// Unwinding stops at the entry point frame and leaves the function, its arguments and
-					// whatever the failing instruction pushed. Drop them, or every failed call shrinks the stack.
-					m_ValueStack.CropAtCount(valueStackBase);
-					m_ExecutionStack.CropAtCount(executionStackBase);
-					throw;
+					DynValue result = Processing_Loop(entrypoint);
+					completed = true;
+					return result;
 				}
 				finally
 				{
+					// On an error, unwinding stops at the entry point frame and leaves the function, its
+					// arguments and whatever the failing instruction pushed. Drop them, or every failed call
+					// shrinks the stack. A finally block, not catch and rethrow: see Processing_Loop.
+					if (!completed)
+					{
+						m_ValueStack.CropAtCount(valueStackBase);
+						m_ExecutionStack.CropAtCount(executionStackBase);
+					}
+
 					m_CanYield = true;
 
 					if (stopwatch != null)
@@ -111,6 +117,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			finally
 			{
 				LeaveProcessor();
+				t_NativeNesting--;
 			}
 		}
 
@@ -186,6 +193,37 @@ namespace MoonSharp.Interpreter.Execution.VM
 			{
 				m_Parent.m_CoroutinesStack.Add(this);
 			}
+		}
+
+		/// <summary>
+		/// How deep C# may nest into the VM, the parser and json on one thread: Lua 5.2's LUAI_MAXCCALLS.
+		/// A count, unlike the remaining stack size, gives the same answer on every host.
+		/// </summary>
+		internal const int MAX_NATIVE_NESTING = 200;
+
+		[ThreadStatic]
+		static int t_NativeNesting;
+
+		// Lua calls do not nest on the native stack, but a CLR function that calls back into Lua does
+		// (string.gsub with a function replacement, table.sort with a comparator, a C# __index): each level
+		// runs its own Processing_Loop. Raise a script error while there is still stack to unwind and run
+		// error handlers, instead of letting the runtime end the process with a StackOverflowException.
+		// The stack probe covers hosts that run scripts on a thread with a small stack.
+		private static void EnterNative()
+		{
+			if (t_NativeNesting >= MAX_NATIVE_NESTING)
+				throw new ScriptRuntimeException("C stack overflow");
+
+			try
+			{
+				RuntimeHelpers.EnsureSufficientExecutionStack();
+			}
+			catch (InsufficientExecutionStackException)
+			{
+				throw new ScriptRuntimeException("C stack overflow");
+			}
+
+			t_NativeNesting++;
 		}
 
 		internal SourceRef GetCoroutineSuspendedLocation()

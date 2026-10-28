@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using MoonSharp.Interpreter.DataStructs;
 using MoonSharp.Interpreter.Debugging;
 using MoonSharp.Interpreter.Interop;
@@ -25,6 +26,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			// string.dump), so this array stays valid; a null slot or an address past its end means code
 			// was added after it was taken, and GetCodeArray returns one that holds it.
 			Instruction[] code = m_RootChunk.GetCodeArray();
+			InterpreterException unhandled = null;
 
 			repeat_execution:
 
@@ -248,64 +250,75 @@ namespace MoonSharp.Interpreter.Execution.VM
 			catch (InterpreterException ex)
 			{
 				FillDebugData(ex, instructionPtr);
+				unhandled = ex;
 
-				if (!(ex is ScriptRuntimeException))
+				if (ex is ScriptRuntimeException)
 				{
-					ex.Rethrow();
-					throw;
-				}
-
-				if (m_Debug.DebuggerAttached != null)
-				{
-					if (m_Debug.DebuggerAttached.SignalRuntimeException((ScriptRuntimeException)ex))
+					if (m_Debug.DebuggerAttached != null)
 					{
-						if (instructionPtr >= 0 && instructionPtr < this.m_RootChunk.Code.Count)
+						if (m_Debug.DebuggerAttached.SignalRuntimeException((ScriptRuntimeException)ex))
 						{
-							ListenDebugger(m_RootChunk.Code[instructionPtr], instructionPtr);
+							if (instructionPtr >= 0 && instructionPtr < this.m_RootChunk.Code.Count)
+							{
+								ListenDebugger(m_RootChunk.Code[instructionPtr], instructionPtr);
+							}
+						}
+					}
+
+					// Message handlers (xpcall) of the frames this error unwinds: down to the frame that
+					// handles it or to this loop's entry point, not past them.
+					for (int i = 0; i < m_ExecutionStack.Count; i++)
+					{
+						var c = m_ExecutionStack.Peek(i);
+
+						if (c.ErrorHandlerBeforeUnwind != null)
+							ex.DecoratedMessage = PerformMessageDecorationBeforeUnwind(c.ErrorHandlerBeforeUnwind, ex.DecoratedMessage, GetCurrentSourceRef(instructionPtr));
+
+						if (c.ErrorHandler != null || (c.Flags & CallStackItemFlags.EntryPoint) != 0)
+							break;
+					}
+
+					while (m_ExecutionStack.Count > 0)
+					{
+						CallStackItem csi = PopToBasePointer();
+
+						if (csi.ErrorHandler != null)
+						{
+							instructionPtr = csi.ReturnAddress;
+
+							if (csi.ClrFunction == null)
+							{
+								m_ValueStack.RemoveLast(csi.ArgCount + 1);
+							}
+
+							var cbargs = new DynValue[] { DynValue.NewString(ex.DecoratedMessage) };
+
+							DynValue handled = csi.ErrorHandler.Invoke(new ScriptExecutionContext(this, csi.ErrorHandler, GetCurrentSourceRef(instructionPtr)), cbargs);
+
+							m_ValueStack.Push(handled);
+
+							goto repeat_execution;
+						}
+						else if ((csi.Flags & CallStackItemFlags.EntryPoint) != 0)
+						{
+							break;
 						}
 					}
 				}
-
-				for (int i = 0; i < m_ExecutionStack.Count; i++)
-				{
-					var c = m_ExecutionStack.Peek(i);
-
-					if (c.ErrorHandlerBeforeUnwind != null)
-						ex.DecoratedMessage = PerformMessageDecorationBeforeUnwind(c.ErrorHandlerBeforeUnwind, ex.DecoratedMessage, GetCurrentSourceRef(instructionPtr));
-				}
-
-
-				while (m_ExecutionStack.Count > 0)
-				{
-					CallStackItem csi = PopToBasePointer();
-
-					if (csi.ErrorHandler != null)
-					{
-						instructionPtr = csi.ReturnAddress;
-
-						if (csi.ClrFunction == null)
-						{
-							m_ValueStack.RemoveLast(csi.ArgCount + 1);
-						}
-
-						var cbargs = new DynValue[] { DynValue.NewString(ex.DecoratedMessage) };
-
-						DynValue handled = csi.ErrorHandler.Invoke(new ScriptExecutionContext(this, csi.ErrorHandler, GetCurrentSourceRef(instructionPtr)), cbargs);
-
-						m_ValueStack.Push(handled);
-
-						goto repeat_execution;
-					}
-					else if ((csi.Flags & CallStackItemFlags.EntryPoint) != 0)
-					{
-						ex.Rethrow();
-						throw;
-					}
-				}
-
-				ex.Rethrow();
-				throw;
 			}
+
+			// Rethrow after the catch block, not inside it. A throw inside it starts a nested dispatch while
+			// the frames it would unwind are still on the stack; through N nested loops (C# callbacks that
+			// call back into Lua) CoreCLR then spends O(N^2) unwinding, minutes for a few thousand levels.
+			// Capture the stack trace once, at the innermost loop: capturing it again at every level copies
+			// a trace that grows with the depth, which is O(N^2) as well.
+			unhandled.Rethrow();
+
+			if (unhandled.DispatchInfo == null)
+				unhandled.DispatchInfo = ExceptionDispatchInfo.Capture(unhandled);
+
+			unhandled.DispatchInfo.Throw();
+			return null;
 
 		return_to_native_code:
 			return m_ValueStack.Pop();
@@ -760,17 +773,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 					Flags = flags,
 				});
 
-				try
-				{
-					var ret = fn.Callback.Invoke(new ScriptExecutionContext(this, fn.Callback, sref), args,
-						isMethodCall: thisCall);
-					m_ValueStack.RemoveLast(argsCount + 1);
-					m_ValueStack.Push(ret);
-				}
-				catch
-				{
-					throw;
-				}
+				var ret = fn.Callback.Invoke(new ScriptExecutionContext(this, fn.Callback, sref), args,
+					isMethodCall: thisCall);
+				m_ValueStack.RemoveLast(argsCount + 1);
+				m_ValueStack.Push(ret);
 
 				m_ExecutionStack.Pop();
 

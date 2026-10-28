@@ -10,6 +10,10 @@ namespace MoonSharp.Interpreter
 	[Serializable]
 	public class InterpreterException : Exception
 	{
+		// Captured once where the processor first catches this exception, so each nested processor loop
+		// rethrows with the original .NET stack trace without copying the trace again at every level.
+		internal System.Runtime.ExceptionServices.ExceptionDispatchInfo DispatchInfo;
+
 		/// <summary>
 		/// Initializes a new instance of the <see cref="InterpreterException"/> class.
 		/// </summary>

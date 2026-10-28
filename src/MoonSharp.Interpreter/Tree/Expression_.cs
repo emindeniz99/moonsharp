@@ -62,6 +62,9 @@ namespace MoonSharp.Interpreter.Tree
 
 		internal static Expression SubExpr(ScriptLoadingContext lcontext, bool isPrimary)
 		{
+			// Every nested expression passes here.
+			lcontext.EnterSyntaxLevel();
+
 			Expression e = null;
 
 			Token T = lcontext.Lexer.Current;
@@ -122,6 +125,7 @@ namespace MoonSharp.Interpreter.Tree
 				e = BinaryOperatorExpression.CommitOperatorChain(chain, lcontext);
 			}
 
+			lcontext.SyntaxDepth--;
 			return e;
 		}
 

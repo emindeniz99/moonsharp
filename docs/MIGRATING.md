@@ -62,3 +62,33 @@ print(v.Count)   -- before: 0 in the optimized modes, 1 with Reflection   now: 1
 Affected: hosts exposing structs with mutating methods. Hardwired
 descriptors are generated code that casts the receiver to a copy; they keep
 the old behaviour.
+
+## Reading a method from a userdata returns the same callback
+
+Each read of a method from a userdata, which includes every
+`obj:Method()` call, built a new callback bound to that userdata. The
+userdata now keeps its last two bound callbacks and returns them again, so:
+
+```lua
+print(obj.Method == obj.Method)          -- before: false   now: true
+print(rawequal(obj.Method, obj.Method))  -- before: false   now: true
+print(obj.Method == other.Method)        -- false, as before
+```
+
+The kept callback is read-only and is dropped when the descriptor's members
+change (`AddMember`, `RemoveMember`, a new extension method found by
+name). Overloads and extension methods are still resolved at each call.
+Affected: scripts that compared method values, and hosts that set
+`CallbackFunction.AdditionalData` on a callback read from a userdata
+(the object is now shared by later reads).
+
+## Named enum values pushed from the CLR share one userdata
+
+A CLR enum value with a name in a registered enum, returned by a method or
+pushed with `UserData.Create` or `DynValue.FromObject`, now reuses the
+read-only value the enum descriptor holds for that name, as `MyEnum.A` in a
+script already did, instead of a new userdata each time. Equality,
+`tostring` and table keys are unchanged. Affected: hosts that call
+`Assign` on such a value (it is read-only, like `DynValue.Nil`), or that
+attach a `UserValue` (`debug.setuservalue`) to one enum value and expect
+other pushes of the same value not to see it.

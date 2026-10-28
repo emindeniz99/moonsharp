@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using MoonSharp.Interpreter.Compatibility;
 using MoonSharp.Interpreter.Interop.BasicDescriptors;
@@ -22,6 +23,9 @@ namespace MoonSharp.Interpreter.Interop
 		/// Gets a value indicating whether this instance describes a flags enumeration.
 		/// </summary>
 		public bool IsFlags { get; private set; }
+
+		// Read-only values of the named members, by boxed value, filled once by the constructor.
+		readonly Dictionary<object, DynValue> m_NamedValues = new Dictionary<object, DynValue>();
 
 		Func<object, ulong> m_EnumToULong = null;
 		Func<ulong, object> m_ULongToEnum = null;
@@ -63,6 +67,10 @@ namespace MoonSharp.Interpreter.Interop
 				DynValue cvalue = UserData.Create(value, this);
 
 				base.AddDynValue(name, cvalue);
+
+				// Several names can share a value; the first one wins.
+				if (value != null && !m_NamedValues.ContainsKey(value))
+					m_NamedValues.Add(value, cvalue.AsReadOnly());
 			}
 
 			var attrs = Framework.Do.GetCustomAttributes(this.Type, typeof(FlagsAttribute), true);
@@ -81,6 +89,16 @@ namespace MoonSharp.Interpreter.Interop
 		}
 
 
+
+		/// <summary>
+		/// The read-only value of a named member equal to obj, or null. It shares its UserData with
+		/// the member, as reading the member from a script does.
+		/// </summary>
+		internal DynValue FindNamedValue(object obj)
+		{
+			DynValue v;
+			return m_NamedValues.TryGetValue(obj, out v) ? v : null;
+		}
 
 		/// <summary>
 		/// Adds an enum method to the object

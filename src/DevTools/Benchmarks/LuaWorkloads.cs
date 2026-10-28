@@ -25,6 +25,8 @@ namespace MoonSharp.Benchmarks
 			public long Iterations;
 			public string Check;
 			public string Note;
+			// The Lua source of a pure Lua case (null for host cases); TableWorkloads reuses it.
+			public string Source;
 
 			// Builds the runner on a fresh Script: the runner executes n iterations and returns the check value.
 			public Func<Script, Func<long, string>> Prepare;
@@ -38,6 +40,7 @@ namespace MoonSharp.Benchmarks
 				Iterations = iterations,
 				Check = check,
 				Note = note,
+				Source = source,
 				Prepare = script =>
 				{
 					DynValue fn = script.DoString(source);

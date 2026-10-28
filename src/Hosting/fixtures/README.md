@@ -34,8 +34,8 @@ check follows quickjs-ng's test262 runner.
 The expectations are what MoonSharp does today on every host. Where that differs
 from reference Lua 5.2, the case has a `note` saying what Lua 5.2 does; some of
 those are bugs, listed in docs/ROADMAP.md. Fixing one changes the expectation in
-the same commit. The `tables` cases pin today's `pairs` order, which the pending
-table-order decision may change.
+the same commit. The `tables` cases pin the `pairs` order: insertion order, as the
+owner decided for the table rewrite (docs/ROADMAP.md).
 
 ## Suite format
 

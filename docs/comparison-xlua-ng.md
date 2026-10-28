@@ -64,5 +64,5 @@ result. Numbers are median nanoseconds per loop iteration over 7 runs.
 - Package size (APK/IPA delta).
 - The C#/Lua bridge: calls in both directions, userdata, delegates.
 - Script start-up and memory per context. MoonSharp retains 79.5 KB per
-  `Script` with fork PR #3 (2.31 MB before). xLua-NG's own notes report about
+  `Script` with [fork PR #3](https://github.com/emindeniz99/moonsharp/pull/3) (2.31 MB before). xLua-NG's own notes report about
   1.4–1.6 ms per `LuaEnv` create and dispose on its hardware; not measured here.

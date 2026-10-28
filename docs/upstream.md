@@ -40,14 +40,14 @@ Bring upstream in with a merge commit; never rebase or force-push `master`.
 
 ## Divergence from upstream
 
-| Change | Fork PR | Upstream candidate | Upstream reference |
-|---|---|---|---|
-| Keep a Script usable after failed calls and stack overflow | #1 | yes | [#221](https://github.com/moonsharp-devs/moonsharp/issues/221) |
-| Benchmarks (lifecycle, hot calls, A/B builds) | #2 | yes | |
-| Allocate VM stacks on demand | #3 | yes | [#304](https://github.com/moonsharp-devs/moonsharp/issues/304) |
-| JSON numbers, string case and string order independent of culture | #4 | yes (the order change needs a maintainer decision) | none yet |
-| Hosting: JSON host, browser, Java worker, fixtures | #5 | no (fork-only) | |
-| Keep source locations in binary dumps | #6 | yes | [#348](https://github.com/moonsharp-devs/moonsharp/issues/348) |
+| Change | Fork PR | In fork `master` | Upstream candidate | Upstream reference |
+|---|---|---|---|---|
+| Keep a Script usable after failed calls and stack overflow | [#1](https://github.com/emindeniz99/moonsharp/pull/1) | merged | yes | [#221](https://github.com/moonsharp-devs/moonsharp/issues/221) |
+| Benchmarks (lifecycle, hot calls, A/B builds, native-Lua workloads) | [#2](https://github.com/emindeniz99/moonsharp/pull/2) | merged | yes | |
+| Allocate VM stacks on demand | [#3](https://github.com/emindeniz99/moonsharp/pull/3) | merged | yes | [#304](https://github.com/moonsharp-devs/moonsharp/issues/304) |
+| JSON numbers, string case and string order independent of culture | [#4](https://github.com/emindeniz99/moonsharp/pull/4) | merged | yes (the order change needs a maintainer decision) | none yet |
+| Hosting: JSON host, browser, Java worker, fixtures | [#5](https://github.com/emindeniz99/moonsharp/pull/5) | open | no (fork-only) | |
+| Keep source locations in binary dumps | [#6](https://github.com/emindeniz99/moonsharp/pull/6) | merged | yes | [#348](https://github.com/moonsharp-devs/moonsharp/issues/348) |
 
 ## Upstream issues found here, not yet fixed
 
@@ -73,4 +73,4 @@ Bring upstream in with a merge commit; never rebase or force-push `master`.
   [#334](https://github.com/moonsharp-devs/moonsharp/pull/334) bitwise
   operators: #334 targets `legacy/2.0`. A native integer subtype is a VM
   change and needs an upstream design discussion first.
-- The `luau` branch uses dump format version `0x152`, which #6 also uses.
+- The `luau` branch uses dump format version `0x152`, which [fork PR #6](https://github.com/emindeniz99/moonsharp/pull/6) also uses.

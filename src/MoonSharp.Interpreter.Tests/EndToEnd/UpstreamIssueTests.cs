@@ -388,5 +388,20 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 			StringAssert.Contains("'settings'", ex.Message);
 		}
+
+		// Upstream PR #179 (https://github.com/moonsharp-devs/moonsharp/pull/179): Table.Set(key, null)
+		// threw NullReferenceException deep in the table code; a null value means nil, as t[k] = nil.
+		[Test]
+		[Ignore("waits for table work (Table.cs): https://github.com/moonsharp-devs/moonsharp/pull/179")]
+		public void PR179_TableSetWithNullRemovesTheKey()
+		{
+			Script s = new Script();
+			Table t = new Table(s);
+			t.Set("name", DynValue.NewString("x"));
+
+			t.Set("name", null);
+
+			Assert.IsTrue(t.Get("name").IsNil());
+		}
 	}
 }

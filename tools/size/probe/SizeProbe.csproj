@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        The smallest app that uses MoonSharp, compiled with NativeAOT as a stand-in for IL2CPP.
+        tools/size/size.sh publishes it next to ../hello (the same app without MoonSharp); the
+        difference is what MoonSharp adds to a native binary after trimming.
+    -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <PublishAot>true</PublishAot>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\..\src\MoonSharp.Interpreter\MoonSharp.Interpreter.csproj" />
+    </ItemGroup>
+
+</Project>

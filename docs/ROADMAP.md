@@ -24,7 +24,7 @@ chat or a pull request.
 | 2026-10-28 | Checkpoint after the struct-value step: if loops and calls still run more than 4x slower than native Lua 5.5.1, decide whether to replace the compiler and VM core with a register VM behind the same public API (option C). | A register VM removes the remaining push/pop traffic but changes the dump format and debugger internals, so it should follow measurements, not precede them. |
 | 2026-10-28 | 64-bit integers are an opt-in library type (`int64`, `uint64`), not a number subtype. | Costs nothing when unused and keeps Lua 5.2 semantics. Revisit once values are structs. |
 | 2026-10-28 | No pull requests to upstream MoonSharp until the owner approves. | Owner's call. |
-| 2026-10-28 | **No unnecessary code.** Features may add code; nothing speculative, no unused helpers, no reimplementing what the platform already does well. Every change reports the netstandard2.0 Release `MoonSharp.Interpreter.dll` size before and after so growth stays visible. Fork point `fbd0367`: 372,224 bytes; master `0c0e5d4`: 392,704 bytes (mostly exact int64). | APK and IPA size matter for the mobile clients. |
+| 2026-10-28 | **No unnecessary code.** Features may add code; nothing speculative, no unused helpers, no reimplementing what the platform already does well. Every change reports the netstandard2.0 Release `MoonSharp.Interpreter.dll` size before and after so growth stays visible. CI fails when the DLL differs from `tools/size/interpreter-dll.baseline` by more than 512 bytes; a change that grows it on purpose puts the new size there in the same commit, and that commit is the deliberate "I meant this" step ([Size tracking](#size-tracking)). Fork point `fbd0367`: 372,224 bytes; master `0c0e5d4`: 392,704 bytes (mostly exact int64); `next` `e4671c6`: 429,568 bytes; `next` `9695eb7`: 431,616 bytes. | APK and IPA size matter for the mobile clients. |
 | 2026-10-28 | The struct-value, struct-frame and table rewrites land on `master`, not on a separate branch. | Breaking changes are allowed, the public API stays, and a long-lived branch would drift. |
 | 2026-10-28 | Allowed behaviour changes, each documented in a migration guide: `require` may become a C# function; runtime errors may use Lua's exact text with variable names; fast-called builtins may be missing from tracebacks while they run; closures without captured variables may be shared (visible through `rawequal`). | Each one buys start-up time or call speed; none changes results. |
 | 2026-10-28 | Script authors get LuaCATS definitions generated from the registered C# API; a short Teal vs TypeScriptToLua trial follows. | Types and completion without changing the runtime. |
@@ -64,6 +64,32 @@ What Unity 2021.3 support means for the code:
 - Code that Unity compiles (the package, the test sources) must stay within C# 9, the newest version Unity 2021.3 to Unity 6 support.
 - The UPM manifest declares `"unity": "2021.3"`.
 
+## Size tracking
+
+APK and IPA size matter for the mobile clients (decisions table). What is measured, and where:
+
+| What | Where | Gate |
+|---|---|---|
+| `MoonSharp.Interpreter.dll`, netstandard2.0 Release, as `tools/size/size.sh` builds it | `size` job in `ci.yml`, every CI run; job summary | Fails when the size differs from `tools/size/interpreter-dll.baseline` by more than 512 bytes, either way. Growth on purpose raises the baseline in the same commit; a shrink lowers it, so later growth is measured from there. |
+| NativeAOT, linux-x64: `tools/size/probe` (one script through a default `Script`, one library call) against `tools/size/hello` (the same program without MoonSharp), stripped and gzip -9 | the same job; job summary | Report only. The probe must print its result, or the size would be that of a library the trimmer broke. |
+| IL2CPP: `src/Unity/SizeProbe` built as a Linux IL2CPP player without and with MoonSharp (the same one script), per Unity version: all shipped player files, `GameAssembly.so` (as built, stripped, gzip -9) and `global-metadata.dat` | `unity.yml`; job summary | Report only; the player with MoonSharp must run its script. **Not run yet**: it needs the Unity secrets (see "Needs the owner"). Player settings are the editor's defaults except the IL2CPP backend; the summary names the stripping level. |
+
+Why 512 bytes: the sections of a PE file are padded to 512 bytes, so the DLL's size moves in 512-byte steps, and a change of a few bytes can cross one. Two builds of the same source are byte-identical (built twice on `next` `e4671c6`). `size.sh` turns off MinVer's version stamp and maps source paths (`ContinuousIntegrationBuild`), because both change the bytes with git history and the checkout directory: at `fbd0367` a plain build is 372,224 bytes and `size.sh` gives 371,712.
+
+Measured 2026-10-28 with `tools/size/size.sh --nativeaot` (Linux x64, .NET SDK 10.0.402, ILCompiler 8.0.32, clang 18.1.3; bytes):
+
+| Commit | Interpreter DLL | NativeAOT probe | NativeAOT hello world | MoonSharp's share | Share, gzip -9 |
+|---|---:|---:|---:|---:|---:|
+| `next` `9695eb7` (the baseline) | 431,616 | 4,784,360 | 1,576,432 | 3,207,928 | 1,449,035 |
+| `next` `e4671c6` | 429,568 | 4,776,168 | 1,576,432 | 3,199,736 | 1,444,835 |
+| fork point `fbd0367` | 371,712 | 4,846,984 | 1,576,432 | 3,270,552 | 1,470,412 |
+
+At `fbd0367` the NativeAOT probe fails ("attempt to call a nil value": the trimmer removed the standard library, which the interpreter's `ILLink.Descriptors.xml` keeps since [#8](https://github.com/emindeniz99/moonsharp/pull/8)). Its row is measured with today's descriptor file added to the probe as a `TrimmerRootDescriptor`; without it the binary is 4,281,608 bytes and does not work. Why the native share shrank by 70,816 bytes while the DLL grew by 57,856 is not analysed.
+
+The NativeAOT numbers have no baseline yet: two clean publishes gave identical bytes, and ILCompiler 8.0.33 (SDK 10.0.403) gave the same sizes with different bytes, but no CI run has produced them, and a toolchain update in `mise.toml` can move them without a change in MoonSharp.
+
+Not measured yet: an Android ARM64 APK and `libil2cpp.so` (follow-up below), an iOS IPA, Hardwire and source-generator registration, the debugger DLLs.
+
 ## Done (fork `master`)
 
 | PR | Change |
@@ -88,6 +114,8 @@ What Unity 2021.3 support means for the code:
 | branch `feat/source-generator` | A Roslyn source generator writes userdata descriptors at compile time for `[MoonSharpUserData]` types and types listed with `[assembly: MoonSharpUserDataTypes]`: typed argument and result conversion, one `switch` per type, structs changed in place, per-member reflection fallback with a diagnostic, explicit registration (`GeneratedUserData.RegisterAll()`). Shipped in the UPM package. Results and error texts match reflection in the parity suite, and 20 interop fixtures pass on generated descriptors. See [source-generator.md](source-generator.md). |
 | branch `fix/interop-decisions` | The owner's interop decisions: a fractional number picks a floating-point overload and the overload cache tells whole from fractional numbers ([#293](https://github.com/moonsharp-devs/moonsharp/issues/293); `overload_call` interop workload B/A 0.95 to 0.98 against `next` after the struct-value merge, inside noise); an exact type match beats a custom converter ([#294](https://github.com/moonsharp-devs/moonsharp/issues/294)); derived types expose their base classes' static members, except those declared in the core library ([#175](https://github.com/moonsharp-devs/moonsharp/issues/175)); lists and dictionaries become tables under automatic registration ([#274](https://github.com/moonsharp-devs/moonsharp/issues/274)). `MoonSharp.Interpreter.dll` (netstandard2.0 Release) 416,256 to 417,792 bytes (+1,536). The source generator follows the #175 rule. See [MIGRATING.md](MIGRATING.md). |
 | branch `perf/inline-caches` | Runtime lookups and calls (PLAN A17 stage A, A18, A19, B7-lite). Library functions read their arguments in place on the value stack (`CallbackArguments.StackArguments`; host callbacks keep the list form); metatables remember the metamethods they lack (`Table.MetaAbsent`); field, method and global accesses with a constant name keep a per-instruction cache keyed by table shape and id, through up to four `__index` tables (`FieldCache`); `math.abs/ceil/floor/sqrt/sin/cos/exp/max/min`, `string.len/sub/byte`, `type`, `select('#')` and `table.insert(t, v)` run without a call frame when the argument types match, guarded by the registered `CallbackFunction`; coroutines reuse their yield request. Bytes per iteration: string_format 368 to 216, coroutine_switch 400 to 248, builtin calls 0. `workloads 7` medians, `next` a3f40d2 to this branch (one run each, about 10-20% noise): method_call 364 to 248 ns, coroutine_switch 611 to 416, oop_inherit 282 to 250, string_format 533 to 511, table_hash_set_get unchanged. A/B against `next`, 21 interleaved rounds (A/A within 0.99-1.05 for these rows): StringFormat1K 0.85, StringFormatMix1K 0.86 (allocation 507 to 275 KB), Concat1K 0.85, SumLoop100K 0.91, CallEligibility 0.91; `new Script()` allocates 50.7 to 51.8 KB (one cache field per instruction). `MoonSharp.Interpreter.dll` 417,792 to 423,936 bytes (+6,144). See [MIGRATING.md](MIGRATING.md). |
+| branch `ci/size-tracking` | Size tracking ([Size tracking](#size-tracking)): a `size` job in `ci.yml` checks the interpreter DLL against a committed baseline and reports what MoonSharp adds to a NativeAOT binary; `unity.yml` reports what it adds to a Linux IL2CPP player per Unity version (not run yet). No runtime change. |
+| branch `fix/require-package` | `require` and `package` follow Lua 5.2 where hosts depend on them: `package.preload` ([#285](https://github.com/moonsharp-devs/moonsharp/issues/285)), `package.path` searched by `ScriptLoaderBase` before the host's `ModulePaths` ([#332](https://github.com/moonsharp-devs/moonsharp/issues/332)), `package.searchers` (and `package.loaders`), a module's own `package.loaded` entry kept, and a "not found" error that lists what was tried at the caller's position. `require` stays Lua compiled on first use, so it still yields in coroutines and works under `pcall` and `Script.Call`. `MoonSharp.Interpreter.dll` (netstandard2.0 Release) 429,568 to 431,616 bytes (+2,048) against `next` with the inline caches. See [MIGRATING.md](MIGRATING.md). |
 
 ## In progress
 
@@ -156,9 +184,11 @@ float_math 71 vs 42.6 (1.7x), fib_recursive 54 vs 40.8 us (1.3x). The stack VM i
 - Name the variable in runtime errors ("attempt to call a nil value (global 'foo')").
 - A `Script` keeps every chunk it compiles, so a long-lived `Script` that compiles in a loop grows without bound.
 - `ScriptOptions(defaults)` does not copy `ColonOperatorClrCallbackBehaviour`.
+- A tail call returned by a C# function to another C# function drops its continuation (`Internal_ExecCall` never invokes it for a C# target); `pcall` works around it by calling C# functions directly. Found while writing `require`.
+- A cyclic `require` ends, as in Lua 5.2, with "stack overflow", but the message carries `bytecode:<n>` instead of a source position.
 - Property getters and setters called through reflection (AOT platforms, `InteropAccessMode.Reflection`) still wrap a thrown exception in `TargetInvocationException`; methods no longer do. A setter's own `ArgumentException` is also reported as a type mismatch on the compiled path.
 - `PlatformAutoDetector` and `UnityAssetsScriptLoader` test `UNITY_5`, which Unity 2017 and later no longer define, so the package always takes the reflection path (`IsUnityNative` is false). The Unity test bed checks the default loader; replace the checks with `UNITY_5_3_OR_NEWER` if it fails or once the matrix is green.
-- Upstream bugs that reproduce in the string library, the VM core and the compiler, and `require` ignoring `package.path` and `package.preload`: each has an ignored test in `UpstreamIssueTests.cs` that fails without the `Ignore` (list in [upstream-issues.md](upstream-issues.md)). Remove the `Ignore` with the fix.
+- Upstream bugs that reproduce in the string library, the VM core and the compiler: each has an ignored test in `UpstreamIssueTests.cs` that fails without the `Ignore` (list in [upstream-issues.md](upstream-issues.md)). Remove the `Ignore` with the fix.
 - Found by the conformance corpus; each is a case with a `note`, so a fix updates its expectation. The owner decides which are bugs to fix (in `legacy` too) and which stay as documented differences:
   - `math.huge` is `Double.MaxValue`, so `math.huge == 1/0` is false.
   - `error(t)` with a table, and `error()`, raise "bad argument #1 to 'error'"; `pcall` never sees the error object.
@@ -182,6 +212,10 @@ float_math 71 vs 42.6 (1.7x), fib_recursive 54 vs 40.8 us (1.3x). The stack VM i
   `repeat ... until` condition (a `Clean` sits between it and its jump) and upvalue operands; the
   debugger stops on a numeric `for` line only when the loop starts (MIGRATING.md).
 - Unity matrix additions, each a cost question: Unity 6000.3 LTS (newest Unity 6 line); the hardwire registration mode (`MyNamespace.MyClass.Initialize()`); Android and iOS IL2CPP players.
+- Size tracking follow-ups:
+  - the real Android number: build `src/Unity/SizeProbe` without and with MoonSharp as an Android IL2CPP ARM64 APK and report the APK and `libil2cpp.so`. It needs game-ci's `android` image (`unityci/editor:ubuntu-6000.0.85f1-android-3.2.2@sha256:3be4f5d104d534c94a4e42026722d0e1fff2892450ce5534d78a15eda876ed9a`, 7.19 GB compressed against 5.66 GB for the `linux-il2cpp` image, Docker Hub, 2026-10-28), a second editor image next to the 10-15 GB the matrix job already unpacks, so most likely a separate job with its own pull and sign-in that waits for the matrix (one account), plus two Gradle and NDK builds. Not added to every `master` run for that cost; a `workflow_dispatch`-only job for one Unity version is the cheap way;
+  - a NativeAOT baseline next to the DLL's, once CI runs print the same numbers as the local ones in [Size tracking](#size-tracking);
+  - an iOS IPA, which needs a macOS runner and Xcode.
 - Run the conformance corpus in the Unity players too, through `ScriptHost`, with `unity-mono` and `unity-il2cpp` known-failures files.
 - Run the bytecode leg of the corpus on the browser and Java hosts too (they accept the base64 dump text today; only the .NET runner compiles).
 - The JSON contract for int64 results (the decision above): today a context with int64 returns them as an `output` error.
@@ -211,7 +245,7 @@ float_math 71 vs 42.6 (1.7x), fib_recursive 54 vs 40.8 us (1.3x). The stack VM i
   2. Add repository secrets `UNITY_EMAIL`, `UNITY_PASSWORD` and `UNITY_TOTP_KEY` (Settings, Secrets and variables, Actions).
   3. Merge `unity.yml` to `master`; a push to `master` starts it, and "Run workflow" on the Unity workflow page starts it by hand (GitHub offers that button only for workflows on the default branch). The three versions run one after another, about 30 to 45 minutes each.
   4. If "Activate Unity (activation file and authenticator code)" fails with "did not return a licence": the Unity website no longer converts Personal activation files for every account ([game-ci/documentation#408](https://github.com/game-ci/documentation/issues/408)). Activate a Personal licence in Unity Hub on any machine, read the serial from its licence file (Linux `~/.local/share/unity3d/Unity/Unity_lic.ulf`, macOS `/Library/Application Support/Unity/Unity_lic.ulf`, Windows `C:\ProgramData\Unity\Unity_lic.ulf`) with `sed -n 's/.*DeveloperData Value="\([^"]*\)".*/\1/p' Unity_lic.ulf | base64 -d | tail -c +5`, and add it as `UNITY_SERIAL`; the workflow then activates with it and returns the seat at the end.
-  5. Each job uploads `unity-<version>-results` (one line per test). A red job lists the tests that failed or did not run; tests that skip themselves on Unity (the three trim-descriptor tests) are listed but allowed.
+  5. Each job uploads `unity-<version>-results` (one line per test). A red job lists the tests that failed or did not run; tests that skip themselves on Unity (the three trim-descriptor tests) are listed but allowed. The job summary also has the size of MoonSharp in a Linux IL2CPP player ([Size tracking](#size-tracking)).
 - Android and iOS devices for IL2CPP player runs.
 - Approval before any upstream pull request.
 - Per-script type registries (#181), postponed; details in [upstream-issues.md](upstream-issues.md#decisions-for-the-owner).

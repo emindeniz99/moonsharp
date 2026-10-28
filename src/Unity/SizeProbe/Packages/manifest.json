@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "org.moonsharp.moonsharp": "file:../../../../.upm-staging/org.moonsharp.moonsharp",
+    "com.unity.toolchain.linux-x86_64": "2.0.11"
+  }
+}

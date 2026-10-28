@@ -199,15 +199,12 @@ namespace MoonSharp.Interpreter.Interop
 				}
 				else if (m_IsAction)
 				{
-					MethodInfo.Invoke(obj, pars);
+					MethodInfo.InvokeUnwrapped(obj, pars);
 					retv = DynValue.Void;
 				}
 				else
 				{
-					if (IsConstructor)
-						retv = ((ConstructorInfo) MethodInfo).Invoke(pars);
-					else
-						retv = MethodInfo.Invoke(obj, pars);
+					retv = MethodInfo.InvokeUnwrapped(obj, pars);
 				}
 
 				return BuildReturnValue(script, outParams, pars, retv);

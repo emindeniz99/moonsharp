@@ -176,6 +176,46 @@ return a()
 			AssertOriginalExceptionFrame(exception, typeof(ClassWithMember));
 		}
 
+		private class ReflectionModeMembers
+		{
+			[MethodImpl(MethodImplOptions.NoInlining)]
+			public void MethodWithError()
+			{
+				throw new NullReferenceException();
+			}
+
+			public int Value
+			{
+				get { throw new InvalidOperationException("getter"); }
+				set { throw new InvalidOperationException("setter"); }
+			}
+		}
+
+		// Reflection access mode is the only one on AOT platforms (IL2CPP, NativeAOT). It calls members
+		// through MethodBase.Invoke, which wraps what they throw in a TargetInvocationException; hosts
+		// must get the member's own exception, as in the compiled modes.
+		[Test]
+		public void Errors_Get_OriginalException_WhenUsingMemberByReflection()
+		{
+			UserData.RegisterType<ReflectionModeMembers>(InteropAccessMode.Reflection);
+
+			try
+			{
+				Script script = new Script(CoreModules.None);
+				script.Globals["obj"] = new ReflectionModeMembers();
+
+				var exception = Assert.Throws<NullReferenceException>(() => script.DoString("obj.MethodWithError()"));
+				AssertOriginalExceptionFrame(exception, typeof(ReflectionModeMembers));
+
+				Assert.AreEqual("getter", Assert.Throws<InvalidOperationException>(() => script.DoString("return obj.Value")).Message);
+				Assert.AreEqual("setter", Assert.Throws<InvalidOperationException>(() => script.DoString("obj.Value = 1")).Message);
+			}
+			finally
+			{
+				UserData.UnregisterType<ReflectionModeMembers>();
+			}
+		}
+
 		// A long-lived Script (a game session, a server worker) must survive any number of failed calls.
 		// Each failed call used to leave the function, its arguments and the argument count on the value
 		// stack, so the Script broke for good after 131072 / (args + 2) errors.

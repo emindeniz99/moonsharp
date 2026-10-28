@@ -73,6 +73,7 @@ jobs:
 
       - name: Build the in-process variants (CoreCLR component, NativeAOT library, JNI shim)
         run: |
+          sudo apt-get update -q && sudo apt-get install -y -q clang zlib1g-dev
           dotnet build -c Release src/Hosting/MoonSharp.Hosting.Native
           dotnet publish -c Release -r linux-x64 -p:NativeAot=true src/Hosting/MoonSharp.Hosting.Native
           cmake -S src/Hosting/native -B src/Hosting/native/build -DCMAKE_BUILD_TYPE=Release

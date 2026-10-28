@@ -360,5 +360,19 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 			Assert.AreEqual(true, r.Boolean);
 		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/315: a script can store t[0] and t[-1],
+		// pairs from C# lists them, but Table.Get(0) and Table.Get(-1) returned nil.
+		[Test]
+		[Ignore("waits for table work (Table.cs): https://github.com/moonsharp-devs/moonsharp/issues/315")]
+		public void Issue315_TableGetReadsZeroAndNegativeKeys()
+		{
+			Script s = new Script();
+			s.DoString("t = {} t[0] = 'zero' t[-1] = 'minus one'");
+			Table t = s.Globals.Get("t").Table;
+
+			Assert.AreEqual("zero", t.Get(0).String);
+			Assert.AreEqual("minus one", t.Get(-1).String);
+		}
 	}
 }

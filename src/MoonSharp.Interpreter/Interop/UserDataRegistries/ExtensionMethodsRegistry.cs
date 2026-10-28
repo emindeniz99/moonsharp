@@ -150,7 +150,16 @@ namespace MoonSharp.Interpreter.Interop.UserDataRegistries
 
 			if (tdefs.Length == defs.Length)
 			{
-				return mi.MakeGenericMethod(tdefs);
+				try
+				{
+					return mi.MakeGenericMethod(tdefs);
+				}
+				catch (NotSupportedException)
+				{
+					// NativeAOT has no code for an instantiation it did not see at build time. Skip this
+					// overload; the others (Sum(IEnumerable<int>) next to Sum<T>(..., Func<T, int>)) still work.
+					return null;
+				}
 			}
 
 			return null;

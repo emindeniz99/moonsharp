@@ -1,0 +1,46 @@
+<linker>
+  <!--
+    Trimming descriptor for MoonSharp.Interpreter.
+
+    The standard library is registered by reflection: ModuleRegister.RegisterModuleType walks each
+    module type for static members marked [MoonSharpModuleMethod] / [MoonSharpModuleConstant] (and
+    calls MoonSharpInit by name), and UserData.RegisterType builds the "file", "json null" and
+    "json empty array" userdata from public members. Nothing calls those members directly, so a
+    trimmer removes them and `string`, `table`, `require`... come out nil.
+
+    This file is embedded in the assembly as ILLink.Descriptors.xml, which the .NET trimmer
+    (publish trimming, NativeAOT, Blazor WebAssembly) reads without any setting in the app.
+    It is also staged as link.xml in the Unity package for the IL2CPP linker. The Unity copy is
+    generated from this file by tools/upm/stage-local-package.sh, so edit only this one.
+
+    When you add a module class (a type marked [MoonSharpModule]) or register another
+    userdata type from inside the library, add it here. ModuleTrimDescriptorTests fails if a module is missing.
+  -->
+  <assembly fullname="MoonSharp.Interpreter">
+    <!-- Core modules, see ModuleRegister.RegisterCoreModules -->
+    <type fullname="MoonSharp.Interpreter.CoreLib.BasicModule" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.Bit32Module" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.CoroutineModule" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.DebugModule" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.DynamicModule" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.ErrorHandlingModule" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.Int64Module" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.IoModule" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.JsonModule" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.LoadModule" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.MathModule" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.MetaTableModule" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.OsSystemModule" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.OsTimeModule" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.StringModule" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.TableIteratorsModule" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.TableModule" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.TableModule_Globals" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.UInt64Module" preserve="all" />
+
+    <!-- Userdata the library registers itself; their members are found by reflection -->
+    <type fullname="MoonSharp.Interpreter.CoreLib.IO.FileUserDataBase" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.Serialization.Json.JsonNull" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.Serialization.Json.JsonEmptyArray" preserve="all" />
+  </assembly>
+</linker>

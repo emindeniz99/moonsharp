@@ -106,7 +106,10 @@ namespace MoonSharp.Interpreter.Serialization.Json
 					TableToJson(sb, value.Table);
 					break;
 				case DataType.UserData:
-					sb.Append(JsonEmptyArray.IsJsonEmptyArray(value) ? "[]" : "null");
+					if (ExactInteger.IsExactInteger(value))
+						sb.Append(value.UserData.Object.ToString());
+					else
+						sb.Append(JsonEmptyArray.IsJsonEmptyArray(value) ? "[]" : "null");
 					break;
 				case DataType.Nil:
 				case DataType.Void:
@@ -135,7 +138,8 @@ namespace MoonSharp.Interpreter.Serialization.Json
 				value.Type == DataType.Number || value.Type == DataType.String ||
 				value.Type == DataType.Table ||
 				JsonNull.IsJsonNull(value) ||
-				JsonEmptyArray.IsJsonEmptyArray(value);
+				JsonEmptyArray.IsJsonEmptyArray(value) ||
+				ExactInteger.IsExactInteger(value);
 		}
 
 		/// <summary>
@@ -147,12 +151,26 @@ namespace MoonSharp.Interpreter.Serialization.Json
 		/// <returns>A table containing the representation of the given json.</returns>
 		public static DynValue ParseString(string json, Script script = null, bool emptyArrays = false)
 		{
+			return ParseString(json, script, emptyArrays, JsonBigIntegerMode.Number);
+		}
+
+		/// <summary>
+		/// Converts a json string to a table, choosing how integers that a number cannot hold
+		/// exactly are represented.
+		/// </summary>
+		/// <param name="json">The json.</param>
+		/// <param name="script">The script to which the table is assigned (null for prime tables).</param>
+		/// <param name="emptyArrays">Whether empty arrays should be parsed as JsonEmptyArray rather than a Table.</param>
+		/// <param name="bigIntegers">How to represent integer literals outside +/-(2^53-1).</param>
+		/// <returns>A table containing the representation of the given json.</returns>
+		public static DynValue ParseString(string json, Script script, bool emptyArrays, JsonBigIntegerMode bigIntegers)
+		{
 			Lexer L = new Lexer(0, json, false);
 
 			if (L.Current.Type == TokenType.Brk_Open_Curly)
-				return ParseJsonObject(L, script, emptyArrays);
+				return ParseJsonObject(L, script, emptyArrays, bigIntegers);
 			else if (L.Current.Type == TokenType.Brk_Open_Square)
-				return ParseJsonArray(L, script, emptyArrays);
+				return ParseJsonArray(L, script, emptyArrays, bigIntegers);
 			else
 				throw new SyntaxErrorException(L.Current, "Unexpected token : '{0}'", L.Current.Text);
 		}
@@ -162,7 +180,7 @@ namespace MoonSharp.Interpreter.Serialization.Json
 			if (L.Current.Type != type)
 				throw new SyntaxErrorException(L.Current, "Unexpected token : '{0}'", L.Current.Text);
 		}
-		private static DynValue ParseJsonArray(Lexer L, Script script, bool emptyArray)
+		private static DynValue ParseJsonArray(Lexer L, Script script, bool emptyArray, JsonBigIntegerMode bigIntegers)
 		{
 			Table t = new Table(script);
 
@@ -170,7 +188,7 @@ namespace MoonSharp.Interpreter.Serialization.Json
 
 			while (L.Current.Type != TokenType.Brk_Close_Square)
 			{
-				DynValue v = ParseJsonValue(L, script, emptyArray);
+				DynValue v = ParseJsonValue(L, script, emptyArray, bigIntegers);
 				t.Append(v);
 				L.Next();
 
@@ -181,7 +199,7 @@ namespace MoonSharp.Interpreter.Serialization.Json
 			return emptyArray && t.Length == 0 ? JsonEmptyArray.Create() : DynValue.NewTable(t);
 		}
 
-		private static DynValue ParseJsonObject(Lexer L, Script script, bool emptyArray)
+		private static DynValue ParseJsonObject(Lexer L, Script script, bool emptyArray, JsonBigIntegerMode bigIntegers)
 		{
 			Table t = new Table(script);
 
@@ -194,7 +212,7 @@ namespace MoonSharp.Interpreter.Serialization.Json
 				L.Next();
 				AssertToken(L, TokenType.Colon);
 				L.Next();
-				DynValue v = ParseJsonValue(L, script, emptyArray);
+				DynValue v = ParseJsonValue(L, script, emptyArray, bigIntegers);
 				t.Set(key, v);
 				L.Next();
 
@@ -205,15 +223,15 @@ namespace MoonSharp.Interpreter.Serialization.Json
 			return DynValue.NewTable(t);
 		}
 
-		private static DynValue ParseJsonValue(Lexer L, Script script, bool emptyArray)
+		private static DynValue ParseJsonValue(Lexer L, Script script, bool emptyArray, JsonBigIntegerMode bigIntegers)
 		{
 			if (L.Current.Type == TokenType.Brk_Open_Curly)
 			{
-				return ParseJsonObject(L, script, emptyArray);
+				return ParseJsonObject(L, script, emptyArray, bigIntegers);
 			}
 			else if (L.Current.Type == TokenType.Brk_Open_Square)
 			{
-				return ParseJsonArray(L, script, emptyArray);
+				return ParseJsonArray(L, script, emptyArray, bigIntegers);
 			}
 			else if (L.Current.Type == TokenType.String)
 			{
@@ -221,7 +239,7 @@ namespace MoonSharp.Interpreter.Serialization.Json
 			}
 			else if (L.Current.Type == TokenType.Number || L.Current.Type == TokenType.Op_MinusOrSub)
 			{
-				return ParseJsonNumberValue(L, script);
+				return ParseJsonNumberValue(L, script, bigIntegers);
 			}
 			else if (L.Current.Type == TokenType.True)
 			{
@@ -241,7 +259,7 @@ namespace MoonSharp.Interpreter.Serialization.Json
 			}
 		}
 
-		private static DynValue ParseJsonNumberValue(Lexer L, Script script)
+		private static DynValue ParseJsonNumberValue(Lexer L, Script script, JsonBigIntegerMode bigIntegers)
 		{
 			bool negative;
 			if (L.Current.Type == TokenType.Op_MinusOrSub)
@@ -258,12 +276,60 @@ namespace MoonSharp.Interpreter.Serialization.Json
 			{
 				throw new SyntaxErrorException(L.Current, "Unexpected token : '{0}'", L.Current.Text);
 			}
+			if (bigIntegers != JsonBigIntegerMode.Number && IsDigits(L.Current.Text))
+			{
+				DynValue big = ParseBigInteger(L.Current, negative, bigIntegers);
+				if (big != null)
+					return big;
+			}
 			var numberValue = L.Current.GetNumberValue();
 			if (negative)
 			{
 				numberValue = -numberValue;
 			}
 			return DynValue.NewNumber(numberValue).AsReadOnly();
+		}
+
+		private static bool IsDigits(string s)
+		{
+			if (string.IsNullOrEmpty(s))
+				return false;
+			foreach (char c in s)
+				if (c < '0' || c > '9')
+					return false;
+			return true;
+		}
+
+		/// <summary>
+		/// Returns an exact representation of an integer literal outside +/-(2^53-1), or null for
+		/// one a number holds exactly (that one parses as before).
+		/// </summary>
+		private static DynValue ParseBigInteger(Token token, bool negative, JsonBigIntegerMode bigIntegers)
+		{
+			ulong magnitude;
+			bool fits = ulong.TryParse(token.Text, NumberStyles.None, CultureInfo.InvariantCulture, out magnitude);
+
+			if (fits && magnitude <= (ulong)ExactInteger.MaxSafeInteger)
+				return null;
+
+			if (bigIntegers == JsonBigIntegerMode.String)
+			{
+				string digits = fits ? magnitude.ToString(CultureInfo.InvariantCulture) : token.Text;
+				return DynValue.NewString(negative ? "-" + digits : digits).AsReadOnly();
+			}
+
+			if (fits && !negative && magnitude <= long.MaxValue)
+				return LuaInt64.NewDynValue((long)magnitude).AsReadOnly();
+
+			if (fits && !negative)
+				return LuaUInt64.NewDynValue(magnitude).AsReadOnly();
+
+			// -2^63 is the most negative int64; its magnitude is long.MaxValue + 1.
+			if (fits && negative && magnitude <= (ulong)long.MaxValue + 1)
+				return LuaInt64.NewDynValue(unchecked((long)(0UL - magnitude))).AsReadOnly();
+
+			throw new SyntaxErrorException(token, "integer {0}{1} does not fit in int64 or uint64",
+				negative ? "-" : "", token.Text);
 		}
 	}
 }

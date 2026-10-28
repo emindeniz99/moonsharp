@@ -71,7 +71,17 @@ namespace MoonSharp.Interpreter.Interop.Converters
 				return DynValue.NewClosure((Closure)obj);
 
 			if (NumericConversions.NumericTypes.Contains(t))
+			{
+				if (script != null && script.Options.ExactInt64Interop)
+				{
+					if (t == typeof(long))
+						return LuaInt64.NewDynValue((long)obj);
+					if (t == typeof(ulong))
+						return LuaUInt64.NewDynValue((ulong)obj);
+				}
+
 				return DynValue.NewNumber(NumericConversions.TypeToDouble(t, obj));
+			}
 
 			if (obj is Table)
 				return DynValue.NewTable((Table)obj);
@@ -102,6 +112,12 @@ namespace MoonSharp.Interpreter.Interop.Converters
 			DynValue v = TryObjectToSimpleDynValue(script, obj);
 
 			if (v != null) return v;
+
+			// int64 and uint64 carry their own descriptor and need no registration.
+			if (obj is LuaInt64)
+				return ((LuaInt64)obj).ToDynValue();
+			if (obj is LuaUInt64)
+				return ((LuaUInt64)obj).ToDynValue();
 
 			v = UserData.Create(obj);
 			if (v != null) return v;

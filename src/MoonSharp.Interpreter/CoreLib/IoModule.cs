@@ -54,11 +54,25 @@ namespace MoonSharp.Interpreter.CoreLib
 			return ff;
 		}
 
+		private static Stream GetPlatformStandardStream(StandardFileType file)
+		{
+			try
+			{
+				return Script.GlobalOptions.Platform.IO_GetStandardStream(file);
+			}
+			catch (PlatformNotSupportedException)
+			{
+				// E.g. stdin on browser WebAssembly. Creating a script must not fail because
+				// of it: the stream is replaced by one that fails only when it is used.
+				return new UnavailableStream(file);
+			}
+		}
+
 		private static void SetStandardFile(Script S, StandardFileType file, Stream optionsStream)
 		{
 			Table R = S.Registry;
 
-			optionsStream = optionsStream ?? Script.GlobalOptions.Platform.IO_GetStandardStream(file);
+			optionsStream = optionsStream ?? GetPlatformStandardStream(file);
 
 			FileUserDataBase udb = null;
 

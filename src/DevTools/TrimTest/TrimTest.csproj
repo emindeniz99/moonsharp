@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <InvariantGlobalization>true</InvariantGlobalization>
+        <IsPackable>false</IsPackable>
+        <!--
+            The default (partial) mode only trims assemblies marked trimmable, which
+            MoonSharp is not, so it would leave the library whole and prove nothing.
+            Full mode is what a size-conscious app, NativeAOT and Unity "High" stripping do.
+        -->
+        <TrimMode>full</TrimMode>
+    </PropertyGroup>
+
+    <!--
+        Publishing this project trims the assembly graph. MoonSharp is deliberately NOT
+        a TrimmerRootAssembly: the smoke checks that the library keeps what it needs by
+        itself. Pass -p:RootMoonSharp=true to root the whole assembly instead (to compare
+        sizes, or to tell a trimming problem from a runtime one).
+    -->
+    <ItemGroup Condition="'$(RootMoonSharp)' == 'true'">
+        <TrimmerRootAssembly Include="MoonSharp.Interpreter" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\MoonSharp.Interpreter\MoonSharp.Interpreter.csproj" />
+    </ItemGroup>
+
+</Project>

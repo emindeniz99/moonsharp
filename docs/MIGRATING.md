@@ -1072,3 +1072,20 @@ reported as `bytecode:<n>: stack overflow`.
 (`mod:(1,0-19): stack overflow`).
 
 **Affected:** nobody, unless a host parsed the `bytecode:` text.
+
+## Long library calls can be interrupted
+
+**Before:** `ScriptOptions.InterruptHandler` (and the hosting time limit) ran
+only between VM instructions, so one long library call could not be stopped:
+`string.rep('a', 2e7):gsub('a', 'b')` ran 2.6 s under a 100 ms time limit.
+
+**After:** the pattern functions (`find`, `match`, `gmatch`, `gsub`),
+`string.rep`, `table.concat` and `table.sort` call the handler every 10,000
+steps too (match attempts and backtracking steps, repetitions, elements,
+comparisons). The instruction count the handler receives does not change, so
+an instruction limit stays deterministic and does not stop such a call; a
+time limit or a cancellation does. An interruption inside a `table.sort`
+comparator now stops the script; `table.sort` used to drop it and return a
+half-sorted table.
+
+**Affected:** hosts whose interrupt handler counts its own calls.

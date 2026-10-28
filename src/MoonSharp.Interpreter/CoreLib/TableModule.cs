@@ -64,14 +64,30 @@ namespace MoonSharp.Interpreter.CoreLib
 			for (int i = 1; i <= end; i++)
 				values.Add(vlist.Table.Get(i));
 
+			// Comparisons are counted for the host's interrupt handler, which can stop a long sort.
+			int comparisons = 0;
+
 			try
 			{
-				values.Sort((a, b) => SortComparer(executionContext, a, b, lt));
+				values.Sort((a, b) =>
+				{
+					if (++comparisons == 1024)
+					{
+						comparisons = 0;
+						executionContext.LibraryWork(1024);
+					}
+
+					return SortComparer(executionContext, a, b, lt);
+				});
 			}
 			catch (InvalidOperationException ex)
 			{
-				if (ex.InnerException is ScriptRuntimeException)
+				// List.Sort wraps what the comparer throws. A script error and an interruption go on as
+				// themselves; anything else as it came, rather than leaving the table half sorted.
+				if (ex.InnerException is InterpreterException)
 					throw ex.InnerException;
+
+				throw;
 			}
 
 			for (int i = 0; i < values.Count; i++)
@@ -248,6 +264,10 @@ namespace MoonSharp.Interpreter.CoreLib
 					sb.Append(sep);
 				
 				sb.Append(s);
+
+				// Lets the host's interrupt handler stop a concatenation of millions of values.
+				if (((i - start) & 1023) == 1023)
+					executionContext.LibraryWork(1024);
 
 			}
 

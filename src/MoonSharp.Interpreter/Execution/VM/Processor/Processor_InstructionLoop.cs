@@ -661,6 +661,29 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 		}
 
+		/// <summary>
+		/// Called by library loops that can run long inside one instruction (string.gsub over a long
+		/// subject, table.sort, table.concat, string.rep) with the steps they did: every INTERRUPT_INTERVAL
+		/// steps the interrupt handler runs, as between instructions, so a time limit or a cancellation
+		/// stops them too. The steps do not add to the instruction count the handler gets, which stays
+		/// deterministic.
+		/// </summary>
+		internal void LibraryWork(int units)
+		{
+			DebugContext debug = m_Debug;
+
+			if ((debug.LibraryWork += units) < INTERRUPT_INTERVAL)
+				return;
+
+			debug.LibraryWork = 0;
+
+			Func<long, bool> handler = m_Script.Options.InterruptHandler;
+			long executed = debug.Executed + debug.Armed - debug.Countdown;
+
+			if (handler != null && handler(executed))
+				throw new ScriptInterruptedException(executed);
+		}
+
 		internal string PerformMessageDecorationBeforeUnwind(DynValue messageHandler, string decoratedMessage, SourceRef sourceRef)
 		{
 			try

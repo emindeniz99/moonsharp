@@ -115,6 +115,16 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
+		/// Reports <paramref name="units"/> steps of work done by a long library loop (pattern matching,
+		/// sorting, concatenation), so that <see cref="ScriptOptions.InterruptHandler"/> can stop it.
+		/// </summary>
+		internal void LibraryWork(int units)
+		{
+			if (m_Processor != null)
+				m_Processor.LibraryWork(units);
+		}
+
+		/// <summary>
 		/// Gets the coroutine which is performing the call
 		/// </summary>
 		public Coroutine GetCallingCoroutine()

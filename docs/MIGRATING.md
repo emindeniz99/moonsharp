@@ -376,3 +376,13 @@ to Turkish, German or French, while `tostring(1.5)` was `1.5`.
 **After:** they use the invariant culture, like `tostring`: `1.5` on every device.
 
 **Affected:** scripts that run on devices with a decimal-comma locale and relied on the comma.
+
+## `pcall` catches compile errors raised while a script runs
+
+**Before:** a `SyntaxErrorException` raised from running code, for example `require` of a module
+with a syntax error or a C# function that loads source, went past `pcall` and `xpcall` to the host.
+
+**After:** `pcall` and `xpcall` catch it like any other error and return `false` and the message, as
+in Lua. Without a `pcall` the host still receives the `SyntaxErrorException`.
+
+**Affected:** scripts that call `require` or loader functions inside `pcall`.

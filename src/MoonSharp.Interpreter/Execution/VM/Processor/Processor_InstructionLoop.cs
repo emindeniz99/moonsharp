@@ -257,9 +257,11 @@ namespace MoonSharp.Interpreter.Execution.VM
 				FillDebugData(ex, instructionPtr);
 				unhandled = ex;
 
-				if (ex is ScriptRuntimeException)
+				// Script error handlers (pcall, xpcall) see runtime errors and compile errors raised while
+				// running (require of a broken module), as in Lua; an interrupt passes them by.
+				if (ex is ScriptRuntimeException || ex is SyntaxErrorException)
 				{
-					if (m_Debug.DebuggerAttached != null)
+					if (m_Debug.DebuggerAttached != null && ex is ScriptRuntimeException)
 					{
 						if (m_Debug.DebuggerAttached.SignalRuntimeException((ScriptRuntimeException)ex))
 						{

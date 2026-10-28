@@ -243,6 +243,31 @@ return a()
 		}
 
 		[Test]
+		public void Errors_PcallCatchesSyntaxErrorsRaisedWhileRunning()
+		{
+			// A compile error raised from running code (require of a broken module, a C# function that
+			// loads source) is an error like any other to pcall, as in Lua.
+			Script S = new Script();
+			S.Globals["compile"] = DynValue.NewCallback((ctx, args) => ctx.GetScript().LoadString(args[0].String));
+
+			DynValue res = S.DoString(@"
+				local ok1, e1 = pcall(compile, 'x = = 1')
+				local ok2, e2 = pcall(function() return compile('x = = 1') end)
+				local ok3, e3 = xpcall(function() return compile('x = = 1') end, function(m) return 'handled: ' .. m end)
+				return ok1, e1, ok2, e2, ok3, e3");
+
+			Assert.IsFalse(res.Tuple[0].Boolean);
+			StringAssert.Contains("unexpected symbol", res.Tuple[1].String);
+			Assert.IsFalse(res.Tuple[2].Boolean);
+			StringAssert.Contains("unexpected symbol", res.Tuple[3].String);
+			Assert.IsFalse(res.Tuple[4].Boolean);
+			StringAssert.StartsWith("handled: ", res.Tuple[5].String);
+
+			// Without pcall the host still gets the SyntaxErrorException.
+			Assert.Throws<SyntaxErrorException>(() => S.DoString("compile('x = = 1')"));
+		}
+
+		[Test]
 		public void Errors_XpcallHandlerIgnoresErrorsAnInnerPcallCatches()
 		{
 			// The message handler runs for errors that reach its xpcall, once, as in Lua; it used to run for

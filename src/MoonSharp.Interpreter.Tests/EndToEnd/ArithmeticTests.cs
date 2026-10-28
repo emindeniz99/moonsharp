@@ -43,7 +43,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			{
 				double expected = LuaMod(operands[i, 0], operands[i, 1]);
 				double actual = r.Tuple[i].Number;
-				Assert.IsTrue(expected.Equals(actual), "result {0}: expected {1}, got {2}", i + 1, expected, actual);
+				Assert.IsTrue(expected.Equals(actual), string.Format("result {0}: expected {1}, got {2}", i + 1, expected, actual));
 			}
 		}
 

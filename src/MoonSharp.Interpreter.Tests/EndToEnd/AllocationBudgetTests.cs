@@ -80,9 +80,9 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			if (Environment.GetEnvironmentVariable("MOONSHARP_ALLOC_REPORT") != null)
 				Console.WriteLine("ALLOC {0}: {1:0.0} bytes per iteration, budget {2:0.0}", workload, measured, budget);
 
-			Assert.IsTrue(measured <= budget,
+			Assert.IsTrue(measured <= budget, string.Format(
 				"{0}: {1:0.0} bytes per iteration, budget {2:0.0}. If the increase is intended, raise the budget and say why in the commit.",
-				workload, measured, budget);
+				workload, measured, budget));
 		}
 
 		static void AssertLuaBudget(string workload, string source, double budget, long n = N)

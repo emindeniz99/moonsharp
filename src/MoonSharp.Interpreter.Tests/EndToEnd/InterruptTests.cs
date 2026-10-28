@@ -22,7 +22,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		static ScriptInterruptedException AssertInterrupted(Script s, string code)
 		{
 			ScriptInterruptedException ex = Assert.Throws<ScriptInterruptedException>(() => s.DoString(code));
-			Assert.GreaterOrEqual(ex.Instructions, Budget);
+			Assert.IsTrue(ex.Instructions >= Budget, "instructions before the interrupt");
 			Assert.Less(ex.Instructions, Budget + 10000);
 			return ex;
 		}

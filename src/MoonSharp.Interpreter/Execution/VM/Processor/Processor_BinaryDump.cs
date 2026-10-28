@@ -11,12 +11,17 @@ namespace MoonSharp.Interpreter.Execution.VM
 	sealed partial class Processor
 	{
 		const ulong DUMP_CHUNK_MAGIC = 0x1A0D234E4F4F4D1D;
-		const int DUMP_CHUNK_VERSION = 0x152;
+		// 0x153 and 0x154 add the fused opcodes (OpCode values after IterUpd), which older readers do not
+		// know. 0x154 carries source locations, 0x153 does not.
+		const int DUMP_CHUNK_VERSION = 0x154;
+		const int DUMP_CHUNK_VERSION_NO_LOCATIONS = 0x153;
 
-		// 0x151 dumps carry no source locations; they still load, with every location at line 0.
-		const int DUMP_CHUNK_VERSION_NO_LOCATIONS = 0x151;
+		// The previous formats still load: they hold only opcodes that kept their values. 0x151 dumps
+		// carry no source locations and load with every location at line 0.
+		const int DUMP_CHUNK_VERSION_0x152 = 0x152;
+		const int DUMP_CHUNK_VERSION_0x151 = 0x151;
 
-		// Per-instruction source location markers (format 0x152 and later). A new location is
+		// Per-instruction source location markers (formats 0x152 and 0x154). A new location is
 		// DUMP_SOURCEREF_NEW plus flag bits, then: line delta from the previous new location,
 		// end line minus start line, start column, end column minus start column.
 		const byte DUMP_SOURCEREF_NONE = 0;
@@ -207,7 +212,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 				int version = br.ReadInt32();
 
-				if (version != DUMP_CHUNK_VERSION && version != DUMP_CHUNK_VERSION_NO_LOCATIONS)
+				bool hasLocations = version == DUMP_CHUNK_VERSION || version == DUMP_CHUNK_VERSION_0x152;
+
+				if (!hasLocations && version != DUMP_CHUNK_VERSION_NO_LOCATIONS && version != DUMP_CHUNK_VERSION_0x151)
 					throw new ArgumentException("Invalid version");
 
 				hasUpvalues = br.ReadBoolean();
@@ -229,8 +236,12 @@ namespace MoonSharp.Interpreter.Execution.VM
 					m_RootChunk.Code.Add(I);
 				}
 
-				if (version != DUMP_CHUNK_VERSION_NO_LOCATIONS)
+				if (hasLocations)
 					ReadSourceRefs(br, m_RootChunk.Code, baseAddress, len, sourceID);
+
+				// Code from a previous format has no fused instructions: fuse it as freshly compiled code.
+				if (version == DUMP_CHUNK_VERSION_0x152 || version == DUMP_CHUNK_VERSION_0x151)
+					InstructionFusion.Fuse(m_RootChunk.Code, baseAddress);
 
 				return baseAddress;
 			}

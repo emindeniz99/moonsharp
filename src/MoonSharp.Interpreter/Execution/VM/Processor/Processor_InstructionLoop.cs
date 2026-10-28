@@ -35,6 +35,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 			Instruction[] code = m_RootChunk.GetCodeArray();
 			InterpreterException unhandled = null;
 
+			// Fused instructions take their unfused path while a debugger is attached, so it sees every
+			// instruction of the sequences they replace (InstructionFusion).
+			bool fuse = debug.DebuggerAttached == null;
+
 			repeat_execution:
 
 			// The running frame's base pointer, where its locals start. Ops that enter or leave a script
@@ -62,7 +66,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 						if (debug.Countdown <= 0)
 							ExecutionCheckpoint();
 
-						if (debug.DebuggerAttached != null)
+						fuse = debug.DebuggerAttached == null;
+
+						if (!fuse)
 						{
 							ListenDebugger(i, instructionPtr);
 						}
@@ -102,7 +108,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 						case OpCode.Power:
 							{
 								int next = instructionPtr;
-								instructionPtr = ExecArithmetic(i, instructionPtr);
+								instructionPtr = ExecArithmetic(i.OpCode, instructionPtr);
 
 								// A metamethod written in Lua runs in a new frame: start it with its base pointer.
 								if (instructionPtr != next)
@@ -269,6 +275,187 @@ namespace MoonSharp.Interpreter.Execution.VM
 						case OpCode.JFor:
 							instructionPtr = ExecJFor(i, instructionPtr);
 							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							break;
+						case OpCode.JLt:
+						case OpCode.JLe:
+						case OpCode.JGt:
+						case OpCode.JGe:
+						case OpCode.JEq:
+						case OpCode.JNe:
+							{
+								LuaValue[] items = m_ValueStack.Items;
+								int top = m_ValueStack.Count;
+								int mode = i.NumVal2;
+								LuaValue l, r;
+								int pop;
+
+								switch (mode)
+								{
+									case InstructionFusion.RightOnStack: l = items[top - 2]; r = items[top - 1]; pop = 2; break;
+									case InstructionFusion.RightConst: l = items[top - 1]; r = i.Value.ToLuaValue(); pop = 1; break;
+									case InstructionFusion.RightLocal: l = items[top - 1]; r = items[basePointer + i.Symbol.i_Index]; pop = 1; break;
+									case InstructionFusion.LeftLocalConst: l = items[basePointer + i.Symbol.i_Index]; r = i.Value.ToLuaValue(); pop = 0; break;
+									default: l = items[basePointer + i.Symbol.i_Index]; r = items[basePointer + i.NumVal3]; pop = 0; break;
+								}
+
+								int result = fuse ? FusedCompare(i.OpCode, ref l, ref r) : -1;
+
+								if (result >= 0)
+								{
+									for (int k = 0; k < pop; k++)
+										items[--top] = default(LuaValue);
+
+									m_ValueStack.Count = top;
+
+									// Branch as the Jf at the end of the sequence would.
+									int jf = instructionPtr - 1 + i.NumVal;
+									instructionPtr = result != 0 ? jf + 1 : code[jf].NumVal;
+								}
+								else if (mode == InstructionFusion.RightOnStack)
+								{
+									int next = instructionPtr;
+
+									if (i.OpCode == OpCode.JGt || i.OpCode == OpCode.JGe)
+									{
+										items[top - 2] = r;
+										items[top - 1] = l;
+									}
+									else if (i.OpCode == OpCode.JLt)
+										instructionPtr = ExecLess(i, instructionPtr);
+									else if (i.OpCode == OpCode.JLe)
+										instructionPtr = ExecLessEq(i, instructionPtr);
+									else
+										instructionPtr = ExecEq(i, instructionPtr);
+
+									// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+									if (instructionPtr != next)
+									{
+										if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+										basePointer = CurrentBasePointer();
+									}
+								}
+								else
+								{
+									// Run the replaced Literal or Local: push the operand it pushed.
+									m_ValueStack.Push(mode <= InstructionFusion.RightLocal ? r : l);
+								}
+							}
+							break;
+						case OpCode.AddF:
+						case OpCode.SubF:
+						case OpCode.MulF:
+						case OpCode.DivF:
+						case OpCode.ModF:
+						case OpCode.PowF:
+							{
+								LuaValue[] items = m_ValueStack.Items;
+								int top = m_ValueStack.Count;
+								int mode = i.NumVal2;
+								bool numbers;
+								double l, r;
+								int pop;
+
+								switch (mode & InstructionFusion.ModeMask)
+								{
+									case InstructionFusion.RightOnStack:
+										numbers = items[top - 2].Type == DataType.Number && items[top - 1].Type == DataType.Number;
+										l = items[top - 2].Number; r = items[top - 1].Number; pop = 2;
+										break;
+									case InstructionFusion.RightConst:
+										numbers = items[top - 1].Type == DataType.Number;
+										l = items[top - 1].Number; r = i.Value.Number; pop = 1;
+										break;
+									case InstructionFusion.RightLocal:
+										{
+											ref LuaValue b = ref items[basePointer + i.Symbol.i_Index];
+											numbers = items[top - 1].Type == DataType.Number && b.Type == DataType.Number;
+											l = items[top - 1].Number; r = b.Number; pop = 1;
+										}
+										break;
+									case InstructionFusion.LeftLocalConst:
+										{
+											ref LuaValue a = ref items[basePointer + i.Symbol.i_Index];
+											numbers = a.Type == DataType.Number;
+											l = a.Number; r = i.Value.Number; pop = 0;
+										}
+										break;
+									default:
+										{
+											ref LuaValue a = ref items[basePointer + i.Symbol.i_Index];
+											ref LuaValue b = ref items[basePointer + i.NumVal];
+											numbers = a.Type == DataType.Number && b.Type == DataType.Number;
+											l = a.Number; r = b.Number; pop = 0;
+										}
+										break;
+								}
+
+								if (numbers && fuse)
+								{
+									LuaValue result = LuaValue.FromNumber(FusedArithmetic(i.OpCode, l, r));
+									int store = i.NumVal3;
+
+									// The popped operands are numbers: their slots hold no object to clear.
+									if (store >= 0)
+									{
+										m_ValueStack.Count = top - pop;
+										items[basePointer + store] = result;
+									}
+									else if (pop > 0)
+									{
+										items[top - pop] = result;
+										m_ValueStack.Count = top - pop + 1;
+									}
+									else
+									{
+										m_ValueStack.Push(result);
+									}
+
+									instructionPtr += InstructionFusion.ArithmeticLength(mode, store >= 0) - 1;
+								}
+								else if ((mode & InstructionFusion.ModeMask) == InstructionFusion.RightOnStack)
+								{
+									int next = instructionPtr;
+									instructionPtr = ExecArithmetic(UnfusedArithmetic(i.OpCode), instructionPtr);
+
+									// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+									if (instructionPtr != next)
+									{
+										if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+										basePointer = CurrentBasePointer();
+									}
+								}
+								else
+								{
+									// Run the replaced Literal or Local: push the operand it pushed.
+									m_ValueStack.Push((mode & InstructionFusion.ModeMask) == InstructionFusion.RightConst ? i.Value.ToLuaValue() : items[basePointer + i.Symbol.i_Index]);
+								}
+							}
+							break;
+						case OpCode.ForLoop:
+							{
+								// stack: limit, step, counter (numbers, checked by ToNum before the loop)
+								LuaValue[] items = m_ValueStack.Items;
+								int from = i.NumVal2;
+
+								// Leave the iteration's block, as Clean does: closures that captured its
+								// locals keep this iteration's values.
+								if (m_OpenUpvalues != null)
+									CloseUpvalues(basePointer + from);
+
+								for (int k = from; k <= i.NumVal3; k++)
+									items[basePointer + k] = LuaValue.Undeclared;
+
+								int top = m_ValueStack.Count;
+								double step = items[top - 2].Number;
+								double counter = items[top - 1].Number + step;
+								items[top - 1].Number = counter;
+
+								if (step > 0 ? counter <= items[top - 3].Number : counter >= items[top - 3].Number)
+								{
+									items[basePointer + i.Symbol.i_Index] = LuaValue.FromNumber(counter);
+									instructionPtr = i.NumVal;
+								}
+							}
 							break;
 						case OpCode.NewTable:
 							m_ValueStack.Push(LuaValue.FromObject(DataType.Table, new Table(i.NumVal == 0 ? this.m_Script : null)));
@@ -703,6 +890,69 @@ namespace MoonSharp.Interpreter.Execution.VM
 		}
 
 
+		/// <summary>
+		/// The result of a fused compare (1 true, 0 false) for operands that need no conversion or
+		/// metamethod; -1 otherwise. Follows ExecLess, ExecLessEq and ExecEq: numbers compare as doubles
+		/// (false with NaN), strings by ordinal; == is raw equality unless a table, a userdata or a tuple
+		/// is involved.
+		/// </summary>
+		[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+		private static int FusedCompare(OpCode op, ref LuaValue l, ref LuaValue r)
+		{
+			if (op == OpCode.JEq || op == OpCode.JNe)
+			{
+				bool eq;
+
+				if (l.Type == r.Type)
+				{
+					if (l.Type == DataType.Table || l.Type == DataType.UserData || l.Type == DataType.Tuple)
+						return -1;
+
+					eq = LuaValue.RawEquals(ref l, ref r);
+				}
+				else
+				{
+					if (l.Type == DataType.UserData || r.Type == DataType.UserData || l.Type == DataType.Tuple || r.Type == DataType.Tuple)
+						return -1;
+
+					eq = (l.Type == DataType.Nil && r.Type == DataType.Void) || (l.Type == DataType.Void && r.Type == DataType.Nil);
+				}
+
+				return (eq == (op == OpCode.JEq)) ? 1 : 0;
+			}
+
+			int c;
+
+			if (l.Type == DataType.Number && r.Type == DataType.Number)
+			{
+				double a = l.Number, b = r.Number;
+
+				switch (op)
+				{
+					case OpCode.JLt: return a < b ? 1 : 0;
+					case OpCode.JLe: return a <= b ? 1 : 0;
+					case OpCode.JGt: return b < a ? 1 : 0;
+					default: return b <= a ? 1 : 0;
+				}
+			}
+			else if (l.Type == DataType.String && r.Type == DataType.String)
+			{
+				c = string.CompareOrdinal((string)l.Object, (string)r.Object);
+			}
+			else
+			{
+				return -1;
+			}
+
+			switch (op)
+			{
+				case OpCode.JLt: return c < 0 ? 1 : 0;
+				case OpCode.JLe: return c <= 0 ? 1 : 0;
+				case OpCode.JGt: return c > 0 ? 1 : 0;
+				default: return c >= 0 ? 1 : 0;
+			}
+		}
+
 		private int CurrentBasePointer()
 		{
 			return m_ExecutionStack.Count > 0 ? m_ExecutionStack.Peek().BasePointer : -1;
@@ -964,7 +1214,11 @@ namespace MoonSharp.Interpreter.Execution.VM
 			if (fn.Type == DataType.ClrFunction)
 			{
 				CallbackFunction callback = (CallbackFunction)fn.Object;
-				DynValue[] args = CreateArgsListForFunctionCall(argsCount);
+
+				if (callback.BuiltinId != 0 && TryFastCall(callback.BuiltinId, argsCount))
+					return instructionPtr;
+
+				DynValue[] args = (callback.ReadsArgumentsInPlace && argsCount > 0) ? null : CreateArgsListForFunctionCall(argsCount);
 
 				// instructionPtr - 1: instructionPtr already points to the next instruction at this moment
 				// but we need the current instruction here
@@ -978,8 +1232,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 				frame.Handlers = CallStackItemHandlers.Create(continuation, handler, unwindHandler);
 				frame.Flags = flags;
 
-				var ret = callback.Invoke(new ScriptExecutionContext(this, callback, sref), args,
-					isMethodCall: thisCall);
+				var ctx = new ScriptExecutionContext(this, callback, sref);
+				var ret = args == null
+					? callback.InvokeOnStack(ctx, m_ValueStack, m_ValueStack.Count - argsCount, argsCount, thisCall)
+					: callback.Invoke(ctx, args, isMethodCall: thisCall);
 				m_ValueStack.RemoveLast(argsCount + 1);
 				m_ValueStack.Push(ret);
 
@@ -1004,7 +1260,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 
 			// fallback to __call metamethod
-			var m = GetMetamethod(fn, "__call");
+			var m = GetMetamethod(fn, "__call", MetaCall);
 
 			if (m != null && m.IsNotNil())
 			{
@@ -1134,7 +1390,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		}
 
 
-		private int ExecArithmetic(Instruction i, int instructionPtr)
+		private int ExecArithmetic(OpCode op, int instructionPtr)
 		{
 			LuaValue[] items = m_ValueStack.Items;
 			int top = m_ValueStack.Count;
@@ -1159,7 +1415,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				if (!lc.HasValue || !rc.HasValue)
 				{
 					m_ValueStack.RemoveLast(2);
-					int ip = Internal_InvokeBinaryMetaMethod(ls, rs, ArithmeticEvent(i.OpCode), instructionPtr);
+					int ip = Internal_InvokeBinaryMetaMethod(ls, rs, ArithmeticEvent(op), ArithmeticBit(op), instructionPtr);
 					if (ip >= 0) return ip;
 					else throw ScriptRuntimeException.ArithmeticOnNonNumber(ls.ToDynValue(), rs.ToDynValue());
 				}
@@ -1171,7 +1427,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			double result;
 
-			switch (i.OpCode)
+			switch (op)
 			{
 				case OpCode.Add: result = ln + rn; break;
 				case OpCode.Sub: result = ln - rn; break;
@@ -1186,6 +1442,33 @@ namespace MoonSharp.Interpreter.Execution.VM
 			return instructionPtr;
 		}
 
+		[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+		private static double FusedArithmetic(OpCode op, double a, double b)
+		{
+			switch (op)
+			{
+				case OpCode.AddF: return a + b;
+				case OpCode.SubF: return a - b;
+				case OpCode.MulF: return a * b;
+				case OpCode.DivF: return a / b;
+				case OpCode.ModF: return Modulo(a, b);
+				default: return Math.Pow(a, b);
+			}
+		}
+
+		private static OpCode UnfusedArithmetic(OpCode op)
+		{
+			switch (op)
+			{
+				case OpCode.AddF: return OpCode.Add;
+				case OpCode.SubF: return OpCode.Sub;
+				case OpCode.MulF: return OpCode.Mul;
+				case OpCode.DivF: return OpCode.Div;
+				case OpCode.ModF: return OpCode.Mod;
+				default: return OpCode.Power;
+			}
+		}
+
 		private static string ArithmeticEvent(OpCode op)
 		{
 			switch (op)
@@ -1196,6 +1479,19 @@ namespace MoonSharp.Interpreter.Execution.VM
 				case OpCode.Div: return "__div";
 				case OpCode.Mod: return "__mod";
 				default: return "__pow";
+			}
+		}
+
+		private static int ArithmeticBit(OpCode op)
+		{
+			switch (op)
+			{
+				case OpCode.Add: return MetaAdd;
+				case OpCode.Sub: return MetaSub;
+				case OpCode.Mul: return MetaMul;
+				case OpCode.Div: return MetaDiv;
+				case OpCode.Mod: return MetaMod;
+				default: return MetaPow;
 			}
 		}
 
@@ -1227,7 +1523,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 			else
 			{
-				int ip = Internal_InvokeUnaryMetaMethod(r, "__unm", instructionPtr);
+				int ip = Internal_InvokeUnaryMetaMethod(r, "__unm", MetaUnm, instructionPtr);
 				if (ip >= 0) return ip;
 				else throw ScriptRuntimeException.ArithmeticOnNonNumber(r.ToDynValue());
 			}
@@ -1256,7 +1552,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			// then if they are userdatas, attempt meta
 			if (l.Type == DataType.UserData || r.Type == DataType.UserData)
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__eq", instructionPtr);
+				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__eq", MetaEq, instructionPtr);
 				if (ip >= 0) return ip;
 			}
 
@@ -1274,7 +1570,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			// then attempt metatables for tables
 			if ((l.Type == DataType.Table) && (GetMetatable(l) != null) && (GetMetatable(l) == GetMetatable(r)))
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__eq", instructionPtr);
+				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__eq", MetaEq, instructionPtr);
 				if (ip >= 0) return ip;
 			}
 
@@ -1310,7 +1606,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 			else
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(ls, rs, "__lt", instructionPtr);
+				int ip = Internal_InvokeBinaryMetaMethod(ls, rs, "__lt", MetaLt, instructionPtr);
 				if (ip < 0)
 					throw ScriptRuntimeException.CompareInvalidType(ls.ToDynValue(), rs.ToDynValue());
 				else
@@ -1337,10 +1633,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 			else
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__le", instructionPtr, LuaValue.False);
+				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__le", MetaLe, instructionPtr, LuaValue.False);
 				if (ip < 0)
 				{
-					ip = Internal_InvokeBinaryMetaMethod(r, l, "__lt", instructionPtr, LuaValue.True);
+					ip = Internal_InvokeBinaryMetaMethod(r, l, "__lt", MetaLt, instructionPtr, LuaValue.True);
 
 					if (ip < 0)
 						throw ScriptRuntimeException.CompareInvalidType(l.ToDynValue(), r.ToDynValue());
@@ -1362,7 +1658,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				m_ValueStack.Push(LuaValue.FromNumber(((string)r.Object).Length));
 			else
 			{
-				int ip = Internal_InvokeUnaryMetaMethod(r, "__len", instructionPtr);
+				int ip = Internal_InvokeUnaryMetaMethod(r, "__len", MetaLen, instructionPtr);
 				if (ip >= 0)
 					return ip;
 				else if (r.Type == DataType.Table)
@@ -1390,7 +1686,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 			else
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__concat", instructionPtr);
+				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__concat", MetaConcat, instructionPtr);
 				if (ip >= 0) return ip;
 				else throw ScriptRuntimeException.ConcatOnNonString(l.ToDynValue(), r.ToDynValue());
 			}
@@ -1484,6 +1780,31 @@ namespace MoonSharp.Interpreter.Execution.VM
 			LuaValue value = GetStoreValue(i);
 			DynValue h = null;
 
+			// A constant string key stored into a table: write the cached entry in place, or find it and
+			// cache it. A new key goes straight in when there is no metatable, else the general path runs.
+			if (obj.Type == DataType.Table && idx.Type == DataType.String && i.Value != null && !isMultiIndex && value.IsNotNil())
+			{
+				Table table = (Table)obj.Object;
+				FieldCache cache = i.Cache ?? (i.Cache = new FieldCache((string)idx.Object));
+				DynValue v = value.ToDynValue();
+
+				if (cache.TrySet(table, v))
+					return instructionPtr;
+
+				int e = cache.FindLive(table);
+
+				if (e >= 0)
+				{
+					table.SetEntryValue(e, v);
+					return instructionPtr;
+				}
+
+				if (table.MetaTable == null)
+				{
+					cache.Add(table, v);
+					return instructionPtr;
+				}
+			}
 
 			while (nestedMetaOps > 0)
 			{
@@ -1503,7 +1824,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 						}
 					}
 
-					h = GetMetamethodRaw(obj, "__newindex");
+					h = GetMetamethodRaw(obj, "__newindex", MetaNewIndex);
 
 					if (h == null || h.IsNil())
 					{
@@ -1526,7 +1847,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				}
 				else
 				{
-					h = GetMetamethodRaw(obj, "__newindex");
+					h = GetMetamethodRaw(obj, "__newindex", MetaNewIndex);
 
 					if (h == null || h.IsNil())
 						throw ScriptRuntimeException.IndexType(obj.ToDynValue());
@@ -1567,6 +1888,33 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			DynValue h = null;
 
+			// A constant string key read from a table: the cached path, or a lookup through __index tables
+			// that caches it.
+			if (obj.Type == DataType.Table && idx.Type == DataType.String && i.Value != null && !isMultiIndex)
+			{
+				FieldCache cache = i.Cache ?? (i.Cache = new FieldCache((string)idx.Object));
+
+				if (!cache.Disabled)
+				{
+					Table table = (Table)obj.Object;
+					DynValue v = cache.Get(table);
+
+					if (v == null)
+					{
+						v = cache.Lookup(table, out table);
+
+						// an __index the cache does not follow: the general lookup goes on from there
+						if (v == null)
+							obj = LuaValue.FromObject(DataType.Table, table);
+					}
+
+					if (v != null)
+					{
+						m_ValueStack.Push(v);
+						return instructionPtr;
+					}
+				}
+			}
 
 			while (nestedMetaOps > 0)
 			{
@@ -1585,7 +1933,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 						}
 					}
 
-					h = GetMetamethodRaw(obj, "__index");
+					h = GetMetamethodRaw(obj, "__index", MetaIndex);
 
 					if (h == null || h.IsNil())
 					{
@@ -1615,7 +1963,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				}
 				else
 				{
-					h = GetMetamethodRaw(obj, "__index");
+					h = GetMetamethodRaw(obj, "__index", MetaIndex);
 
 					if (h == null || h.IsNil())
 						throw ScriptRuntimeException.IndexType(obj.ToDynValue());

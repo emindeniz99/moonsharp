@@ -297,5 +297,46 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual(DataType.String, res.Type);
 			Assert.AreEqual("42", res.String);
 		}
+
+		// A goto out of a for loop leaves the loop's values (limit, step and counter, or the iterator
+		// state) on the value stack unless it pops them; an enclosing for then read them as its own.
+		[Test]
+		public void Goto_OutOfForLoopsPopsTheirValues()
+		{
+			DynValue res = Script.RunString(@"
+				local t = {}
+				for i = 1, 3 do
+					for j = 1, 3 do
+						if j > i then goto next end
+						t[#t + 1] = i .. j
+					end
+					::next::
+				end
+				t[#t + 1] = '|'
+				for _, i in ipairs({ 1, 2, 3 }) do
+					for _, j in ipairs({ 1, 2, 3 }) do
+						if j > i then goto next end
+						t[#t + 1] = i .. j
+					end
+					::next::
+				end
+				t[#t + 1] = '|'
+				for o = 1, 2 do
+					local i = 0
+					while i < 2 do
+						i = i + 1
+						for j = 1, 3 do
+							for k in pairs({ x = 1 }) do
+								if j == 2 then goto cont end
+							end
+							t[#t + 1] = o .. i .. j
+						end
+						::cont::
+					end
+				end
+				return table.concat(t, ',')");
+
+			Assert.AreEqual("11,21,22,31,32,33,|,11,21,22,31,32,33,|,111,121,211,221", res.String);
+		}
 	}
 }

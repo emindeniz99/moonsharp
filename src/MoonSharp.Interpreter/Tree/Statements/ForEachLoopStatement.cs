@@ -49,7 +49,9 @@ namespace MoonSharp.Interpreter.Tree.Statements
 
 			m_RefFor = forToken.GetSourceRef(CheckTokenType(lcontext, TokenType.Do));
 
+			lcontext.LoopStackValues += 1;
 			m_Block = new CompositeStatement(lcontext);
+			lcontext.LoopStackValues -= 1;
 
 			m_RefEnd = CheckTokenType(lcontext, TokenType.End).GetSourceRef();
 

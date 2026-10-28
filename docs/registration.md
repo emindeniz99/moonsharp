@@ -24,7 +24,8 @@ types that have a descriptor. With the default registration policy
   implements a registered interface, is seen through that type's members
   only.
 
-`InteropRegistrationPolicy.Automatic` registers every type a script meets.
+`InteropRegistrationPolicy.Automatic` registers every type a script meets,
+except lists and dictionaries, which still become tables, and delegates.
 Do not use it in a host that runs downloaded scripts.
 
 `ExplicitRegistrationTests` in the unit tests checks each point above.

@@ -20,6 +20,9 @@ function Sample_Entity:GetHashCode() end
 ---@return any
 function Sample_Entity:GetType() end
 
+---@return int64
+function Sample_Entity.PeekNextId() end
+
 ---@return string
 function Sample_Entity:ToString() end
 

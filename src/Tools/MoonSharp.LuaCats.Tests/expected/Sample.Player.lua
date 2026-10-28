@@ -84,6 +84,9 @@ function Sample_Player:Hit(target) end
 ---@param callback System.Action_System_Double
 function Sample_Player:OnTick(callback) end
 
+---@return int64
+function Sample_Player.PeekNextId() end
+
 ---@param mood number
 function Sample_Player:SetMood(mood) end
 

@@ -72,8 +72,12 @@ export class ScriptContext {
 
   /** Compiles and runs a chunk; if it returns a function, calls it with the input. */
   run<T = unknown>(chunk: string, source: string, input?: unknown): HostResult<T> {
-    const json = input === undefined ? null : toJson(input);
-    return JSON.parse(this.live().Run(this.id, chunk, source, json));
+    return this.runJson(chunk, source, input === undefined ? null : toJson(input));
+  }
+
+  /** Like run, with the input as JSON text (or null for none), for values a JS number cannot hold exactly. */
+  runJson<T = unknown>(chunk: string, source: string, inputJson: string | null): HostResult<T> {
+    return JSON.parse(this.live().Run(this.id, chunk, source, inputJson));
   }
 
   dispose(): void {

@@ -17,8 +17,8 @@ namespace MoonSharp.Hosting.Cli
   moonsharp-host validate <file.lua>...           compile without running; exit 1 on any syntax error
   moonsharp-host compile <file.lua> -o <out>      compile to a binary chunk that keeps source locations
   moonsharp-host run <file> [input.json]          run a chunk (source or compiled); if it returns a function, call it with the input
-  moonsharp-host test <suite.json>... [--report out.json]
-                                                  run fixture suites and compare results; exit 1 on any mismatch
+  moonsharp-host test [--bytecode] [--host name] [--report out.json] <suite.json | directory>...
+                                                  run fixture suites against known-failures/<host>.json; exit 1 on any difference
   moonsharp-host worker                           serve JSON requests on stdin, one per line (see docs/hosting.md)
   moonsharp-host version";
 

@@ -130,3 +130,12 @@ thread, which ends the process. The work item now walks copies of the
 lists and ignores a failure: members it did not optimize keep running
 through reflection, as they do before it finishes. Affected: hosts using
 `BackgroundOptimized` with overloaded methods.
+
+## Custom converter lookups accept every DataType
+
+`CustomConvertersCollection.GetScriptToClrCustomConversion` threw
+`IndexOutOfRangeException` for `DataType.TailCallRequest` and
+`DataType.YieldRequest`; it now returns null, as for any type without a
+converter. `SetScriptToClrCustomConversion` throws `ArgumentException` for
+them instead of `IndexOutOfRangeException`. Affected: code that looped over
+every `DataType`.

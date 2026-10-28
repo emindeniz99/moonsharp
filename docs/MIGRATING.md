@@ -386,3 +386,16 @@ with a syntax error or a C# function that loads source, went past `pcall` and `x
 in Lua. Without a `pcall` the host still receives the `SyntaxErrorException`.
 
 **Affected:** scripts that call `require` or loader functions inside `pcall`.
+
+## Coroutines can run C# functions
+
+**Before:** `coroutine.create(f)` with a C# function `f` (`select`, `string.upper`, `pcall`, a host
+callback) produced a coroutine that `coroutine.resume` and `Coroutine.Resume(args)` refused with an
+`InvalidOperationException`; only `Coroutine.Resume(context, args)` ran it, and only once.
+
+**After:** it is an ordinary coroutine, as in Lua: resuming it calls the function; a tail call it
+returns (as `pcall` does) runs inside the coroutine and may yield; `coroutine.create(coroutine.yield)`
+yields its arguments and returns the next resume's arguments. `Coroutine.Type` is `Coroutine` for it;
+`CoroutineType.ClrCallback` and `ClrCallbackDead` are no longer produced.
+
+**Affected:** hosts that checked `Coroutine.Type == CoroutineType.ClrCallback`.

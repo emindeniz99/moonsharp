@@ -7,13 +7,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 	// Same reason for the "sealed" declaration.
 	sealed partial class Processor
 	{
-		public DynValue Coroutine_Create(Closure closure)
+		public DynValue Coroutine_Create(DynValue function)
 		{
 			// create a processor instance
 			Processor P = new Processor(this);
 
-			// Put the closure as first value on the stack, for future reference
-			P.m_ValueStack.Push(DynValue.NewClosure(closure));
+			// Put the function (a Lua closure or a C# function) as first value on the stack, for future reference
+			P.m_ValueStack.Push(function);
 
 			// Return the coroutine handle
 			return DynValue.NewCoroutine(new Coroutine(P));
@@ -46,30 +46,51 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			try
 			{
-				int entrypoint = 0;
-
 				if (m_State != CoroutineState.NotStarted && m_State != CoroutineState.Suspended && m_State != CoroutineState.ForceSuspended)
 					throw ScriptRuntimeException.CannotResumeNotSuspended(m_State);
 
-				if (m_State == CoroutineState.NotStarted)
-				{
-					entrypoint = PushClrToScriptStackFrame(CallStackItemFlags.ResumeEntryPoint, null, args);
-				}
-				else if (m_State == CoroutineState.Suspended)
-				{
-					m_ValueStack.Push(DynValue.NewTuple(args));
-					entrypoint = m_SavedInstructionPtr;
-				}
-				else if (m_State == CoroutineState.ForceSuspended)
-				{
-					if (args != null && args.Length > 0)
-						throw new ArgumentException("When resuming a force-suspended coroutine, args must be empty.");
+				if (m_State == CoroutineState.ForceSuspended && args != null && args.Length > 0)
+					throw new ArgumentException("When resuming a force-suspended coroutine, args must be empty.");
 
-					entrypoint = m_SavedInstructionPtr;
-				}
-
+				CoroutineState previous = m_State;
 				m_State = CoroutineState.Running;
-				DynValue retVal = Processing_Loop(entrypoint);
+				DynValue retVal;
+
+				if (previous == CoroutineState.NotStarted && m_ValueStack.Peek().Type == DataType.ClrFunction)
+				{
+					// A C# function as the body (coroutine.create(select)): call it as the VM calls one. A tail
+					// call it returns runs here as the coroutine's code; a yield it returns suspends it.
+					DynValue[] a = Internal_AdjustTuple(args);
+
+					for (int i = 0; i < a.Length; i++)
+						m_ValueStack.Push(a[i]);
+
+					int ip = Internal_ExecCall(a.Length, -1);
+
+					if (ip == YIELD_SPECIAL_TRAP)
+						retVal = m_ValueStack.Pop().ToScalar();
+					else if (ip < 0)
+						retVal = m_ValueStack.Pop();
+					else
+						retVal = Processing_Loop(ip);
+				}
+				else if (previous == CoroutineState.NotStarted)
+				{
+					retVal = Processing_Loop(PushClrToScriptStackFrame(CallStackItemFlags.ResumeEntryPoint, null, args));
+				}
+				else if (m_SavedInstructionPtr < 0)
+				{
+					// A C# body that yielded (coroutine.create(coroutine.yield)) has nothing left to run:
+					// the values of this resume are its results.
+					retVal = DynValue.NewTuple(args);
+				}
+				else
+				{
+					if (previous == CoroutineState.Suspended)
+						m_ValueStack.Push(DynValue.NewTuple(args));
+
+					retVal = Processing_Loop(m_SavedInstructionPtr);
+				}
 
 				completed = true;
 

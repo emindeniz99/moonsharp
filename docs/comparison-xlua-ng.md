@@ -2,22 +2,22 @@
 
 A first, narrow comparison: pure Lua micro-workloads on one Linux x64 machine.
 It says how fast the two interpreters run the same Lua, nothing about Unity,
-IL2CPP, phones, package size or the C# bridge. Those need the Unity harness
-described in the plan and are not measured yet.
+IL2CPP, phones, package size or the C# bridge. Those need a Unity harness and
+are not measured yet.
 
 ## Setup
 
 | | MoonSharp | xLua-NG |
 |---|---|---|
-| Commit |  (upstream master) |  (main, 2026-10-28) |
+| Commit | `fbd0367` (upstream master) | `3042ef6` (main, 2026-10-28) |
 | Engine | MoonSharp 3.0.0.0, Lua 5.2, managed | Lua 5.5.1, native |
-| Build | Release, .NET 8.0.33 RyuJIT | , gcc, out of tree |
-| Runner |  |  (), , pinned to one core |
+| Build | Release, .NET 8.0.33 RyuJIT | `cmake -DCMAKE_BUILD_TYPE=Release -DLUA_VERSION=5.5.1`, gcc, out of tree |
+| Runner | `src/DevTools/Benchmarks workloads 7` | `Test/Native/flag_bench.c` built with `cc -O2`, `--runs 7`, pinned to one core |
 | Machine | 4-core Intel Xeon 2.1 GHz cloud VM, Ubuntu 24.04 | same |
 
 Both runners use the same Lua sources and iteration counts, and check each
 result. Numbers are median nanoseconds per loop iteration over 7 runs.
- is left out: it needs Lua 5.3 integers, which MoonSharp lacks.
+`int64_math` is left out: it needs Lua 5.3 integers, which MoonSharp lacks.
 
 ## Results
 
@@ -36,7 +36,7 @@ result. Numbers are median nanoseconds per loop iteration over 7 runs.
 | fib_recursive | 10,085.0 | 188,176.4 | 18.7x |
 | float_math | 20.8 | 399.4 | 19.2x |
 | string_pattern | 3,199.0 | 25,161.5 | 7.9x |
-| table_sort (not the same script: MoonSharp copies with a loop, native uses table.move) | 51,008.9 | 127,600.3 | 2.5x |
+| table_sort (not the same script: MoonSharp copies with a loop, native uses `table.move`) | 51,008.9 | 127,600.3 | 2.5x |
 | table_concat | 869.2 | 1,598.3 | 1.8x |
 | coroutine_switch | 118.9 | 898.9 | 7.6x |
 | gc_small_tables | 128.8 | 1,153.6 | 9.0x |
@@ -45,19 +45,17 @@ result. Numbers are median nanoseconds per loop iteration over 7 runs.
 ## Reading the numbers
 
 - MoonSharp runs this Lua 1.8 to 80 times slower than native Lua 5.5.1, and
-  10 to 20 times slower in most cases. That is the expected order of magnitude
-  for a tree-walking-free but allocation-heavy managed VM against a register
-  VM in C.
-- Library-heavy work narrows the gap ( 1.8x, string building
+  10 to 20 times slower in most cases.
+- Library-heavy work narrows the gap (`table.concat` 1.8x, string building
   3.5x), because both spend their time in library code.
--  (80x) and  (28x) stand out. MoonSharp
-  tables have no array part:  goes through the hash index. An array
-  part is the clearest optimisation target found so far.
-- Arithmetic allocates a  per intermediate result (about 230 bytes
-  per iteration in the baseline loop benchmark), which shows in ,
-   and .
-- On IL2CPP the managed side will behave differently from RyuJIT, and phones
-  differ from a server CPU. Treat these ratios as desktop-only.
+- `table_array_insert` (80x) and `table_array_read` (28x) stand out. MoonSharp
+  tables have no array part, so `t[i] = i` goes through the hash index. An
+  array part is the clearest optimisation target found so far.
+- Arithmetic allocates a `DynValue` per intermediate result (about 230 bytes
+  per iteration in the baseline loop benchmark). That shows in `int_math`,
+  `float_math` and `fib_recursive`.
+- IL2CPP compiles the managed VM differently from RyuJIT, and phones differ
+  from a server CPU. Treat these ratios as desktop-only.
 
 ## Not compared yet
 
@@ -65,6 +63,6 @@ result. Numbers are median nanoseconds per loop iteration over 7 runs.
   levels.
 - Package size (APK/IPA delta).
 - The C#/Lua bridge: calls in both directions, userdata, delegates.
-- Script start-up and memory per context. MoonSharp: 79.5 KB retained per
-   after fork PR #3 (2.31 MB before). xLua-NG reports about 1.4-1.6 ms
-  per  create and dispose on its own hardware; not measured here.
+- Script start-up and memory per context. MoonSharp retains 79.5 KB per
+  `Script` with fork PR #3 (2.31 MB before). xLua-NG's own notes report about
+  1.4–1.6 ms per `LuaEnv` create and dispose on its hardware; not measured here.

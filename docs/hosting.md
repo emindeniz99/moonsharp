@@ -253,37 +253,63 @@ in the browser; rooting the whole assembly (`TrimmerRootAssembly`) fixed it.
 With the descriptor no root is needed: the 24 fixtures and the 10 behaviour
 tests pass, and the library shrinks from 6.6 MB (rooted) to 5.5 MB.
 
-The build still reports 24 trim and AOT warnings, all in CLR interop code that
-the JSON contract never reaches: `FrameworkClrBase` reflects over arbitrary
-types (IL2075, IL2026 for `Assembly.GetTypes`), `TableConversions` builds
+The build reports trim and AOT warnings, all in CLR interop code that the JSON
+contract never reaches: `FrameworkClrBase` reflects over arbitrary types
+(IL2075, IL2026 for `Assembly.GetTypes`), `TableConversions` builds
 `List<T>`/`Dictionary<K,V>` with `MakeGenericType` and `Activator` (IL2055,
 IL2067, IL3050), `ExtensionMethodsRegistry` calls `MakeGenericMethod` (IL2060,
-IL3050), `StandardEnumUserDataDescriptor` calls `Enum.GetValues(Type)` (IL3050),
-and `ValueTypeDefaultCtorMemberDescriptor` creates value types from a `Type`
-(IL2072).
+IL3050), and `ValueTypeDefaultCtorMemberDescriptor` and `PropertyTableAssigner`
+create values from a `Type` (IL2072).
 
-To see what those warnings cost, MoonSharp's own unit test runner
-(`src/TestRunners/DotNetCoreTestRunner`) was compiled with NativeAOT, with
-`MoonSharp.Interpreter`, `MoonSharp.Interpreter.Tests` and `nunit.framework` as
-roots. 680 of 732 tests pass (all 732 pass under JIT). Three failures are
-`TrimDescriptorTests`, which read the embedded `ILLink.Descriptors.xml`; the
-trimmer applies that resource and then removes it, so they cannot pass in any
-trimmed build. The other 49 are all CLR interop:
+### The unit suite under NativeAOT
 
-| Failures | Error | Cause |
+MoonSharp's unit suite also runs as a NativeAOT executable, as a stand-in for
+IL2CPP until Unity CI runs: neither can generate code at run time, both have
+only the generic instantiations the build saw, and both strip the class library.
+The `nativeaot-unit` job in `ci.yml` runs it:
+
+```sh
+# needs clang and zlib1g-dev; builds the suite for JIT and NativeAOT and runs both
+src/TestRunners/DotNetCoreTestRunner/nativeaot.sh
+```
+
+The script fails on a NativeAOT failure that
+`src/TestRunners/DotNetCoreTestRunner/nativeaot-known-failures.txt` does not
+list (the list is empty), on a listed test that passes, when MoonSharp does not
+detect AOT, and when the NativeAOT build finds fewer tests than the JIT build.
+The test assemblies are trimmer roots, because tests are found by reflection;
+the interpreter is not, so it is trimmed as an app gets it. The three
+`TrimDescriptorTests` are skipped there: they read the embedded
+`ILLink.Descriptors.xml`, which the trimmer applies and then removes.
+
+All 797 tests pass under NativeAOT (5 skipped), and all 800 under JIT. When the suite
+first ran this way, 58 of 761 failed. What they found, and the fixes:
+
+| Failures | Error | Fix |
 |---|---|---|
-| 19 | `NotSupportedException: 'MyEnum[]' is missing native code or metadata` | `Enum.GetValues(Type)` for a script-visible enum |
-| 18 | `MissingMethodException: No parameterless constructor defined for type 'List<string>'` (also `List<int[]>`) | converting a Lua table to a generic CLR collection |
-| 12 | `cannot access field GetEnumerator / Last / Sum / TryGetValue of userdata<List<int>>` (and `Dictionary`) | BCL members trimmed away, and LINQ extension methods instantiated with `MakeGenericMethod` |
+| 20 | `'MyEnum[]' is missing native code or metadata` | Enum values come from `Enum.Parse` per name, not `Enum.GetValues(Type)`, which builds an array of the enum type. |
+| 18 | `No parameterless constructor defined for type 'List<string>'` (also `List<int[]>`, `Dictionary<string, int>`) | `[DynamicDependency]` on the conversions keeps the constructors of `List<>` and `Dictionary<,>`. |
+| 10 | `cannot access field GetEnumerator / TryGetValue / (indexer) of userdata<List<int>>` | `[DynamicallyAccessedMembers]` on `UserData.RegisterType` and `RegisterExtensionType` keeps the members of every type a host registers. |
+| 2 | `Enumerable.Sum[Int32](..., Func`2[Int32,Int32]) is missing native code` | A generic extension overload that cannot be instantiated is skipped; `Sum(IEnumerable<int>)` and `Last<int>` still resolve. |
+| 1 | `obj.M == obj.M` was false again | `[DynamicallyAccessedMembers]` on `DispatchingUserDataDescriptor` keeps the methods its override check reflects over. |
+| 2 | `Assert.AreEqual` on an `IEquatable` value: NUnit calls `Type.GetInterfaceMap` | Test harness only; the tests call `Equals`. |
+| 3 | `TrimDescriptorTests` | Skipped, see above. |
+| 2 | Found once AOT was detected: a member's exception arrived wrapped in `TargetInvocationException` | Reflection access mode rethrows the member's own exception. |
+| 1 | `NewScript_AllocatesLittle`: 166 KB per `new Script()` (90 KB under JIT) | A repeated `RegisterType` of a registered type no longer builds a descriptor to discard; the io and dynamic modules do that for every `Script`. Now about 70 KB on both. |
 
-Making those work would need a `TrimmerRootDescriptor` (ILLink XML) or
-`[DynamicDependency]` for every CLR type exposed to scripts, an rd.xml-style
-directive for each generic instantiation (`List<string>`, `Enumerable.Sum<int>`,
-`MyEnum[]`), and `Enum.GetValues` replaced by reading the enum's static fields.
-MoonSharp also does not detect NativeAOT: `PlatformAutoDetector.IsRunningOnAOT`
-compiles an expression tree to find out, which succeeds on NativeAOT (it falls
-back to the interpreter), so MoonSharp reports `false` and uses its JIT-only
-code paths. Checking `RuntimeFeature.IsDynamicCodeSupported` would detect it.
+`PlatformAutoDetector.IsRunningOnAOT` also returned false on NativeAOT, because
+its probe compiles an expression tree and NativeAOT interprets one instead of
+throwing; it now reads `RuntimeFeature.IsDynamicCodeSupported` first.
+netstandard2.0 does not declare the trimming attributes, so the interpreter
+declares `DynamicallyAccessedMembersAttribute` and `DynamicDependencyAttribute`
+internally; the trimmer matches them by name.
+
+What NativeAOT does not prove about IL2CPP: IL2CPP keeps reflection data for
+every method it keeps and, from Unity 2022.1, shares generic code across value
+types, so the constructor and member failures above may never occur there,
+while UnityLinker's handling of the annotations at higher stripping levels is
+unmeasured. The enum, exception and allocation fixes do not depend on the
+runtime. Only a Unity player run can confirm either.
 
 ### Measurements
 
@@ -466,7 +492,7 @@ Measured on 2026-10-28 on a 4-core Intel Xeon 2.1 GHz cloud VM, Ubuntu 24.04.
 | Shared fixtures, Java 21 through the worker | 24/24, plus 6 worker behaviour tests |
 | Shared fixtures, Java 21, in process through CoreCLR 8.0.33 (hostfxr + JNI) | 24/24, plus 10 in-process behaviour tests |
 | Shared fixtures, Java 21, in process through NativeAOT (.NET 8) | 24/24, plus 10 in-process behaviour tests |
-| MoonSharp unit tests compiled with NativeAOT (experiment, not in CI) | 680/732; 49 failures are CLR interop, 3 are descriptor tests that cannot pass when trimmed (see "NativeAOT and trimming") |
+| MoonSharp unit tests compiled with NativeAOT (first run, before the fixes in "The unit suite under NativeAOT") | 680/732; 49 failures were CLR interop, 3 are descriptor tests that cannot pass when trimmed |
 | Spring Boot 4.1 sample over HTTP | 4/4 |
 | Fixtures on .NET (default culture and invariant globalization), Chromium, the Java worker, CoreCLR and NativeAOT in process, and the Spring Boot sample, rerun with the `mise.toml` tools (SDK 10.0.402, .NET 8.0.32, Temurin 17.0.20.1, Maven 3.10.0, Node 24.22.1, CMake 4.4.4) | all pass |
 | Firefox, Safari/WebKit, iOS Safari | not run (only Chromium is installed here) |

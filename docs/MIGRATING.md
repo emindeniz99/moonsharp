@@ -292,6 +292,10 @@ compiled. The original exception is now rethrown on every path, with its
 stack trace. Affected: hosts on IL2CPP or iOS, or using `Reflection`, that
 caught `TargetInvocationException` and read `InnerException`.
 
+The same holds for property getters and setters called through reflection.
+A setter that throws `ArgumentException` itself is now reported as a type
+mismatch (`ScriptRuntimeException`), as the compiled setter already did.
+
 ## The Unity package requires Unity 2021.3
 
 `package.json` of `org.moonsharp.moonsharp` and
@@ -300,3 +304,35 @@ caught `TargetInvocationException` and read `InnerException`.
 which `.github/workflows/unity.yml` tests; 2020.3 is out of support and was
 never tested. Nothing in the package needed the lower number. Affected:
 projects on Unity 2020.3.
+
+## NativeAOT counts as an AOT platform
+
+`Script.GlobalOptions.Platform.IsRunningOnAOT()` returned false on .NET
+NativeAOT: its probe compiles an expression tree, which NativeAOT interprets
+instead of refusing. It now reads `RuntimeFeature.IsDynamicCodeSupported`
+where the runtime has it, and returns true on NativeAOT. There, as on IL2CPP,
+every descriptor uses `InteropAccessMode.Reflection` whatever mode was asked
+for, `_MOONSHARP.is_aot` is true and the platform name ends in `.aot`.
+Affected: hosts published with NativeAOT that checked these values or
+counted adapter compilations.
+
+## Generic extension overloads that AOT cannot instantiate are skipped
+
+When a script calls an extension method by name, MoonSharp instantiates each
+generic candidate for the userdata's type. On NativeAOT an instantiation the
+app never compiled threw `NotSupportedException` and ended the lookup, so
+`list:Sum()` failed although `Sum(IEnumerable<int>)` existed. Such a
+candidate is now skipped like one whose arguments do not fit; when no
+candidate is left, the member is missing, as for any unknown name.
+Affected: hosts on NativeAOT that registered extension types.
+
+## Trimmed apps keep the members of registered types
+
+`UserData.RegisterType<T>()`, `RegisterType(Type, ...)` and
+`RegisterExtensionType(Type)` carry trimming annotations
+(`DynamicallyAccessedMembers`). An app trimmed by the .NET SDK or published
+with NativeAOT now keeps every member of a type it registers with a
+`typeof` or a type argument, without a descriptor file, and grows by those
+members. A `Type` computed at run time gets a trim warning in the host's
+build, as other reflection does. Unity's linker is not known to read these
+annotations; keep using `link.xml` or `[Preserve]` there.

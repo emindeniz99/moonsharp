@@ -1,20 +1,9 @@
 <linker>
-    <assembly fullname="MoonSharp.Interpreter.Tests">
-        <type fullname="MoonSharp.*" preserve="all" />
-    </assembly>
-    <assembly fullname="MoonSharp.Interpreter">
-        <type fullname="MoonSharp.*" preserve="all" />
-    </assembly>
-    <assembly fullname="System">
-        <type fullname="System.*" preserve="all"/>
-    </assembly>    
-    <assembly fullname="System.Core">
-        <type fullname="System.*" preserve="all"/>
-    </assembly>
-    <assembly fullname="System.Xml">
-        <type fullname="System.*" preserve="all"/>
-    </assembly>
-    <assembly fullname="mscorlib">
-        <type fullname="System.*" preserve="all"/>
-    </assembly>
-</linker> 
+  <!-- The runner finds fixtures and tests by reflection, so IL2CPP must keep all of them. -->
+  <assembly fullname="MoonSharp.Interpreter.Tests" preserve="all" />
+  <!-- The tests call framework types (List<T>, StringBuilder, ...) from Lua by reflection; a game
+       would list only the types it registers, as the old test bed did with these three. -->
+  <assembly fullname="mscorlib" preserve="all" />
+  <assembly fullname="System" preserve="all" />
+  <assembly fullname="System.Core" preserve="all" />
+</linker>

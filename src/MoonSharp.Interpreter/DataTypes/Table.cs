@@ -15,9 +15,22 @@ namespace MoonSharp.Interpreter
 		readonly LinkedListIndex<int, TablePair> m_ArrayMap;
 		readonly Script m_Owner;
 
+		// Entries visited by length scans and dead-key sweeps. Only the work-bound tests read it (by reflection).
+		[System.ThreadStatic] static long s_ScanSteps;
+
 		int m_InitArray = 0;
-		int m_CachedLength = -1;
+
+		// Length cache: keys 1..m_CachedLength all hold non-nil values. When m_LengthKnown is set, key
+		// m_CachedLength + 1 does not, so m_CachedLength is the first border (the value of #t).
+		int m_CachedLength = 0;
+		bool m_LengthKnown = true;
+
+		// Set when a nil is stored; the next store of a value into a new or nil key then runs CollectDeadKeys.
 		bool m_ContainsNilEntries = false;
+
+		// Entries holding nil that CollectDeadKeys can remove (all but integer keys below 1 set through
+		// Set(int), which Remove(DynValue) cannot find). When zero, CollectDeadKeys has nothing to walk for.
+		int m_SweepableNilEntries = 0;
 
 		/// <summary>
 		/// Initializes a new instance of the <see cref="Table"/> class.
@@ -63,7 +76,9 @@ namespace MoonSharp.Interpreter
 			m_StringMap.Clear();
 			m_ArrayMap.Clear();
 			m_ValueMap.Clear();
-            m_CachedLength = -1;
+			m_CachedLength = 0;
+			m_LengthKnown = true;
+			m_SweepableNilEntries = 0;
 		}
 
 		/// <summary>
@@ -164,59 +179,61 @@ namespace MoonSharp.Interpreter
 		/// <summary>
 		/// Stores a value. <paramref name="node"/> is the existing entry for the key (or null); when it exists
 		/// its key DynValue is kept, so callers create <paramref name="keyDynValue"/> only for a new key.
+		/// <paramref name="intKey"/> is the key when <paramref name="isArrayMap"/> is set.
 		/// </summary>
-		private void PerformTableSet<T>(LinkedListIndex<T, TablePair> listIndex, T key, LinkedListNode<TablePair> node, DynValue keyDynValue, DynValue value, bool isNumber, int appendKey)
+		private void PerformTableSet<T>(LinkedListIndex<T, TablePair> listIndex, T key, LinkedListNode<TablePair> node, DynValue keyDynValue, DynValue value, bool isArrayMap, int intKey)
 		{
-			TablePair prev;
+			DynValue prev = null;
 
 			if (node != null)
 			{
-				prev = node.Value;
-				node.Value = new TablePair(prev.Key, value);
+				prev = node.Value.Value;
+				node.Value = new TablePair(node.Value.Key, value);
 			}
 			else
 			{
-				prev = default(TablePair);
 				listIndex.Add(key, new TablePair(keyDynValue, value));
 			}
 
-			// If this is an insert, we can invalidate all iterators and collect dead keys
-			if (m_ContainsNilEntries && value.IsNotNil() && (prev.Value == null || prev.Value.IsNil()))
-			{
-				CollectDeadKeys();
-			}
-			// If this value is nil (and we didn't collect), set that there are nil entries, and invalidate array len cache
-			else if (value.IsNil())
-			{
-				m_ContainsNilEntries = true;
+			bool wasNil = prev == null || prev.IsNil();
+			bool isNil = value.IsNil();
 
-				if (isNumber)
-					m_CachedLength = -1;
-			}
-			else if (isNumber)
+			if (!isArrayMap || intKey > 0)
 			{
-				// If this is an array insert, we might have to invalidate the array length
-				if (prev.Value == null || prev.Value.IsNilOrNan())
+				if (isNil)
 				{
-					// If this is an array append, let's check the next element before blindly invalidating
-					if (appendKey >= 0)
-					{
-						LinkedListNode<TablePair> next = m_ArrayMap.Find(appendKey + 1);
-						if (next == null || next.Value.Value == null || next.Value.Value.IsNil())
-						{
-							m_CachedLength += 1;
-						}
-						else
-						{
-							m_CachedLength = -1;
-						}
-					}
-					else
-					{
-						m_CachedLength = -1;
-					}
+					if (prev == null || !wasNil)
+						m_SweepableNilEntries++;
+				}
+				else if (prev != null && wasNil)
+				{
+					m_SweepableNilEntries--;
 				}
 			}
+
+			if (isArrayMap && intKey > 0)
+			{
+				if (wasNil && !isNil)
+				{
+					// Filling the slot right after the known prefix extends it; Length looks further on demand.
+					if (intKey == m_CachedLength + 1)
+					{
+						m_CachedLength = intKey;
+						m_LengthKnown = false;
+					}
+				}
+				else if (!wasNil && isNil && intKey <= m_CachedLength)
+				{
+					m_CachedLength = intKey - 1;
+					m_LengthKnown = true;
+				}
+			}
+
+			// Storing a value into a new or nil key after a nil was stored runs the dead-key collection.
+			if (m_ContainsNilEntries && !isNil && wasNil)
+				CollectDeadKeys();
+			else if (isNil)
+				m_ContainsNilEntries = true;
 		}
 
 		/// <summary>
@@ -243,7 +260,7 @@ namespace MoonSharp.Interpreter
 		{
 			this.CheckScriptOwnership(value);
 			LinkedListNode<TablePair> node = m_ArrayMap.Find(key);
-			PerformTableSet(m_ArrayMap, key, node, node == null ? DynValue.NewNumber(key) : null, value, true, -1);
+			PerformTableSet(m_ArrayMap, key, node, node == null ? DynValue.NewNumber(key) : null, value, true, key);
 		}
 
 		/// <summary>
@@ -463,16 +480,28 @@ namespace MoonSharp.Interpreter
 
 		#region Remove
 
-		private bool PerformTableRemove<T>(LinkedListIndex<T, TablePair> listIndex, T key, bool isNumber)
+		private bool PerformTableRemove<T>(LinkedListIndex<T, TablePair> listIndex, T key, bool isArrayMap, int intKey)
 		{
-			var removed = listIndex.Remove(key);
+			LinkedListNode<TablePair> node = listIndex.Find(key);
 
-			if (removed && isNumber)
+			if (node == null)
+				return false;
+
+			bool wasNil = node.Value.Value.IsNil();
+			listIndex.Remove(key);
+
+			if (wasNil)
 			{
-				m_CachedLength = -1;
+				if (!isArrayMap || intKey > 0)
+					m_SweepableNilEntries--;
+			}
+			else if (isArrayMap && intKey > 0 && intKey <= m_CachedLength)
+			{
+				m_CachedLength = intKey - 1;
+				m_LengthKnown = true;
 			}
 
-			return removed;
+			return true;
 		}
 
 		/// <summary>
@@ -482,7 +511,7 @@ namespace MoonSharp.Interpreter
 		/// <returns><c>true</c> if values was successfully removed; otherwise, <c>false</c>.</returns>
 		public bool Remove(string key)
 		{
-			return PerformTableRemove(m_StringMap, key, false);
+			return PerformTableRemove(m_StringMap, key, false, 0);
 		}
 
 		/// <summary>
@@ -492,7 +521,7 @@ namespace MoonSharp.Interpreter
 		/// <returns><c>true</c> if values was successfully removed; otherwise, <c>false</c>.</returns>
 		public bool Remove(int key)
 		{
-			return PerformTableRemove(m_ArrayMap, key, true);
+			return PerformTableRemove(m_ArrayMap, key, true, key);
 		}
 
 		/// <summary>
@@ -512,7 +541,7 @@ namespace MoonSharp.Interpreter
 					return Remove(idx);
 			}
 
-			return PerformTableRemove(m_ValueMap, key, false);
+			return PerformTableRemove(m_ValueMap, key, false, 0);
 		}
 
 		/// <summary>
@@ -555,16 +584,26 @@ namespace MoonSharp.Interpreter
 		/// </summary>
 		public void CollectDeadKeys()
 		{
-			for (LinkedListNode<TablePair> node = m_Values.First; node != null; node = node.Next)
+			// This removes only the first removable entry that holds nil, in iteration order. The original
+			// loop stepped to node.Next after LinkedList.Remove had cleared it, which ended the walk at the
+			// first removal; pairs() order depends on which nil entries survive, so that is kept as is.
+			// With no removable nil entry the walk would find nothing, so it is skipped.
+			if (m_SweepableNilEntries > 0)
 			{
-				if (node.Value.Value.IsNil())
+				long steps = 0;
+
+				for (LinkedListNode<TablePair> node = m_Values.First; node != null; node = node.Next)
 				{
-					Remove(node.Value.Key);
+					steps++;
+
+					if (node.Value.Value.IsNil() && Remove(node.Value.Key))
+						break;
 				}
+
+				s_ScanSteps += steps;
 			}
 
 			m_ContainsNilEntries = false;
-			m_CachedLength = -1;
 		}
 
 
@@ -631,12 +670,26 @@ namespace MoonSharp.Interpreter
 		{
 			get
 			{
-				if (m_CachedLength < 0)
+				if (!m_LengthKnown)
 				{
-					m_CachedLength = 0;
+					// Keys 1..m_CachedLength are known to hold values: continue from there, not from 1.
+					int n = m_CachedLength;
+					long steps = 0;
 
-					for (int i = 1; m_ArrayMap.ContainsKey(i) && !m_ArrayMap.Find(i).Value.Value.IsNil(); i++)
-						m_CachedLength = i;
+					while (true)
+					{
+						steps++;
+						LinkedListNode<TablePair> next = m_ArrayMap.Find(n + 1);
+
+						if (next == null || next.Value.Value.IsNil())
+							break;
+
+						n++;
+					}
+
+					m_CachedLength = n;
+					m_LengthKnown = true;
+					s_ScanSteps += steps;
 				}
 
 				return m_CachedLength;

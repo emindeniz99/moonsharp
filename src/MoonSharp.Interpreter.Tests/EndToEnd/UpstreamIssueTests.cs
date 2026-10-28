@@ -425,5 +425,16 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 			Assert.AreEqual(0.0, s.DoString("local function count(...) return select('#', ...) end return count()").Number);
 		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/263: "local x" without a value could
+		// take a leftover value from the stack instead of nil.
+		[Test]
+		[Ignore("waits for compiler work: https://github.com/moonsharp-devs/moonsharp/issues/263")]
+		public void Issue263_LocalWithoutValueIsNil()
+		{
+			Script s = new Script();
+
+			Assert.IsTrue(s.DoString("for k, v in pairs({ 1 }) do local unset; return unset end").IsNil());
+		}
 	}
 }

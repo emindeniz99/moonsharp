@@ -8,6 +8,26 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 {
 	public static class Utils
 	{
+		/// <summary>
+		/// Runs code under another thread culture. Scripts must give the same results on every device,
+		/// whatever its regional settings.
+		/// </summary>
+		public static T WithCulture<T>(string cultureName, Func<T> action)
+		{
+			var thread = System.Threading.Thread.CurrentThread;
+			var previous = thread.CurrentCulture;
+
+			try
+			{
+				thread.CurrentCulture = new System.Globalization.CultureInfo(cultureName);
+				return action();
+			}
+			finally
+			{
+				thread.CurrentCulture = previous;
+			}
+		}
+
 		public static void DynAssert(DynValue result, params object[] args)
 		{
 			if (args == null)

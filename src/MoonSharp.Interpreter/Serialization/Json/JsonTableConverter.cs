@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using MoonSharp.Interpreter.Tree;
@@ -96,7 +97,7 @@ namespace MoonSharp.Interpreter.Serialization.Json
 					sb.Append(value.Boolean ? "true" : "false");
 					break;
 				case DataType.Number:
-					sb.Append(value.Number.ToString("r"));
+					sb.Append(value.Number.ToString("r", CultureInfo.InvariantCulture));
 					break;
 				case DataType.String:
 					sb.Append(EscapeString(value.String ?? ""));

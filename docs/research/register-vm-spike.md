@@ -26,6 +26,10 @@ decide on a full rewrite from its measured gain.
   | numeric-loop (Lua-CSharp suite) | 0.45-0.46 | 0.65-0.66 |
   | nbody (Lua-CSharp suite) | 0.46-0.48 | 1.20-1.29 |
 
+- The gain holds without a JIT and on Unity's runtime: spike / next is 0.38-0.59 on NativeAOT (the IL2CPP
+  stand-in) and 0.44-0.64 on Unity Mono 6.13 (`unity-mono` 2026-02-24.3, the docker-ci build), A/A within
+  ±8% [C]. IL2CPP itself was not run. See [NativeAOT and Unity Mono](#nativeaot-and-unity-mono).
+
 - On loops and arithmetic the register code runs as many instructions per iteration as the fused stack code
   (int_math 4 and 4, numeric-loop 2 and 2). The gain there comes from cheaper instructions: a struct
   instruction array with integer operands, registers addressed directly, constants in a `LuaValue[]`. Calls
@@ -33,8 +37,8 @@ decide on a full rewrite from its measured gain.
 - The subset covers the numeric kernels and 20% of the functions in the corpus's application scripts; table
   constructors, `..`, `#`, `and`/`or`, generic `for`, closures and varargs keep the rest on the stack VM [C].
 - Recommendation: build the register VM, incrementally, on this prototype's structure (register code next to
-  stack code, whole-function fallback, differential tests), after one measurement this spike could not make:
-  the same comparison on IL2CPP. Do not extend fusion further for loops and arithmetic: it already matches
+  stack code, whole-function fallback, differential tests). A check on IL2CPP in the Unity matrix is still
+  worth doing first, but NativeAOT and Unity Mono already show the gain. Do not extend fusion further for loops and arithmetic: it already matches
   the register instruction count, so it has nothing left to remove there. Details in
   [Recommendation](#recommendation).
 
@@ -150,6 +154,72 @@ These Lua-CSharp ratios come from .NET 8. The note [lua-csharp-own-bench.md](lua
 .NET 10 and BenchmarkDotNet and found `next` 1.65x behind on numeric-loop and 2.41x on nbody; this harness
 finds 1.4-1.5x and 2.6-2.7x [C for each run; the runtime difference explains the gap only as a guess, U].
 
+### NativeAOT and Unity Mono
+
+The coordinator asked for the runtimes the first runs did not cover. Same seven workloads, one engine per
+process (`regvm/b1/src/Program.cs` in the session scratchpad), built outside the lock:
+
+- **NativeAOT**: `dotnet publish -p:PublishAot=true` for linux-x64 (.NET SDK 10.0.402, net8.0, clang 18),
+  one executable per build: `next` `48fca10`, the spike at `2a1e221` (same VM code as `6e8c79b` plus compile
+  counters), the spike with `RegisterVm = false`, Lua-CSharp main `a8d84c7`. No tiered JIT and ahead-of-time
+  code, as on IL2CPP; it keeps bounds checks as IL2CPP does by default [S].
+- **Unity Mono**: `unity-mono-linux-2026-02-24.3.tar.gz` from Benjamin-Dobell/unity-mono, the archive the
+  Dockerfile pins, checked against its SHA-256 (`3cecef99...0008`) and unpacked into a private prefix, not
+  into `/` as the Dockerfile does. `mono --version`: 6.13.0 (explicit/fbe0f703560). Its loader log shows it
+  loads its own `lib/mono/4.5/mscorlib.dll`, not the system Mono 6.8 [C]. The harness is a net48 executable
+  against the net45 interpreter builds of the same commits. Lua-CSharp was left out: it needs
+  netstandard2.1, which a net48 executable cannot reference.
+- 11 rounds; each round holds `bench.lock` once and runs every engine as its own process, in an order that
+  rotates per round; each process reports the median of 3 timed runs after 2 checked warm-up runs. A/A is a
+  second process of the `next` build. Load average 2.1-6.8 from other sessions.
+
+NativeAOT, medians of rounds (ns per iteration, µs per execution for the last two rows):
+
+| Workload | next | next (A/A) | spike | spikeoff | Lua-CSharp |
+|---|---:|---:|---:|---:|---:|
+| empty_loop | 8.2 | 8.2 | 4.9 | 8.2 | 5.2 |
+| int_math | 39.4 | 39.6 | 18.9 | 38.9 | 20.0 |
+| float_math | 69.4 | 69.0 | 26.7 | 68.6 | 34.0 |
+| function_call | 129.8 | 131.0 | 64.1 | 135.2 | 85.7 |
+| fib_recursive (µs) | 58.5 | 62.9 | 32.7 | 62.1 | 39.2 |
+| numeric-loop (µs) | 318.5 | 324.4 | 148.9 | 315.0 | 190.7 |
+| nbody (µs) | 1,690 | 1,710 | 858 | 1,712 | 601 |
+
+Unity Mono 6.13, same layout, no Lua-CSharp:
+
+| Workload | next | next (A/A) | spike | spikeoff |
+|---|---:|---:|---:|---:|
+| empty_loop | 18.8 | 18.6 | 12.0 | 18.8 |
+| int_math | 88.7 | 87.2 | 44.7 | 88.1 |
+| float_math | 172.4 | 166.1 | 86.5 | 164.1 |
+| function_call | 182.0 | 185.7 | 83.0 | 183.8 |
+| fib_recursive (µs) | 82.8 | 84.4 | 39.2 | 86.8 |
+| numeric-loop (µs) | 791 | 769 | 455 | 751 |
+| nbody (µs) | 2,605 | 2,586 | 1,159 | 2,534 |
+
+Ratios to `next`, median of per-round ratios (interquartile range in the scratchpad's `regvm/b1/result.txt`):
+
+| Workload | AOT A/A | AOT spike | AOT spikeoff | AOT spike / Lua-CSharp | Mono A/A | Mono spike | Mono spikeoff |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| empty_loop | 1.002 | 0.594 | 1.000 | 0.93 | 1.005 | 0.637 | 1.006 |
+| int_math | 1.007 | 0.490 | 0.988 | 0.95 | 0.967 | 0.516 | 1.017 |
+| float_math | 1.001 | 0.381 | 0.993 | 0.81 | 0.959 | 0.503 | 0.982 |
+| function_call | 0.997 | 0.492 | 1.054 | 0.75 | 1.007 | 0.460 | 1.012 |
+| fib_recursive | 1.075 | 0.560 | 1.072 | 0.84 | 1.010 | 0.479 | 1.060 |
+| numeric-loop | 1.013 | 0.468 | 0.979 | 0.78 | 0.985 | 0.596 | 0.977 |
+| nbody | 0.990 | 0.506 | 1.005 | 1.45 | 0.999 | 0.444 | 0.991 |
+
+Reading [C]:
+
+- **NativeAOT.** The spike runs in 0.38-0.59 of `next`'s time, as on the JIT (0.39-0.66). It stays ahead of
+  Lua-CSharp on six rows and behind on nbody (1.45x).
+- **Unity Mono.** Each engine is 1.4-2.5x slower than on NativeAOT. The ratio is 0.44-0.64: on calls (0.46-0.48)
+  and nbody (0.44) the gain is larger than on CoreCLR, on float_math (0.50) and numeric-loop (0.60) smaller.
+- **Noise.** A/A stays within ±8%. The worst row is AOT fib_recursive at 1.075.
+- **Stack-path overhead.** `spikeoff` on AOT function_call is 1.054 with an interquartile range of
+  1.035-1.073, while its A/A row is 0.997. That suggests a 5% cost of the larger call frame (`SavedPc`) on
+  stack calls under NativeAOT [S]. The fib row shows the same 1.07, but its A/A does too, so it says nothing.
+
 ### Where the gain comes from
 
 Instructions per iteration, counted with the interrupt handler (one call per 10,000 instructions) [C]:
@@ -222,9 +292,9 @@ any of it.
 - Conformance corpus: 248 of 248 on the `dotnet` and `dotnet-bytecode` legs [C]. The bytecode leg runs the
   stack VM, since dumps carry no register code.
 - Interpreter DLL (netstandard2.0 Release): 436,736 to 454,656 bytes (+17,920) [C].
-- Not tested: Mono, IL2CPP, NativeAOT, the Unity matrix [U]. The code uses only constructs IL2CPP compiles
-  (structs, ref locals, no reflection emit), so failures there are unlikely [S], but the speed gain there is
-  unknown: IL2CPP keeps array bounds checks and has no tiered JIT, and the gain comes from dispatch cost.
+- The workloads give the same checked results on NativeAOT and Unity Mono [C]. The unit suite was not run on
+  either for this branch. IL2CPP and the Unity matrix were not run [U]. The code uses only constructs IL2CPP
+  compiles (structs, ref locals, no reflection emit), so failures there are unlikely [S].
 
 ## What a full rewrite needs
 
@@ -272,9 +342,9 @@ any of it.
 
 Build the register VM incrementally, in this order:
 
-1. Measure this branch on IL2CPP and Mono first (the Unity matrix can run the probe as a player test). The
-   whole gain is dispatch cost, the part most likely to differ there.
-2. If the IL2CPP gain holds, extend the subset: table constructors, `..`, `#`, `and`/`or`, method calls,
+1. Run this branch's workloads once on IL2CPP in the Unity matrix (a player test). NativeAOT and Unity Mono
+   keep the gain (0.38-0.64 of `next`'s time), so this is a check, not the open question it was.
+2. Extend the subset: table constructors, `..`, `#`, `and`/`or`, method calls,
    multiple results and closures, by coverage of the corpus scripts. Each group lands with its differential
    tests and stays behind the whole-function fallback.
 3. Move coroutines and the debugger to register frames.

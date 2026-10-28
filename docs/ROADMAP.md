@@ -67,6 +67,7 @@ What Unity 2021.3 support means for the code:
 | [#7](https://github.com/emindeniz99/moonsharp/pull/7) | Baseline measurements, upstream tracking, comparison with native Lua. |
 | [#8](https://github.com/emindeniz99/moonsharp/pull/8) | The `io` module works on browser WebAssembly; trimmed apps keep the standard library. |
 | [#9](https://github.com/emindeniz99/moonsharp/pull/9) | This roadmap. |
+| branch `feat/conformance-corpus` | Cross-host conformance corpus: 225 cases in 8 suites (numbers, strings, patterns, tables, errors, JSON, int64, logic) run by the .NET CLI (also from precompiled bytecode and under a decimal-comma culture), Chromium and the three Java transports, each checked against its own known-failures file in both directions. `moonsharp-host compile` writes bytecode with source locations; every transport can create int64 contexts. See [src/Hosting/fixtures/README.md](../src/Hosting/fixtures/README.md). |
 | branch `feat/exact-int64` | Exact 64-bit integers: opt-in `int64`/`uint64` values (`CoreModules.Int64`), CLR `long`/`ulong` in both directions (`ScriptOptions.ExactInt64Interop` for CLR to Lua), exact JSON on request. See [int64.md](int64.md). |
 
 ## In progress
@@ -110,10 +111,24 @@ After step 4: the checkpoint in the decisions table.
 - A `Script` keeps every chunk it compiles, so a long-lived `Script` that compiles in a loop grows without bound.
 - `ScriptOptions(defaults)` does not copy `ColonOperatorClrCallbackBehaviour`.
 - The Unity test runner list misses `ProtectedCallMetamethodTests`, `TonumberTests` and `NewIndexAssignmentTests`.
+- Found by the conformance corpus; each is a case with a `note`, so a fix updates its expectation. The owner decides which are bugs to fix (in `legacy` too) and which stay as documented differences:
+  - Concatenation and `string.format('%s')` format numbers with the process culture: `1.5 .. ''` is `1,5` under `tr_TR` or `de_DE` (`DynValue.CastToString`, `Number.ToString()` without a culture). `known-failures/dotnet-tr-TR.json` lists the two cases.
+  - `%` with a negative divisor takes the dividend's sign: `7 % -3` is 1, Lua gives -2.
+  - `math.huge` is `Double.MaxValue`, so `math.huge == 1/0` is false.
+  - `error(t)` with a table, and `error()`, raise "bad argument #1 to 'error'"; `pcall` never sees the error object.
+  - The `json` module parses with the Lua lexer: `json.parse('[[1]]')` fails (a long string) and `\u00e9` escapes fail. `json.serialize` drops the string keys of a table that also has keys 1..n.
+  - The lexer reads `1e15+0.5` as one malformed number.
+  - `tonumber` and arithmetic do not read hexadecimal strings; `tonumber('nan')` is NaN.
+  - `string.format`: `%e` writes three exponent digits, `%d` of 2^63 wraps instead of failing, `%s` rejects nil.
+  - `string.find(s, '', init)` with `init` past the end still matches.
+  - `tostring` writes shortest round-trip digits, `NaN` and `Infinity`, where Lua 5.2 writes `%.14g`, `nan` and `inf`.
 
 ## Later, and ideas
 
-- A Unity CI matrix: 2021.3, 2022.3 and 6 LTS editors, Mono and IL2CPP players.
+- A Unity CI matrix: 2021.3, 2022.3 and 6 LTS editors, Mono and IL2CPP players. Run the conformance corpus in the players through `ScriptHost`, with `unity-mono` and `unity-il2cpp` known-failures files.
+- Run the bytecode leg of the corpus on the browser and Java hosts too (they accept the base64 dump text today; only the .NET runner compiles).
+- The JSON contract for int64 results (the decision above): today a context with int64 returns them as an `output` error.
+- Publish per-host corpus results over time, as JsonLogic's compat tables do.
 - In-process JVM hosting as the default: needs the native stack guard above and an execution budget for plain calls, then a new measurement against the worker.
 - Browser: AOT-compiled WebAssembly against the interpreter build; Firefox and WebKit tests.
 - LuaCATS type definitions generated from registered C# types, for editor completion.

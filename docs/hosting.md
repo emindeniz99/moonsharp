@@ -29,8 +29,13 @@ from the distribution (`sudo apt-get install clang zlib1g-dev`), as in CI.
 ```sh
 mise install
 dotnet build -c Release src/Hosting/MoonSharp.Hosting.Cli
-dotnet src/Hosting/MoonSharp.Hosting.Cli/bin/Release/net8.0/moonsharp-host.dll test src/Hosting/fixtures/logic.suite.json
+dotnet src/Hosting/MoonSharp.Hosting.Cli/bin/Release/net8.0/moonsharp-host.dll test src/Hosting/fixtures
 ```
+
+`test` runs the conformance corpus in `src/Hosting/fixtures` and checks the
+results against `known-failures/dotnet.json`; the browser smoke test and the
+Java conformance tests do the same for their hosts. The corpus format and the
+known-failures rules are in [its README](../src/Hosting/fixtures/README.md).
 
 Run the commands in a shell where mise is activated, or prefix them with
 `mise exec --`.
@@ -62,8 +67,13 @@ Every call takes and returns JSON text. A result is an envelope:
 | `invoke(moduleId, function, argsJson)` | Call a function of a loaded module. The compiled function is cached. |
 | `run(chunk, source, inputJson)` | Compile and run once. If the chunk returns a function, call it with the input. |
 | `unload(moduleId)`, `dispose(context)` | Free a module or a whole context. |
+| `create(context, int64)` | Create a context, replacing one of that name. Contexts are also created on first use; `create` is for options. With `int64` the context has the `int64` and `uint64` modules ([int64.md](int64.md)). |
 
 A context is one `Script` (one Lua state). Globals and modules are per context.
+Every transport creates it through `ScriptHost.Create(int64)`, with
+`ScriptHost.PortableModules` and, when asked, `CoreModules.Int64`. Returning an
+int64 value to the host is an `output` error for now; return
+`tostring(x)` or `json.serialize` it.
 A context is not thread-safe: the browser has one thread per runtime, and the
 Java pool gives each worker process its own contexts.
 
@@ -82,7 +92,13 @@ Java pool gives each worker process its own contexts.
 | `null` inside an array | `json.null()` | `null` |
 
 Lua tables with keys 1..n and nothing else become arrays. An empty table becomes
-`{}`. Return `json.emptyarray()` (built into MoonSharp) for `[]`.
+`{}`. Return `json.emptyarray()` (built into MoonSharp) for `[]`. Fields set to
+nil do not count, so a table emptied with `table.remove` is still an array.
+
+A string with an unpaired surrogate (half of a character outside the BMP, as
+`('👋'):sub(1, 1)` gives) is an `output` error. UTF-8 cannot encode it, and
+System.Text.Json cannot read its `\u` escape, so each transport would deliver
+something different.
 
 **Large integers.** MoonSharp follows Lua 5.2: every number is a double, which
 holds integers exactly only up to 2^53. The host refuses larger integer literals
@@ -108,7 +124,9 @@ reply per line on stdout, in order:
 {"id":2,"op":"invoke","context":"c1","module":"offers","function":"select_offers","args":[...]}
 ```
 
-`args` may also be sent as text in `argsJson`. Run several workers for parallel
+`args` may also be sent as text in `argsJson`, and `input` (for `run`) as
+`inputJson`. `{"id":3,"op":"create","context":"c2","int64":true}` creates a
+context with options. Run several workers for parallel
 calls: `MoonSharpPool` keeps a fixed set, loads every module into each of them,
 and replaces a worker that dies.
 
@@ -403,6 +421,23 @@ new code. The old compiled code stays in memory: a MoonSharp `Script` keeps
 every chunk it has compiled. To release it, dispose the context and load the
 new version into a fresh one. A context per published script bundle works well.
 
+## Precompiled scripts
+
+`moonsharp-host compile rules.lua -o rules.luac` compiles a chunk to MoonSharp's
+binary format (`Script.Dump`) with source locations, so runtime errors still
+name the line. Compiling at publish time moves syntax errors out of the clients
+and parsing off their start-up; the bytecode is still interpreted.
+`moonsharp-host run rules.luac` runs it. A .NET or Unity host loads the file
+with `Script.LoadFile` or `LoadStream`. Every `ScriptHost` operation that takes
+source (`validate`, `load`, `run`) also takes a dump as text:
+`MoonSharp_dump_b64::` followed by the file in base64, the form
+`Script.LoadString` accepts.
+
+`moonsharp-host test --bytecode` runs the whole corpus this way, so CI shows
+that compiled and source chunks give the same results, error lines included.
+Load only dumps you built: MoonSharp does not verify bytecode, and the format
+changes with the MoonSharp version.
+
 ## Browser notes
 
 - The build publishes untrimmed `MoonSharp.Interpreter`
@@ -412,7 +447,10 @@ new version into a fresh one. A context per published script bundle works well.
 - The worker script listens with `addEventListener("message")`. The .NET runtime
   replaces `self.onmessage` inside a Web Worker, so a handler assigned to
   `onmessage` never runs.
-- Pass 64-bit IDs as strings. For raw JSON text use `invoke(module, fn, { json })`.
+- Pass 64-bit IDs as strings. For raw JSON text use `invoke(module, fn, { json })`
+  and `runJson(chunk, source, inputJson)`.
+- `runtime.createContext({ int64: true })` creates a context with the int64 and
+  uint64 modules.
 
 ## Status
 
@@ -420,6 +458,8 @@ Measured on 2026-10-28 on a 4-core Intel Xeon 2.1 GHz cloud VM, Ubuntu 24.04.
 
 | Check | Result |
 |---|---|
+| Conformance corpus, 225 cases in 8 suites (2026-10-28, `mise.toml` tools): `dotnet`, `dotnet-bytecode`, .NET with invariant globalization, Chromium 153 main thread, Java 17 worker, CoreCLR 8.0.32 and NativeAOT in process | 225/225 on each; every known-failures file is empty |
+| Conformance corpus, .NET with `LANG=tr_TR.UTF-8` (also `de_DE`) | 223/225: `1.5 .. ''` and `string.format('%s', 1.5)` give `1,5` (listed in `known-failures/dotnet-tr-TR.json`) |
 | Shared fixtures, .NET 8 CLI | 24/24 under `C.UTF-8`, `tr_TR`, `de_DE` and invariant globalization |
 | Shared fixtures, headless Chromium 153 (Playwright 1.63), main thread | 24/24 |
 | Web Worker path, Chromium | pass (eligibility call, 2^53 + 1 rejected) |

@@ -823,3 +823,53 @@ values on the value stack, so an enclosing `for` loop then read them as its
 own: it skipped or repeated iterations. The jump now removes them, as `break`
 does. Affected: scripts that `goto` a label outside a `for` loop (a
 `continue` label inside the same loop body was not affected).
+
+## `require` follows Lua 5.2: `package.preload`, `package.path` and `package.searchers`
+
+**Before:** `require` looked in `package.loaded`, then asked the script
+loader, which read only the `LUA_PATH` global and `ModulePaths`. `package`
+had only `loaded` and `config`
+([upstream #285](https://github.com/moonsharp-devs/moonsharp/issues/285),
+[upstream #332](https://github.com/moonsharp-devs/moonsharp/issues/332)).
+
+**After:** `require` works as in Lua 5.2 (manual §6.3):
+
+- `package.preload[name]` is the loader of module `name`, tried before any
+  file. Hosts can put C# functions there.
+- `package.path` is a string, empty at first. Loaders derived from
+  `ScriptLoaderBase` search its templates first, then the `LUA_PATH` global
+  or `ModulePaths` as before, skipping templates already tried. It starts
+  empty because hosts often set `ModulePaths`, or a new loader, after
+  creating the `Script`; those paths keep working, and a script cannot
+  remove them. `IgnoreLuaPathGlobal` now ignores `package.path` as well.
+  Loaders that do not derive from `ScriptLoaderBase` ignore `package.path`.
+- `package.searchers` lists the functions `require` asks for a loader:
+  `package.preload`, then the script loader. Scripts can add their own.
+  `package.loaders`, the Lua 5.1 name that Lua 5.2 keeps, is the same table.
+- The loader receives the module name and an extra value (the file name
+  for a file); before, only the name.
+- A module that stores its value in `package.loaded[name]` and returns
+  nothing gets that value from `require`; before, `require` replaced it
+  with `true`. `false` in `package.loaded` no longer counts as loaded.
+- When nothing is found, the error lists what was tried, at the position
+  of `require`'s caller:
+
+  ```text
+  before: libfunc_require:(12,1-44): module 'util' not found
+  now:    main:(3,0-28): module 'util' not found:
+          	no field package.preload['util']
+          	no file 'scripts/util.lua'
+  ```
+
+  Called from C# (`pcall(require, 'util')`, `Script.Call`), the message has
+  no position. A loader not derived from `ScriptLoaderBase` is named instead
+  of the files: `no module 'util' in InMemoryScriptLoader`.
+
+`require` is still compiled from Lua on first use, so loading still yields
+inside coroutines, works under `pcall` and from `Script.Call`, and chunk
+names do not change. The internal global `__require_clr_impl` now returns
+the module or its loader; scripts should call `require`.
+
+**Affected:** hosts or tests that match the text of the "not found" error;
+scripts that tested `package.path` or `package.preload` for nil; modules that
+fill `package.loaded` themselves and relied on `require` returning `true`.

@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace MoonSharp.Interpreter.Loaders
 {
@@ -40,11 +42,9 @@ namespace MoonSharp.Interpreter.Loaders
 			if (paths == null) 
 				return null;
 
-			modname = modname.Replace('.', '/');
-
 			foreach (string path in paths)
 			{
-				string file = path.Replace("?", modname);
+				string file = ExpandPath(path, modname);
 
 				if (ScriptFileExists(file))
 					return file;
@@ -53,26 +53,66 @@ namespace MoonSharp.Interpreter.Loaders
 			return null;
 		}
 
+		static string ExpandPath(string path, string modname)
+		{
+			return path.Replace("?", modname.Replace('.', '/'));
+		}
+
 		/// <summary>
 		/// Resolves the name of a module to a filename (which will later be passed to OpenScriptFile).
-		/// The resolution happens first on paths included in the LUA_PATH global variable (if and only if
-		/// the IgnoreLuaPathGlobal is false), and - if the variable does not exist - by consulting the
-		/// ScriptOptions.ModulesPaths array. Override to provide a different behaviour.
+		/// The resolution tries the paths in package.path first, then those of the LUA_PATH global variable,
+		/// or of the ModulePaths array when that variable does not exist, that package.path does not list.
+		/// With IgnoreLuaPathGlobal, only ModulePaths is used. Override to provide a different behaviour.
 		/// </summary>
 		/// <param name="modname">The modname.</param>
 		/// <param name="globalContext">The global context.</param>
 		/// <returns></returns>
 		public virtual string ResolveModuleName(string modname, Table globalContext)
 		{
-			if (!this.IgnoreLuaPathGlobal)
-			{
-				DynValue s = globalContext.RawGet("LUA_PATH");
+			return ResolveModuleName(modname, GetModulePaths(globalContext));
+		}
 
-				if (s != null && s.Type == DataType.String)
-					return ResolveModuleName(modname, UnpackStringPaths(s.String));
-			}
+		string[] GetModulePaths(Table globalContext)
+		{
+			if (this.IgnoreLuaPathGlobal)
+				return this.ModulePaths;
 
-			return ResolveModuleName(modname, this.ModulePaths);
+			string[] paths = this.ModulePaths;
+			DynValue luaPath = globalContext.RawGet("LUA_PATH");
+
+			if (luaPath != null && luaPath.Type == DataType.String)
+				paths = UnpackStringPaths(luaPath.String);
+
+			// package.path holds the script's own paths (it starts empty), searched before the host's.
+			DynValue package = globalContext.RawGet("package");
+			DynValue packagePath = (package != null && package.Type == DataType.Table) ? package.Table.RawGet("path") : null;
+
+			if (packagePath == null || packagePath.Type != DataType.String)
+				return paths;
+
+			var all = new List<string>(UnpackStringPaths(packagePath.String));
+
+			if (paths != null)
+				foreach (string path in paths)
+					if (!all.Contains(path))
+						all.Add(path);
+
+			return all.ToArray();
+		}
+
+		/// <summary>
+		/// The files that the default resolution tries for a module, as require lists them when it fails.
+		/// </summary>
+		internal string DescribeMissingModule(string modname, Table globalContext)
+		{
+			var sb = new StringBuilder();
+			string[] paths = GetModulePaths(globalContext);
+
+			if (paths != null)
+				foreach (string path in paths)
+					sb.Append("\n\tno file '").Append(ExpandPath(path, modname)).Append('\'');
+
+			return sb.ToString();
 		}
 
 		/// <summary>
@@ -131,8 +171,8 @@ namespace MoonSharp.Interpreter.Loaders
 		}
 
 		/// <summary>
-		/// Gets or sets a value indicating whether the LUA_PATH global is checked or not to get the path where modules are contained.
-		/// If true, the LUA_PATH global is NOT checked.
+		/// Gets or sets a value indicating whether the LUA_PATH global and package.path are checked or not to get the path where modules
+		/// are contained. If true, neither is checked, and only ModulePaths is used.
 		/// </summary>
 		public bool IgnoreLuaPathGlobal { get; set; }
 	}

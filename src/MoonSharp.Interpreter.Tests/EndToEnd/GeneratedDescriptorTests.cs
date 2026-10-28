@@ -235,7 +235,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				}
 			}
 
-			Assert.IsEmpty(mismatches, string.Join("\n\n", mismatches.ToArray()));
+			Assert.AreEqual(0, mismatches.Count, string.Join("\n\n", mismatches.ToArray()));
 		}
 
 		/// <summary>One line per member: name, kind, access and static-ness, overload count.</summary>
@@ -257,11 +257,19 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		static string DescribeMember(IMemberDescriptor m)
 		{
 			var overloads = m as OverloadedMethodMemberDescriptor;
-			string kind = overloads != null ? "method x" + overloads.OverloadCount
-				: m is DynValueMemberDescriptor ? "value"
-				: "member";
 
-			return kind + " " + m.MemberAccess + (m.IsStatic ? " static" : "");
+			if (overloads == null)
+				return (m is DynValueMemberDescriptor ? "value " : "member ") + m.MemberAccess + (m.IsStatic ? " static" : "");
+
+			// Each overload: its parameter types and flags, as overload resolution sees them.
+			return "method " + string.Join(" | ", overloads.Overloads
+				.Select(o => (o.IsStatic ? "static " : "") + "(" + string.Join(", ", o.Parameters.Select(DescribeParameter).ToArray()) + ")")
+				.OrderBy(x => x, StringComparer.Ordinal).ToArray());
+		}
+
+		static string DescribeParameter(ParameterDescriptor p)
+		{
+			return p.Type.FullName + (p.HasDefaultValue ? " =" : "") + (p.IsOut ? " out" : "") + (p.IsRef ? " ref" : "") + (p.IsVarArgs ? " params" : "");
 		}
 
 		const string BclProbe = @"
@@ -326,9 +334,9 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			var vector = (DispatchingUserDataDescriptor)GeneratedUserData.CreateDescriptor(typeof(InteropParityTests.ForeignVector));
 			var parity = (DispatchingUserDataDescriptor)GeneratedUserData.CreateDescriptor(typeof(InteropParityTests.ParityClass));
 
-			Assert.IsNotInstanceOf<PropertyMemberDescriptor>(parity.FindMember("Prop"));
-			Assert.IsNotInstanceOf<FieldMemberDescriptor>(parity.FindMember("Field"));
-			Assert.IsNotInstanceOf<FieldMemberDescriptor>(vector.FindMember("X"));
+			Assert.IsFalse(parity.FindMember("Prop") is PropertyMemberDescriptor);
+			Assert.IsFalse(parity.FindMember("Field") is FieldMemberDescriptor);
+			Assert.IsFalse(vector.FindMember("X") is FieldMemberDescriptor);
 
 			Assert.AreEqual(0, CountReflected(parity), "ParityClass");
 			Assert.AreEqual(0, CountReflected((DispatchingUserDataDescriptor)GeneratedUserData.CreateDescriptor(typeof(InteropParityTests.ParityStruct))), "ParityStruct");
@@ -347,18 +355,9 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				var overloads = m.Value as OverloadedMethodMemberDescriptor;
 
 				if (overloads != null)
-				{
-					// The overload list is private; the wiring table names the class of each overload.
-					Table t = new Table(null);
-					overloads.PrepareForWiring(t);
-					foreach (var pair in t.Get("overloads").Table.Pairs)
-						if (pair.Value.Type == DataType.Table && pair.Value.Table.Get("class").String == typeof(MethodMemberDescriptor).FullName)
-							n++;
-				}
+					n += overloads.Overloads.Count(o => o is MethodMemberDescriptor);
 				else if (m.Value is PropertyMemberDescriptor || m.Value is FieldMemberDescriptor || m.Value is EventMemberDescriptor)
-				{
 					n++;
-				}
 			}
 
 			return n;
@@ -404,7 +403,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				}
 			}
 
-			Assert.IsEmpty(failures, string.Join("\n", failures.ToArray()));
+			Assert.AreEqual(0, failures.Count, string.Join("\n", failures.ToArray()));
 			Assert.Greater(ok, 300);
 			Assert.Greater(policy.Substituted.Count, 30, "generated descriptors were used");
 		}

@@ -127,11 +127,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			"FV.__new(1, 2):Scale('a')",
 			"local v = FV.__new(1, 2) v.X = {}",
 			"FP.__new(1, 2).X = 3",
-		};
-
-		// An exception thrown by the C# member reaches the host as itself.
-		static readonly string[] ThrowProbes =
-		{
+			// An exception thrown by the C# member reaches the host as itself, not wrapped.
 			"obj:Throw()",
 			"pcall(obj.Throw, obj)",
 		};
@@ -255,15 +251,10 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual(RunErrorProbes(InteropAccessMode.Reflection, ErrorProbes), RunErrorProbes(InteropAccessMode.LazyOptimized, ErrorProbes));
 		}
 
-		/// <summary>
-		/// An exception thrown by the C# member reaches the host as itself, as in the compiled modes.
-		/// (MethodBase.Invoke wraps it in a TargetInvocationException, so reflection mode differs.)
-		/// </summary>
 		[Test]
-		public void Interop_Parity_Throw_Generated()
+		public void Interop_Parity_Errors_Reflection()
 		{
-			Assert.AreEqual("obj:Throw() => InvalidOperationException: thrown by C#\n"
-				+ "pcall(obj.Throw, obj) => InvalidOperationException: thrown by C#", RunErrorProbes(null, ThrowProbes));
+			StringAssert.Contains("obj:Throw() => InvalidOperationException: thrown by C#", RunErrorProbes(InteropAccessMode.Reflection, ErrorProbes));
 		}
 
 		/// <summary>

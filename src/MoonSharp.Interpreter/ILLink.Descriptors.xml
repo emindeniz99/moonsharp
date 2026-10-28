@@ -24,6 +24,7 @@
     <type fullname="MoonSharp.Interpreter.CoreLib.DebugModule" preserve="all" />
     <type fullname="MoonSharp.Interpreter.CoreLib.DynamicModule" preserve="all" />
     <type fullname="MoonSharp.Interpreter.CoreLib.ErrorHandlingModule" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.Int64Module" preserve="all" />
     <type fullname="MoonSharp.Interpreter.CoreLib.IoModule" preserve="all" />
     <type fullname="MoonSharp.Interpreter.CoreLib.JsonModule" preserve="all" />
     <type fullname="MoonSharp.Interpreter.CoreLib.LoadModule" preserve="all" />
@@ -35,6 +36,7 @@
     <type fullname="MoonSharp.Interpreter.CoreLib.TableIteratorsModule" preserve="all" />
     <type fullname="MoonSharp.Interpreter.CoreLib.TableModule" preserve="all" />
     <type fullname="MoonSharp.Interpreter.CoreLib.TableModule_Globals" preserve="all" />
+    <type fullname="MoonSharp.Interpreter.CoreLib.UInt64Module" preserve="all" />
 
     <!-- Userdata the library registers itself; their members are found by reflection -->
     <type fullname="MoonSharp.Interpreter.CoreLib.IO.FileUserDataBase" preserve="all" />

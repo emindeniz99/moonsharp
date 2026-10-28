@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using MoonSharp.Interpreter.Execution;
 using MoonSharp.Interpreter.Execution.VM;
+using MoonSharp.Interpreter.Interop.Converters;
 
 namespace MoonSharp.Interpreter
 {
@@ -120,6 +121,77 @@ namespace MoonSharp.Interpreter
 			return OwnerScript.Call(this, args);
 		}
 
+
+		/// <summary>
+		/// Calls this function and returns its first result as a <typeparamref name="TResult"/>, converted as
+		/// <see cref="DynValue.ToObject{T}"/> converts it. With <see cref="DynValue"/> as
+		/// <typeparamref name="TResult"/>, all the results come back, as <see cref="Call()"/> returns them.
+		/// </summary>
+		/// <remarks>
+		/// The typed calls convert arguments as <see cref="Call(object[])"/> does, but numbers, booleans,
+		/// strings, tables, functions and <see cref="DynValue"/>s go to the function without boxing, without an
+		/// argument array and without a <see cref="DynValue"/> each; a result of type double, float, int, long,
+		/// bool, string, <see cref="Table"/> or <see cref="Closure"/> comes back without a <see cref="DynValue"/>.
+		/// </remarks>
+		public TResult Call<TResult>()
+		{
+			return Result<TResult>(OwnerScript.MainProcessor.CallFromHost(this, 0, LuaValue.Nil, LuaValue.Nil, LuaValue.Nil, LuaValue.Nil));
+		}
+
+		/// <summary>
+		/// Calls this function with one argument and returns its first result as a <typeparamref name="TResult"/>
+		/// (see <see cref="Call{TResult}()"/>).
+		/// </summary>
+		public TResult Call<T1, TResult>(T1 arg1)
+		{
+			Script s = OwnerScript;
+			LuaValue a1 = ClrToScript<T1>.Convert(s, arg1);
+			return Result<TResult>(s.MainProcessor.CallFromHost(this, 1, a1, LuaValue.Nil, LuaValue.Nil, LuaValue.Nil));
+		}
+
+		/// <summary>
+		/// Calls this function with two arguments and returns its first result as a <typeparamref name="TResult"/>
+		/// (see <see cref="Call{TResult}()"/>).
+		/// </summary>
+		public TResult Call<T1, T2, TResult>(T1 arg1, T2 arg2)
+		{
+			Script s = OwnerScript;
+			LuaValue a1 = ClrToScript<T1>.Convert(s, arg1);
+			LuaValue a2 = ClrToScript<T2>.Convert(s, arg2);
+			return Result<TResult>(s.MainProcessor.CallFromHost(this, 2, a1, a2, LuaValue.Nil, LuaValue.Nil));
+		}
+
+		/// <summary>
+		/// Calls this function with three arguments and returns its first result as a
+		/// <typeparamref name="TResult"/> (see <see cref="Call{TResult}()"/>).
+		/// </summary>
+		public TResult Call<T1, T2, T3, TResult>(T1 arg1, T2 arg2, T3 arg3)
+		{
+			Script s = OwnerScript;
+			LuaValue a1 = ClrToScript<T1>.Convert(s, arg1);
+			LuaValue a2 = ClrToScript<T2>.Convert(s, arg2);
+			LuaValue a3 = ClrToScript<T3>.Convert(s, arg3);
+			return Result<TResult>(s.MainProcessor.CallFromHost(this, 3, a1, a2, a3, LuaValue.Nil));
+		}
+
+		/// <summary>
+		/// Calls this function with four arguments and returns its first result as a
+		/// <typeparamref name="TResult"/> (see <see cref="Call{TResult}()"/>).
+		/// </summary>
+		public TResult Call<T1, T2, T3, T4, TResult>(T1 arg1, T2 arg2, T3 arg3, T4 arg4)
+		{
+			Script s = OwnerScript;
+			LuaValue a1 = ClrToScript<T1>.Convert(s, arg1);
+			LuaValue a2 = ClrToScript<T2>.Convert(s, arg2);
+			LuaValue a3 = ClrToScript<T3>.Convert(s, arg3);
+			LuaValue a4 = ClrToScript<T4>.Convert(s, arg4);
+			return Result<TResult>(s.MainProcessor.CallFromHost(this, 4, a1, a2, a3, a4));
+		}
+
+		static TResult Result<TResult>(LuaValue result)
+		{
+			return ScriptToClr<TResult>.Convert(typeof(TResult) == typeof(DynValue) ? result : result.ToScalar());
+		}
 
 		/// <summary>
 		/// Gets a delegate wrapping calls to this scripted function

@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿using System;
 using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using MoonSharp.Interpreter.DataStructs;
@@ -14,6 +14,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 		internal long AutoYieldCounter = 0;
 
 		private DynValue Processing_Loop(int instructionPtr)
+		{
+			return Processing_LoopValue(instructionPtr).ToDynValue();
+		}
+
+		// The loop itself. It returns the result as a VM value, so a typed call from C# reads it without a
+		// DynValue (Processor_HostCall.cs).
+		private LuaValue Processing_LoopValue(int instructionPtr)
 		{
 			// This is the main loop of the processor, has a weird control flow and needs to be as fast as possible.
 			// This sentence is just a convoluted way to say "don't complain about gotos".
@@ -63,7 +70,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 						if (canAutoYield && ++executedInstructions > AutoYieldCounter)
 						{
 							m_SavedInstructionPtr = instructionPtr;
-							return DynValue.NewForcedYieldReq();
+							return DynValue.NewForcedYieldReq().ToLuaValue();
 						}
 					}
 
@@ -332,7 +339,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			yield_to_calling_coroutine:
 
-				DynValue yieldRequest = m_ValueStack.Pop().ToScalar().ToDynValue();
+				LuaValue yieldRequest = m_ValueStack.Pop().ToScalar();
 
 				if (m_CanYield)
 					return yieldRequest;
@@ -417,10 +424,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 				unhandled.DispatchInfo = ExceptionDispatchInfo.Capture(unhandled);
 
 			unhandled.DispatchInfo.Throw();
-			return null;
+			return default(LuaValue);
 
 		return_to_native_code:
-			return m_ValueStack.Pop().ToDynValue();
+			return m_ValueStack.Pop();
 
 
 		}

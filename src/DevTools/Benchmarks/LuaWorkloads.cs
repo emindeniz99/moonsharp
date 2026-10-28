@@ -97,6 +97,18 @@ namespace MoonSharp.Benchmarks
 					return R(sum);
 				};
 			}),
+			// The same call through the typed API: arguments and result without boxing or DynValues.
+			Host("cs_to_lua_call3_typed", 1000 * K, "1000002000000", "Closure.Call<double, double, double, double>", script =>
+			{
+				Closure fn = script.DoString("return function(a, b, c) return a * b + c end").Function;
+				return n =>
+				{
+					double sum = 0;
+					for (long i = 0; i < n; i++)
+						sum += fn.Call<double, double, double, double>(i, 2, 3);
+					return R(sum);
+				};
+			}),
 			// Lua -> C#: a Lua loop calling a CallbackFunction with one argument.
 			Host("lua_to_cs_call1", 1000 * K, "500001500000", null, script =>
 			{

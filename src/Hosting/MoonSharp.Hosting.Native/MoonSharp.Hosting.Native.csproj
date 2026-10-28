@@ -29,13 +29,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <!-- NativeAOT: MoonSharp registers its standard library (string, table, require...) by reflection over
-             attributed methods. Without this root the trimmer removes them and scripts see nil, exactly as in
-             the browser build. See docs/hosting.md, "NativeAOT". -->
-        <TrimmerRootAssembly Include="MoonSharp.Interpreter" />
-    </ItemGroup>
-
-    <ItemGroup>
         <ProjectReference Include="..\MoonSharp.Hosting\MoonSharp.Hosting.csproj" />
     </ItemGroup>
 

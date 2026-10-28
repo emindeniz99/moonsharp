@@ -159,7 +159,7 @@ HostResult r = host.invokeJson("rules", "eligibility", "eligible", "[{\"level\":
 
 | | Worker | In process, CoreCLR | In process, NativeAOT |
 |---|---|---|---|
-| Files | `moonsharp-host.dll` + 2 MoonSharp DLLs + runtimeconfig | `libmoonsharp_jni.so` (81 KB) + `MoonSharp.Hosting.Native.dll`, `.runtimeconfig.json`, `.deps.json` + `MoonSharp.Hosting.dll`, `MoonSharp.Interpreter.dll` (400 KB) | `libmoonsharp_jni.so` (81 KB) + `MoonSharp.Hosting.Native.so` (6.6 MB) |
+| Files | `moonsharp-host.dll` + 2 MoonSharp DLLs + runtimeconfig | `libmoonsharp_jni.so` (81 KB) + `MoonSharp.Hosting.Native.dll`, `.runtimeconfig.json`, `.deps.json` + `MoonSharp.Hosting.dll`, `MoonSharp.Interpreter.dll` (400 KB) | `libmoonsharp_jni.so` (81 KB) + `MoonSharp.Hosting.Native.so` (5.5 MB) |
 | .NET runtime on the host | yes, .NET 8 (`dotnet` on `PATH`) | yes, .NET 8, found through `DOTNET_ROOT`, the default install locations or `/etc/dotnet`; or pass `dotnetRoot` | no |
 | Native dependencies | ICU (as any .NET app) | libc, libstdc++, ICU | libc, libm; ICU is loaded at run time |
 | Platforms | any with .NET 8 | Linux x64 only (built and tested); macOS needs a `.dylib` build, Windows a `wchar_t` port of the shim | Linux x64 only; one `.so` per OS and architecture |
@@ -209,30 +209,31 @@ that a CoreCLR stack overflow ends the JVM with SIGSEGV instead of SIGABRT.
 
 ### NativeAOT and trimming
 
-The fixtures fail under NativeAOT unless `MoonSharp.Interpreter` is a trimmer
-root, for the same reason as in the browser: MoonSharp registers its standard
-library by reflection, and without the root `load` fails with
-`require is not available: enable CoreModules.LoadMethods`. The csproj roots the
-assembly (`<TrimmerRootAssembly Include="MoonSharp.Interpreter" />`). With it,
-the 24 fixtures pass. On `master`, `c3fb9ca` (fix(trim): keep the standard
-library when an app is trimmed) embeds an ILLink descriptor in the interpreter
-that should make this root unnecessary; that commit is not on this branch, so
-it was not tried here.
+MoonSharp registers its standard library by reflection. Before `master` gained
+the interpreter's embedded ILLink descriptor (`c3fb9ca`, fix(trim): keep the
+standard library when an app is trimmed), NativeAOT trimmed those methods away
+and `load` failed with
+`require is not available: enable CoreModules.LoadMethods`, the same failure as
+in the browser; rooting the whole assembly (`TrimmerRootAssembly`) fixed it.
+With the descriptor no root is needed: the 24 fixtures and the 10 behaviour
+tests pass, and the library shrinks from 6.6 MB (rooted) to 5.5 MB.
 
-The build still reports 26 trim and AOT warnings, all in CLR interop code that
-the JSON contract never reaches: `FrameworkClrBase` and `FrameworkCurrent`
-reflect over arbitrary types (IL2075, IL2070, IL2026 for `Assembly.GetTypes`),
-`TableConversions` builds `List<T>`/`Dictionary<K,V>` with `MakeGenericType`
-and `Activator` (IL2055, IL2067, IL3050), `ExtensionMethodsRegistry` calls
-`MakeGenericMethod` (IL2060, IL3050), `StandardEnumUserDataDescriptor` calls
-`Enum.GetValues(Type)` (IL3050), and `PropertyTableAssigner` and
-`ValueTypeDefaultCtorMemberDescriptor` create objects from a `Type` (IL2072).
+The build still reports 24 trim and AOT warnings, all in CLR interop code that
+the JSON contract never reaches: `FrameworkClrBase` reflects over arbitrary
+types (IL2075, IL2026 for `Assembly.GetTypes`), `TableConversions` builds
+`List<T>`/`Dictionary<K,V>` with `MakeGenericType` and `Activator` (IL2055,
+IL2067, IL3050), `ExtensionMethodsRegistry` calls `MakeGenericMethod` (IL2060,
+IL3050), `StandardEnumUserDataDescriptor` calls `Enum.GetValues(Type)` (IL3050),
+and `ValueTypeDefaultCtorMemberDescriptor` creates value types from a `Type`
+(IL2072).
 
 To see what those warnings cost, MoonSharp's own unit test runner
 (`src/TestRunners/DotNetCoreTestRunner`) was compiled with NativeAOT, with
 `MoonSharp.Interpreter`, `MoonSharp.Interpreter.Tests` and `nunit.framework` as
-roots. 636 of 685 tests pass (all 685 pass under JIT). The 49 failures are all
-CLR interop:
+roots. 680 of 732 tests pass (all 732 pass under JIT). Three failures are
+`TrimDescriptorTests`, which read the embedded `ILLink.Descriptors.xml`; the
+trimmer applies that resource and then removes it, so they cannot pass in any
+trimmed build. The other 49 are all CLR interop:
 
 | Failures | Error | Cause |
 |---|---|---|
@@ -286,6 +287,11 @@ interpreter, agrees: pass-2 p50 44–45 µs (worker), 4.5–4.6 µs (CoreCLR),
 4.9–5.0 µs (NativeAOT); 8-thread throughput 86–100 k (worker), 390–466 k
 (CoreCLR) and 328–336 k (NativeAOT) calls/s; open, load and first call 247,
 236 and 41 ms.
+
+These sets used a NativeAOT library with `MoonSharp.Interpreter` rooted whole.
+After merging `master` (trim descriptor, exact int64), the unrooted 5.5 MB
+library measured the same within noise: pass-2 p50 5.0 µs, open, load and first
+call 34–55 ms, 1-thread throughput 179 k calls/s.
 
 **Where an in-process call spends its time** (pass 2, p50, both runs):
 
@@ -403,7 +409,7 @@ Measured on 2026-10-28 on a 4-core Intel Xeon 2.1 GHz cloud VM, Ubuntu 24.04.
 | Shared fixtures, Java 21 through the worker | 24/24, plus 6 worker behaviour tests |
 | Shared fixtures, Java 21, in process through CoreCLR 8.0.33 (hostfxr + JNI) | 24/24, plus 10 in-process behaviour tests |
 | Shared fixtures, Java 21, in process through NativeAOT (.NET 8) | 24/24, plus 10 in-process behaviour tests |
-| MoonSharp unit tests compiled with NativeAOT (experiment, not in CI) | 636/685; the 49 failures are CLR interop (see "NativeAOT and trimming") |
+| MoonSharp unit tests compiled with NativeAOT (experiment, not in CI) | 680/732; 49 failures are CLR interop, 3 are descriptor tests that cannot pass when trimmed (see "NativeAOT and trimming") |
 | Spring Boot 4.1 sample over HTTP | 4/4 |
 | Firefox, Safari/WebKit, iOS Safari | not run (only Chromium is installed here) |
 | Unity Editor, Android/iOS IL2CPP | not run (no Unity licence or devices here) |

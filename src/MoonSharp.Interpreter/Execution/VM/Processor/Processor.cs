@@ -156,6 +156,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		private void LeaveProcessor()
 		{
 			m_ExecutionNesting -= 1;
+			m_Debug.EntryDepth -= 1;
 			m_OwningThreadID = -1;
 
 			if (m_Parent != null)
@@ -188,6 +189,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 			m_OwningThreadID = threadID;
 
 			m_ExecutionNesting += 1;
+
+			// The host's outermost call into this Script starts a new instruction count; the countdown
+			// at zero makes the first instruction read the interrupt handler and the debugger state.
+			if (m_Debug.EntryDepth++ == 0)
+			{
+				m_Debug.Executed = m_Debug.Armed = m_Debug.Countdown = 0;
+				m_Debug.NextInterruptCheck = INTERRUPT_INTERVAL;
+			}
 
 			if (m_Parent != null)
 			{

@@ -42,10 +42,15 @@ namespace MoonSharp.Interpreter.Execution.VM
 						i = code[instructionPtr];
 					}
 
-					// One test for both slow paths. The debugger is checked on every instruction, as
-					// before, so attaching it while a script runs stops at the next instruction.
-					if (canAutoYield || debug.DebuggerAttached != null)
+					// One countdown, shared by every loop of this Script, drives the slow path: the
+					// interrupt handler every INTERRUPT_INTERVAL instructions, and the debugger on every
+					// instruction while one is attached (attaching sets the countdown to zero, so it
+					// stops at the next instruction). Auto-yield counts per loop, as before.
+					if ((--debug.Countdown <= 0) | canAutoYield)
 					{
+						if (debug.Countdown <= 0)
+							ExecutionCheckpoint();
+
 						if (debug.DebuggerAttached != null)
 						{
 							ListenDebugger(i, instructionPtr);
@@ -326,6 +331,25 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		}
 
+
+		// Instructions between two calls of ScriptOptions.InterruptHandler (QuickJS polls as often).
+		const int INTERRUPT_INTERVAL = 10000;
+
+		private void ExecutionCheckpoint()
+		{
+			DebugContext debug = m_Debug;
+			debug.Rearm(debug.DebuggerAttached != null ? 1 : INTERRUPT_INTERVAL);
+
+			if (debug.Executed >= debug.NextInterruptCheck)
+			{
+				debug.NextInterruptCheck = debug.Executed + INTERRUPT_INTERVAL;
+
+				Func<long, bool> handler = m_Script.Options.InterruptHandler;
+
+				if (handler != null && handler(debug.Executed))
+					throw new ScriptInterruptedException(debug.Executed);
+			}
+		}
 
 		internal string PerformMessageDecorationBeforeUnwind(DynValue messageHandler, string decoratedMessage, SourceRef sourceRef)
 		{

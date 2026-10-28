@@ -28,6 +28,7 @@ namespace MoonSharp.Interpreter
 
 			this.CheckThreadAccess = defaults.CheckThreadAccess;
 			this.ExactInt64Interop = defaults.ExactInt64Interop;
+			this.InterruptHandler = defaults.InterruptHandler;
 		}
 
 		/// <summary>
@@ -106,6 +107,17 @@ namespace MoonSharp.Interpreter
 		/// Passing int64 and uint64 values to CLR parameters works either way.
 		/// </summary>
 		public bool ExactInt64Interop { get; set; }
+
+		/// <summary>
+		/// Gets or sets a handler the VM calls every 10,000 instructions with the number of instructions
+		/// run since the host's outermost call into this script began (a call, a callback's call or a
+		/// coroutine resume from the host). Return true to stop the script: the VM throws
+		/// <see cref="ScriptInterruptedException"/>, which pcall cannot catch, and the script stays usable
+		/// for later calls. The count is the same on every platform, so <c>n =&gt; n &gt;= limit</c> is a
+		/// deterministic budget; a handler can also check a deadline or a CancellationToken.
+		/// Instructions inside a single library call (for example one string.rep) are not counted.
+		/// </summary>
+		public Func<long, bool> InterruptHandler { get; set; }
 
 	}
 }

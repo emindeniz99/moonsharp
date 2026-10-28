@@ -371,7 +371,12 @@ this comparison should be repeated:
   `gsub` case above ends in a "C stack overflow" error that `pcall` catches.
   The crash table above predates it; the JVM probe has not been rerun;
 - an execution budget (instruction count or cancellation) for plain calls, so a
-  runaway script returns an error instead of holding the thread.
+  runaway script returns an error instead of holding the thread. This now
+  exists as `ScriptOptions.InterruptHandler`: called every 10,000 instructions
+  with the count so far, it can stop the script with
+  `ScriptInterruptedException`, which `pcall` cannot catch. The hosting layer
+  does not use it yet (it needs an error kind for it), and a single long library
+  call such as `string.rep` is not interrupted.
 
 ## Modules
 

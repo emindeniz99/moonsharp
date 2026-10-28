@@ -239,6 +239,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 				if (hasLocations)
 					ReadSourceRefs(br, m_RootChunk.Code, baseAddress, len, sourceID);
 
+				// Code from a previous format has no fused instructions: fuse it as freshly compiled code.
+				if (version == DUMP_CHUNK_VERSION_0x152 || version == DUMP_CHUNK_VERSION_0x151)
+					InstructionFusion.Fuse(m_RootChunk.Code, baseAddress);
+
 				return baseAddress;
 			}
 		}

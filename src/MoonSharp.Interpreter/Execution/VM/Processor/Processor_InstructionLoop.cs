@@ -28,6 +28,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 			Instruction[] code = m_RootChunk.GetCodeArray();
 			InterpreterException unhandled = null;
 
+			// Fused instructions take their unfused path while a debugger is attached, so it sees every
+			// instruction of the sequences they replace (InstructionFusion).
+			bool fuse = debug.DebuggerAttached == null;
+
 			repeat_execution:
 
 			// The running frame's base pointer, where its locals start. Ops that enter or leave a script
@@ -55,7 +59,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 						if (debug.Countdown <= 0)
 							ExecutionCheckpoint();
 
-						if (debug.DebuggerAttached != null)
+						fuse = debug.DebuggerAttached == null;
+
+						if (!fuse)
 						{
 							ListenDebugger(i, instructionPtr);
 						}
@@ -262,6 +268,71 @@ namespace MoonSharp.Interpreter.Execution.VM
 						case OpCode.JFor:
 							instructionPtr = ExecJFor(i, instructionPtr);
 							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+							break;
+						case OpCode.JLt:
+						case OpCode.JLe:
+						case OpCode.JGt:
+						case OpCode.JGe:
+						case OpCode.JEq:
+						case OpCode.JNe:
+							{
+								LuaValue[] items = m_ValueStack.Items;
+								int top = m_ValueStack.Count;
+								int mode = i.NumVal2;
+								LuaValue l, r;
+								int pop;
+
+								switch (mode)
+								{
+									case InstructionFusion.RightOnStack: l = items[top - 2]; r = items[top - 1]; pop = 2; break;
+									case InstructionFusion.RightConst: l = items[top - 1]; r = i.Value.ToLuaValue(); pop = 1; break;
+									case InstructionFusion.RightLocal: l = items[top - 1]; r = items[basePointer + i.Symbol.i_Index]; pop = 1; break;
+									case InstructionFusion.LeftLocalConst: l = items[basePointer + i.Symbol.i_Index]; r = i.Value.ToLuaValue(); pop = 0; break;
+									default: l = items[basePointer + i.Symbol.i_Index]; r = items[basePointer + i.NumVal3]; pop = 0; break;
+								}
+
+								int result = fuse ? FusedCompare(i.OpCode, ref l, ref r) : -1;
+
+								if (result >= 0)
+								{
+									for (int k = 0; k < pop; k++)
+										items[--top] = default(LuaValue);
+
+									m_ValueStack.Count = top;
+
+									// Branch as the Jf at the end of the sequence would.
+									int jf = instructionPtr - 1 + i.NumVal;
+									instructionPtr = result != 0 ? jf + 1 : code[jf].NumVal;
+								}
+								else if (mode == InstructionFusion.RightOnStack)
+								{
+									int next = instructionPtr;
+
+									if (i.OpCode == OpCode.JGt || i.OpCode == OpCode.JGe)
+									{
+										items[top - 2] = r;
+										items[top - 1] = l;
+									}
+									else if (i.OpCode == OpCode.JLt)
+										instructionPtr = ExecLess(i, instructionPtr);
+									else if (i.OpCode == OpCode.JLe)
+										instructionPtr = ExecLessEq(i, instructionPtr);
+									else
+										instructionPtr = ExecEq(i, instructionPtr);
+
+									// A metamethod written in Lua runs in a new frame: start it with its base pointer.
+									if (instructionPtr != next)
+									{
+										if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+										basePointer = CurrentBasePointer();
+									}
+								}
+								else
+								{
+									// Run the replaced Literal or Local: push the operand it pushed.
+									m_ValueStack.Push(mode <= InstructionFusion.RightLocal ? r : l);
+								}
+							}
 							break;
 						case OpCode.ForLoop:
 							{
@@ -721,6 +792,69 @@ namespace MoonSharp.Interpreter.Execution.VM
 			m_ValueStack.Push(LuaValue.FromObject(DataType.Tuple, state));
 		}
 
+
+		/// <summary>
+		/// The result of a fused compare (1 true, 0 false) for operands that need no conversion or
+		/// metamethod; -1 otherwise. Follows ExecLess, ExecLessEq and ExecEq: numbers compare as doubles
+		/// (false with NaN), strings by ordinal; == is raw equality unless a table, a userdata or a tuple
+		/// is involved.
+		/// </summary>
+		[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+		private static int FusedCompare(OpCode op, ref LuaValue l, ref LuaValue r)
+		{
+			if (op == OpCode.JEq || op == OpCode.JNe)
+			{
+				bool eq;
+
+				if (l.Type == r.Type)
+				{
+					if (l.Type == DataType.Table || l.Type == DataType.UserData || l.Type == DataType.Tuple)
+						return -1;
+
+					eq = LuaValue.RawEquals(ref l, ref r);
+				}
+				else
+				{
+					if (l.Type == DataType.UserData || r.Type == DataType.UserData || l.Type == DataType.Tuple || r.Type == DataType.Tuple)
+						return -1;
+
+					eq = (l.Type == DataType.Nil && r.Type == DataType.Void) || (l.Type == DataType.Void && r.Type == DataType.Nil);
+				}
+
+				return (eq == (op == OpCode.JEq)) ? 1 : 0;
+			}
+
+			int c;
+
+			if (l.Type == DataType.Number && r.Type == DataType.Number)
+			{
+				double a = l.Number, b = r.Number;
+
+				switch (op)
+				{
+					case OpCode.JLt: return a < b ? 1 : 0;
+					case OpCode.JLe: return a <= b ? 1 : 0;
+					case OpCode.JGt: return b < a ? 1 : 0;
+					default: return b <= a ? 1 : 0;
+				}
+			}
+			else if (l.Type == DataType.String && r.Type == DataType.String)
+			{
+				c = string.CompareOrdinal((string)l.Object, (string)r.Object);
+			}
+			else
+			{
+				return -1;
+			}
+
+			switch (op)
+			{
+				case OpCode.JLt: return c < 0 ? 1 : 0;
+				case OpCode.JLe: return c <= 0 ? 1 : 0;
+				case OpCode.JGt: return c > 0 ? 1 : 0;
+				default: return c >= 0 ? 1 : 0;
+			}
+		}
 
 		private int CurrentBasePointer()
 		{

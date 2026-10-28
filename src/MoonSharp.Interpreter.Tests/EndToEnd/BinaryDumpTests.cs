@@ -387,12 +387,12 @@ return y;
 				byte[] wo = without.ToArray();
 
 				// The version follows the 8-byte magic as a marker byte (0x7F) and a 16-bit value.
-				Assert.AreEqual(0x154, BitConverter.ToInt16(w, 9));
-				Assert.AreEqual(0x153, BitConverter.ToInt16(wo, 9));
+				Assert.AreEqual(0x154, (int)BitConverter.ToInt16(w, 9));
+				Assert.AreEqual(0x153, (int)BitConverter.ToInt16(wo, 9));
 				Assert.Greater(w.Length, wo.Length);
 
 				for (int i = 11; i < wo.Length; i++)
-					Assert.AreEqual(w[i], wo[i], "byte {0}", i);
+					Assert.AreEqual(w[i], wo[i], "byte " + i);
 
 				Assert.AreEqual(2.5, new Script().LoadStream(new MemoryStream(wo)).Function.Call(5, 2).Number);
 			}

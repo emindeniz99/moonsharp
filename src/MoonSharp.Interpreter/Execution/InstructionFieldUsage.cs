@@ -93,6 +93,13 @@ namespace MoonSharp.Interpreter.Execution
 					return InstructionFieldUsage.NumVal | InstructionFieldUsage.Name;
 				case OpCode.Meta:
 					return InstructionFieldUsage.NumVal | InstructionFieldUsage.NumVal2 | InstructionFieldUsage.Value | InstructionFieldUsage.Name;
+				case OpCode.JLt:
+				case OpCode.JLe:
+				case OpCode.JGt:
+				case OpCode.JGe:
+				case OpCode.JEq:
+				case OpCode.JNe:
+					return InstructionFieldUsage.NumVal | InstructionFieldUsage.NumVal2 | InstructionFieldUsage.NumVal3 | InstructionFieldUsage.Symbol | InstructionFieldUsage.Value;
 				case OpCode.ForLoop:
 					return InstructionFieldUsage.NumValAsCodeAddress | InstructionFieldUsage.NumVal2 | InstructionFieldUsage.NumVal3 | InstructionFieldUsage.Symbol;
 				default:

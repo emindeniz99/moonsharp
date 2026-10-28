@@ -75,30 +75,48 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual("1,100,2,200,3,300", r.String);
 		}
 
-		[TestCase("for i = 3, 1, -1 do t[#t + 1] = i end", "3,2,1")]
-		[TestCase("for i = 1, 2, 0.5 do t[#t + 1] = i end", "1,1.5,2")]
-		[TestCase("for i = 1, 0 do t[#t + 1] = i end", "")]
-		[TestCase("for i = 1, 3, 0/0 do t[#t + 1] = i end", "")]
-		[TestCase("for i = 1, 0/0 do t[#t + 1] = i end", "")]
-		[TestCase("for i = 0/0, 1 do t[#t + 1] = i end", "")]
-		[TestCase("for i = 1, math.huge do t[#t + 1] = i if i == 3 then break end end", "1,2,3")]
-		[TestCase("for i = '1', '3', '1' do t[#t + 1] = i end", "1,2,3")]
-		[TestCase("for i = 1, 3 do if i == 2 then goto continue end t[#t + 1] = i ::continue:: end", "1,3")]
-		[TestCase("for i = 1, 3 do for j = 1, 3 do if j > i then goto next end t[#t + 1] = i .. j end ::next:: end", "11,21,22,31,32,33")]
-		[TestCase("for i = 0, 1, 0.25 do t[#t + 1] = i end", "0,0.25,0.5,0.75,1")]
-		public void ForLoop_FollowsLua52(string loop, string expected)
+		// The runners take [Test] methods only, so cases are rows of a table.
+		static readonly string[,] ForLoopCases =
 		{
-			DynValue r = new Script().DoString("local t = {} " + loop + " return table.concat(t, ',')");
-			Assert.AreEqual(expected, r.String);
+			{ "for i = 3, 1, -1 do t[#t + 1] = i end", "3,2,1" },
+			{ "for i = 1, 2, 0.5 do t[#t + 1] = i end", "1,1.5,2" },
+			{ "for i = 1, 0 do t[#t + 1] = i end", "" },
+			{ "for i = 1, 3, 0/0 do t[#t + 1] = i end", "" },
+			{ "for i = 1, 0/0 do t[#t + 1] = i end", "" },
+			{ "for i = 0/0, 1 do t[#t + 1] = i end", "" },
+			{ "for i = 1, math.huge do t[#t + 1] = i if i == 3 then break end end", "1,2,3" },
+			{ "for i = '1', '3', '1' do t[#t + 1] = i end", "1,2,3" },
+			{ "for i = 1, 3 do if i == 2 then goto continue end t[#t + 1] = i ::continue:: end", "1,3" },
+			{ "for i = 1, 3 do for j = 1, 3 do if j > i then goto next end t[#t + 1] = i .. j end ::next:: end", "11,21,22,31,32,33" },
+			{ "for i = 0, 1, 0.25 do t[#t + 1] = i end", "0,0.25,0.5,0.75,1" },
+		};
+
+		[Test]
+		public void ForLoop_FollowsLua52()
+		{
+			for (int k = 0; k < ForLoopCases.GetLength(0); k++)
+			{
+				DynValue r = new Script().DoString("local t = {} " + ForLoopCases[k, 0] + " return table.concat(t, ',')");
+				Assert.AreEqual(ForLoopCases[k, 1], r.String, ForLoopCases[k, 0]);
+			}
 		}
 
-		[TestCase("for i = 1, 'x' do end", "'for' limit must be a number")]
-		[TestCase("for i = 1, 2, {} do end", "'for' step must be a number")]
-		[TestCase("for i = nil, 2 do end", "'for' initial value must be a number")]
-		public void ForLoop_NonNumberBoundsKeepTheirMessages(string loop, string message)
+		static readonly string[,] ForLoopErrorCases =
 		{
-			var ex = Assert.Throws<ScriptRuntimeException>(() => new Script().DoString(loop));
-			Assert.AreEqual(message, ex.Message);
+			{ "for i = 1, 'x' do end", "'for' limit must be a number" },
+			{ "for i = 1, 2, {} do end", "'for' step must be a number" },
+			{ "for i = nil, 2 do end", "'for' initial value must be a number" },
+		};
+
+		[Test]
+		public void ForLoop_NonNumberBoundsKeepTheirMessages()
+		{
+			for (int k = 0; k < ForLoopErrorCases.GetLength(0); k++)
+			{
+				string loop = ForLoopErrorCases[k, 0];
+				var ex = Assert.Throws<ScriptRuntimeException>(() => new Script().DoString(loop));
+				Assert.AreEqual(ForLoopErrorCases[k, 1], ex.Message, loop);
+			}
 		}
 
 		[Test]
@@ -164,6 +182,185 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			// The for line is a stop when the loop starts; after that each iteration ends on the end line.
 			// Before the ForLoop opcode the for line was a stop in every iteration too: 1,2,3,4,2,3,4,2,4,5.
 			Assert.AreEqual("1,2,3,4,3,4,5", StepLines("local x = 0\nfor i = 1, 2 do\n  x = x + i\nend\nreturn x"));
+		}
+
+		// Instructions per loop iteration (ForLoop included) for each condition. Before fusion
+		// `if i < 0` ran Local, Literal, Less, ToBool, Jf.
+		static readonly string[,] ConditionCases =
+		{
+			{ "if i < 0 then c = 1 end", "2" },
+			{ "if i > n then c = 1 end", "2" },
+			{ "if i == nil then c = 1 end", "2" },
+			{ "if i ~= i then c = 1 end", "2" },
+			{ "if 0 >= i then c = 1 end", "3" },
+			{ "if -i <= -n then c = 1 end", "6" },
+		};
+
+		[Test]
+		public void Compare_ConditionIsOneInstruction()
+		{
+			for (int k = 0; k < ConditionCases.GetLength(0); k++)
+			{
+				string body = ConditionCases[k, 0];
+				Assert.AreEqual(int.Parse(ConditionCases[k, 1]), InstructionsPerIteration("return function(n) local c for i = 1, n do " + body + " end end"), body);
+			}
+		}
+
+		[Test]
+		public void Compare_WhileConditionIsOneInstruction()
+		{
+			// Local i, Local n, LessEq, CNot, Jf and the body's 5 before; now the condition is 1.
+			Assert.AreEqual(1 + 5 + 2, (InstructionsFor("return function(n) local i = 0 while i <= n do i = i + 1 end end", 200)
+				- InstructionsFor("return function(n) local i = 0 while i <= n do i = i + 1 end end", 100)) / 100);
+		}
+
+		// Every comparison operator, on every pair of values, in every operand shape the compiler fuses:
+		// the branch an if or a while takes must match the value the same comparison gives when it is
+		// not fused (an assignment), errors included.
+		const string CompareDifferential = @"
+			local MT = {}
+			MT.__lt = function(x, y) return x.v < y.v end
+			MT.__le = function(x, y) return x.v <= y.v end
+			MT.__eq = function(x, y) return x.v == y.v end
+			local LT = { __lt = function(x, y) return x.v < y.v end }
+			local env = { o1 = setmetatable({ v = 1 }, MT), o2 = setmetatable({ v = 2 }, MT), o1b = setmetatable({ v = 1 }, MT),
+				l1 = setmetatable({ v = 1 }, LT), l2 = setmetatable({ v = 2 }, LT), t = {},
+				id = function(x) return x end, pcall = pcall, tostring = tostring }
+
+			local literals = { '1', '2', '1.5', '""a""', '""b""', 'nil', 'true', 'false' }
+			local values = { '0/0', 't', 'o1', 'o2', 'o1b', 'l1', 'l2' }
+			for _, v in ipairs(literals) do values[#values + 1] = v end
+			local isLiteral = {}
+			for _, v in ipairs(literals) do isLiteral[v] = true end
+
+			local ops = { '<', '<=', '>', '>=', '==', '~=' }
+
+			local function run(src)
+				local f = assert(load(src, 'cmp', 't', env))
+				local ok, r = pcall(f)
+				if ok then return tostring(r) end
+				return 'error: ' .. (tostring(r):match('%): (.*)$') or tostring(r))
+			end
+
+			local mismatches, checked = {}, 0
+
+			for _, op in ipairs(ops) do
+				for _, A in ipairs(values) do
+					for _, B in ipairs(values) do
+						local shapes = {
+							{ 'local a, b = ' .. A .. ', ' .. B, 'a', 'b' },
+							{ 'local a, b = ' .. A .. ', ' .. B, 'id(a)', 'id(b)' },
+							{ 'local a, b = ' .. A .. ', ' .. B, 'a', 'id(b)' },
+						}
+						if isLiteral[B] then
+							shapes[#shapes + 1] = { 'local a = ' .. A, 'a', B }
+							shapes[#shapes + 1] = { 'local a = ' .. A, 'id(a)', B }
+						end
+						if isLiteral[A] then
+							shapes[#shapes + 1] = { 'local b = ' .. B, A, 'b' }
+						end
+
+						for _, s in ipairs(shapes) do
+							local expr = s[2] .. ' ' .. op .. ' ' .. s[3]
+							local plain = run(s[1] .. ' local v = ' .. expr .. ' return v')
+							local branch = run(s[1] .. ' if ' .. expr .. ' then return true else return false end')
+							local loop = run(s[1] .. ' while ' .. expr .. ' do return true end return false')
+							local negated = run(s[1] .. ' if not (' .. expr .. ') then return false else return true end')
+							checked = checked + 1
+							if branch ~= plain or loop ~= plain or negated ~= plain then
+								mismatches[#mismatches + 1] = s[1] .. '; ' .. expr .. ': ' .. plain .. ' / ' .. branch .. ' / ' .. loop .. ' / ' .. negated
+							end
+						end
+					end
+				end
+			end
+
+			return checked, table.concat(mismatches, '\n')";
+
+		[Test]
+		public void Compare_FusedBranchesMatchUnfusedComparisons()
+		{
+			DynValue r = new Script().DoString(CompareDifferential);
+			Assert.Greater(r.Tuple[0].Number, 1000);
+			Assert.AreEqual("", r.Tuple[1].String);
+		}
+
+		[Test]
+		public void Compare_MetamethodsThatYieldInsideAFusedCondition()
+		{
+			DynValue r = new Script().DoString(@"
+				local mt = { __lt = function(a, b) coroutine.yield('lt') return a.v < b.v end,
+					__eq = function(a, b) coroutine.yield('eq') return a.v == b.v end }
+				local a, b = setmetatable({ v = 1 }, mt), setmetatable({ v = 2 }, mt)
+				local co = coroutine.wrap(function()
+					local out = {}
+					for i = 1, 2 do
+						if a < b then out[#out + 1] = 'lt' .. i end
+						if a == b then out[#out + 1] = 'eq' .. i end
+						if a ~= b then out[#out + 1] = 'ne' .. i end
+					end
+					return table.concat(out, ',')
+				end)
+				local steps = {}
+				local v = co()
+				while v == 'lt' or v == 'eq' do steps[#steps + 1] = v v = co() end
+				return table.concat(steps, ',') .. '|' .. v");
+
+			Assert.AreEqual("lt,eq,eq,lt,eq,eq|lt1,ne1,lt2,ne2", r.String);
+		}
+
+		[Test]
+		public void Compare_ClrMetamethodsInAFusedCondition()
+		{
+			Script s = new Script();
+			s.Globals["lt"] = DynValue.NewCallback((ctx, args) => DynValue.NewBoolean(args[0].Table.Get("v").Number < args[1].Table.Get("v").Number));
+
+			DynValue r = s.DoString(@"
+				local mt = { __lt = lt }
+				local a, b = setmetatable({ v = 1 }, mt), setmetatable({ v = 2 }, mt)
+				local out = {}
+				if a < b then out[#out + 1] = 'a<b' end
+				if b < a then out[#out + 1] = 'b<a' end
+				if b > a then out[#out + 1] = 'b>a' end
+				if a <= b then out[#out + 1] = 'a<=b' end
+				return table.concat(out, ',')");
+
+			Assert.AreEqual("a<b,b>a,a<=b", r.String);
+		}
+
+		[Test]
+		public void Compare_JumpsIntoTheMiddleOfAFusedSequence()
+		{
+			// `and`/`or` jump to instructions inside the fused sequences; those still run unfused.
+			DynValue r = new Script().DoString(@"
+				local function f(x, a, b, c)
+					local out = ''
+					if x and a < b then out = out .. 'A' end
+					if a < (x and b or c) then out = out .. 'B' end
+					if (x and a or c) == 3 then out = out .. 'C' end
+					if a > (x and b or 0) then out = out .. 'D' end
+					while x and a <= b do out = out .. 'E' a = a + 1 end
+					return out
+				end
+				return f(true, 1, 2, 0) .. '|' .. f(false, 3, 2, 5) .. '|' .. f(nil, 1, 2, 3)");
+
+			Assert.AreEqual("ABEE|BD|BCD", r.String);
+		}
+
+		[Test]
+		public void Compare_ErrorsReportTheirLine()
+		{
+			var ex = Assert.Throws<ScriptRuntimeException>(() => new Script().DoString("local a, b = 1, 'x'\nlocal c = 0\nif a < b then\n  c = 1\nend", null, "cmp.lua"));
+			StringAssert.StartsWith("cmp.lua:(3,", ex.DecoratedMessage);
+			StringAssert.Contains("attempt to compare number with string", ex.Message);
+		}
+
+		[Test]
+		public void Compare_StepInStopsOnTheSameLines()
+		{
+			// The same stops as without fusion: a debugger sees the unfused instructions.
+			Assert.AreEqual("1,2,3,4,2,3,4,2,5,6,7,8",
+				StepLines("local i = 0\nwhile i < 2 do\n  i = i + 1\nend\nif i == 2 then\n  i = 3\nend\nreturn i"));
 		}
 
 		[Test]

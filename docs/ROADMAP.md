@@ -35,7 +35,7 @@ chat or a pull request.
 | .NET 8 / .NET 10 | Tested in CI (unit tests, fixtures). |
 | Browser (.NET 10 WebAssembly) | Chromium tested in CI with Playwright. Firefox and WebKit not tested. |
 | Java 17+ (worker process) | Tested in CI, with a Spring Boot 4 sample. |
-| Java in-process (hostfxr or NativeAOT) | Experiment in progress. |
+| Java in-process (hostfxr or NativeAOT) | Experimental, Linux x64: fixtures pass with CoreCLR and NativeAOT on branch `feat/jvm-in-process`. The worker stays the default ([hosting.md](hosting.md)). |
 | Unity 2021.3 / 2022.3 / 6 LTS, Mono and IL2CPP | **Not tested.** The inherited Unity CI job uses a 2019.4 editor and skips without licence secrets. |
 
 What Unity 2021.3 support means for the code:
@@ -105,7 +105,7 @@ After step 4: the checkpoint in the decisions table.
 ## Later, and ideas
 
 - A Unity CI matrix: 2021.3, 2022.3 and 6 LTS editors, Mono and IL2CPP players.
-- In-process JVM hosting through a NativeAOT library or hostfxr, measured against the worker.
+- In-process JVM hosting as the default: needs the native stack guard above and an execution budget for plain calls, then a new measurement against the worker.
 - Browser: AOT-compiled WebAssembly against the interpreter build; Firefox and WebKit tests.
 - LuaCATS type definitions generated from registered C# types, for editor completion.
 - A Debug Adapter Protocol server, so any editor can debug scripts.

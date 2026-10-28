@@ -27,6 +27,12 @@
     <!-- Built by: dotnet build -c Release src/Hosting/MoonSharp.Hosting.Cli -->
     <moonsharp.host.dll>${maven.multiModuleProjectDirectory}/../MoonSharp.Hosting.Cli/bin/Release/net8.0/moonsharp-host.dll</moonsharp.host.dll>
     <moonsharp.fixtures>${maven.multiModuleProjectDirectory}/../fixtures</moonsharp.fixtures>
+    <!-- In-process variants (docs/hosting.md, "Java: in process"). Their tests are skipped when these are
+         missing, unless -Dmoonsharp.inprocess.required=true. -->
+    <moonsharp.jni.lib>${maven.multiModuleProjectDirectory}/../native/build/libmoonsharp_jni.so</moonsharp.jni.lib>
+    <moonsharp.native.dll>${maven.multiModuleProjectDirectory}/../MoonSharp.Hosting.Native/bin/Release/net8.0/MoonSharp.Hosting.Native.dll</moonsharp.native.dll>
+    <moonsharp.aot.lib>${maven.multiModuleProjectDirectory}/../MoonSharp.Hosting.Native/bin/Release/net8.0/linux-x64/publish/MoonSharp.Hosting.Native.so</moonsharp.aot.lib>
+    <moonsharp.inprocess.required>false</moonsharp.inprocess.required>
   </properties>
 
   <dependencyManagement>
@@ -65,9 +71,16 @@
           <artifactId>maven-surefire-plugin</artifactId>
           <version>3.3.1</version>
           <configuration>
+            <!-- One JVM per test class: a process can load MoonSharp in process only once, either
+                 through CoreCLR or as NativeAOT. -->
+            <reuseForks>false</reuseForks>
             <systemPropertyVariables>
               <moonsharp.host.dll>${moonsharp.host.dll}</moonsharp.host.dll>
               <moonsharp.fixtures>${moonsharp.fixtures}</moonsharp.fixtures>
+              <moonsharp.jni.lib>${moonsharp.jni.lib}</moonsharp.jni.lib>
+              <moonsharp.native.dll>${moonsharp.native.dll}</moonsharp.native.dll>
+              <moonsharp.aot.lib>${moonsharp.aot.lib}</moonsharp.aot.lib>
+              <moonsharp.inprocess.required>${moonsharp.inprocess.required}</moonsharp.inprocess.required>
             </systemPropertyVariables>
           </configuration>
         </plugin>

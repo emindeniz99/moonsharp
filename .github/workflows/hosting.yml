@@ -71,6 +71,13 @@ jobs:
           npx playwright install --with-deps chromium
           node test/smoke.mjs bin/Release/net10.0/publish/wwwroot ../fixtures
 
-      - name: Fixtures on Java (worker client and Spring Boot sample)
+      - name: Build the in-process variants (CoreCLR component, NativeAOT library, JNI shim)
+        run: |
+          dotnet build -c Release src/Hosting/MoonSharp.Hosting.Native
+          dotnet publish -c Release -r linux-x64 -p:NativeAot=true src/Hosting/MoonSharp.Hosting.Native
+          cmake -S src/Hosting/native -B src/Hosting/native/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build src/Hosting/native/build
+
+      - name: Fixtures on Java (worker, in-process CoreCLR and NativeAOT, Spring Boot sample)
         working-directory: src/Hosting/java
-        run: mvn -B test
+        run: mvn -B test -Dmoonsharp.inprocess.required=true

@@ -436,5 +436,16 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 			Assert.IsTrue(s.DoString("for k, v in pairs({ 1 }) do local unset; return unset end").IsNil());
 		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/258: a local assigned from a function
+		// that returns nothing held "no value", so type(x) failed with "value expected".
+		[Test]
+		[Ignore("waits for compiler work: https://github.com/moonsharp-devs/moonsharp/issues/258")]
+		public void Issue258_LocalFromVoidCallIsNil()
+		{
+			Script s = new Script();
+
+			Assert.AreEqual("nil", s.DoString("local function nothing() end local v = nothing() return type(v)").String);
+		}
 	}
 }

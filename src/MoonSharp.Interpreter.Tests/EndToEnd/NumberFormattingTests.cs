@@ -81,7 +81,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 					continue;
 
 				s.Globals["x"] = d;
-				Assert.AreEqual(d.ToString("R", CultureInfo.InvariantCulture), s.DoString("return tostring(x)").String, "bits {0:X16}", BitConverter.DoubleToInt64Bits(d));
+				Assert.AreEqual(d.ToString("R", CultureInfo.InvariantCulture), s.DoString("return tostring(x)").String, "bits " + BitConverter.DoubleToInt64Bits(d).ToString("X16"));
 			}
 		}
 	}

@@ -9,6 +9,7 @@ note; they are not part of this repository.
 |---|---|
 | [PLAN.md](PLAN.md) | Ranked optimisation plan (Group A done, Group B in progress) |
 | [lua-csharp.md](lua-csharp.md), [lua-csharp-measured.md](lua-csharp-measured.md) | Lua-CSharp's design, unsafe inventory, measured comparison |
+| [lua-csharp-own-bench.md](lua-csharp-own-bench.md) | Lua-CSharp's own benchmark suite with the fork added (patch: [lua-csharp-own-bench.patch](lua-csharp-own-bench.patch)), the control-flow compile result, Lua-CSharp main against 0.5.8 |
 | [luau.md](luau.md), [jint.md](jint.md), [xlua.md](xlua.md) | Techniques from Luau, Jint, xLua and xlua-ng |
 | [other-managed.md](other-managed.md), [unityenhanced.md](unityenhanced.md) | WattleScript, SolarSharp, UniLua, NeoLua, moonsharp-unityenhanced |
 | [wattlescript-measured.md](wattlescript-measured.md) | WattleScript measured against the fork and Lua-CSharp, plus its history checkpoints |

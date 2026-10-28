@@ -507,7 +507,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			if (Environment.GetEnvironmentVariable("MOONSHARP_PATTERN_REPORT") != null)
 				Console.WriteLine(summary);
 
-			Assert.IsEmpty(unexpected, summary + "\nunexpected differences:\n" + string.Join("\n", unexpected.ToArray()));
+			Assert.AreEqual(0, unexpected.Count, summary + "\nunexpected differences:\n" + string.Join("\n", unexpected.ToArray()));
 			Assert.Greater(total, 200000);
 			Assert.Greater(same, total * 9 / 10);
 		}

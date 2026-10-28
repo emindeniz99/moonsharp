@@ -1,6 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using MoonSharp.Interpreter.Execution;
 using MoonSharp.Interpreter.Execution.VM;
+using MoonSharp.Interpreter.Interop;
 using MoonSharp.Interpreter.Interop.Converters;
 
 namespace MoonSharp.Interpreter
@@ -50,9 +52,23 @@ namespace MoonSharp.Interpreter
 		/// </summary>
 		internal readonly Upvalue[] Upvalues;
 
-		// The upvalue symbols of the function prototype, shared by every closure made from it; only the
-		// debugger and the debug library read their names.
-		SymbolRef[] m_UpvalueSymbols;
+		// The upvalue symbols of the function prototype (a SymbolRef[]), shared by every closure made from it;
+		// only the debugger and the debug library read their names. Once ToDelegate has made a delegate, a
+		// DelegateCache that holds the symbols and the delegates: closures that never become delegates pay
+		// no field for the cache.
+		object m_SymbolsOrDelegates;
+
+		sealed class DelegateCache
+		{
+			public SymbolRef[] Symbols;
+			public Delegate First;
+			public Dictionary<Type, Delegate> More;
+		}
+
+		SymbolRef[] UpvalueSymbols
+		{
+			get { return m_SymbolsOrDelegates as SymbolRef[] ?? ((DelegateCache)m_SymbolsOrDelegates).Symbols; }
+		}
 
 
 		/// <summary>
@@ -74,7 +90,7 @@ namespace MoonSharp.Interpreter
 				upvalues.Add(Upvalue.CreateClosed(v.ToLuaValue()));
 
 			Upvalues = upvalues.Count > 0 ? upvalues.ToArray() : s_NoUpvalues;
-			m_UpvalueSymbols = symbols.Length > 0 ? symbols : s_NoSymbols;
+			m_SymbolsOrDelegates = symbols.Length > 0 ? symbols : s_NoSymbols;
 		}
 
 		/// <summary>
@@ -86,7 +102,7 @@ namespace MoonSharp.Interpreter
 			OwnerScript = script;
 			EntryPointByteCodeLocation = idx;
 			Upvalues = upvalues ?? s_NoUpvalues;
-			m_UpvalueSymbols = symbols ?? s_NoSymbols;
+			m_SymbolsOrDelegates = symbols ?? s_NoSymbols;
 		}
 
 		/// <summary>
@@ -194,6 +210,55 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
+		/// Gets a delegate of type <typeparamref name="TDelegate"/> that calls this function, converting its
+		/// arguments and result as the typed <see cref="Call{T1, TResult}"/> calls do. The delegate type may
+		/// be any whose Invoke has up to four parameters, none by reference. The same function returns the
+		/// same delegate for a type every time, so it can be removed from an event it was added to.
+		/// </summary>
+		/// <remarks>
+		/// On AOT platforms (IL2CPP, NativeAOT), a delegate type with value-type parameters or result needs
+		/// code compiled ahead of time: list the type in <c>[assembly: MoonSharpUserDataTypes]</c> and call
+		/// <c>GeneratedUserData.RegisterAll()</c>, or register a factory with
+		/// <see cref="UserData.RegisterDelegateType{TDelegate}"/>. The delegate keeps this function and its
+		/// script alive.
+		/// </remarks>
+		public TDelegate ToDelegate<TDelegate>() where TDelegate : Delegate
+		{
+			return (TDelegate)ToDelegate(typeof(TDelegate));
+		}
+
+		internal Delegate ToDelegate(Type delegateType)
+		{
+			DelegateCache cache = m_SymbolsOrDelegates as DelegateCache;
+			Delegate d;
+
+			if (cache != null)
+			{
+				if (cache.First.GetType() == delegateType)
+					return cache.First;
+
+				if (cache.More != null && cache.More.TryGetValue(delegateType, out d))
+					return d;
+			}
+
+			d = ClosureDelegates.Create(this, delegateType);
+
+			if (cache == null)
+			{
+				m_SymbolsOrDelegates = new DelegateCache() { Symbols = (SymbolRef[])m_SymbolsOrDelegates, First = d };
+			}
+			else
+			{
+				if (cache.More == null)
+					cache.More = new Dictionary<Type, Delegate>();
+
+				cache.More.Add(delegateType, d);
+			}
+
+			return d;
+		}
+
+		/// <summary>
 		/// Gets a delegate wrapping calls to this scripted function
 		/// </summary>
 		/// <returns></returns>
@@ -228,7 +293,7 @@ namespace MoonSharp.Interpreter
 		/// <returns>The upvalue name</returns>
 		public string GetUpvalueName(int idx)
 		{
-			return m_UpvalueSymbols[idx].i_Name;
+			return UpvalueSymbols[idx].i_Name;
 		}
 
 		/// <summary>

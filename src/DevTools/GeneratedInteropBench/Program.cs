@@ -41,6 +41,7 @@ namespace MoonSharp.GeneratedInteropBench
 	{
 		const string CallSource = "return function(obj, n) local s = 0 for i = 1, n do s = s + obj:Add(i, 2) end return s end";
 		const string GetSource = "return function(obj, n) local s = 0 for i = 1, n do s = s + obj.Value end return s end";
+		const string PickSource = "return function(obj, n) local s = 0 for i = 1, n do s = s + obj:Pick(i) end return s end";
 		const string LoopSource = "return function(obj, n) local s = 0 for i = 1, n do s = s + i end return s end";
 
 		static int Main(string[] args)
@@ -67,6 +68,12 @@ namespace MoonSharp.GeneratedInteropBench
 			foreach (string mode in modes)
 				Run("get obj.Value", GetSource, mode, n, runs, "1000000");
 
+			// An overloaded method, Pick(int) or Pick(string): MoonSharp's overload resolution picks one per call.
+			foreach (string mode in modes)
+				Run("call obj:Pick(i), overloaded", PickSource, mode, n, runs, "500000500000");
+
+			RunHostCalls(n, runs);
+
 			return 0;
 		}
 
@@ -84,6 +91,34 @@ namespace MoonSharp.GeneratedInteropBench
 			UserData.RegisterType<Calc>((InteropAccessMode)Enum.Parse(typeof(InteropAccessMode), mode));
 		}
 
+		/// <summary>
+		/// C# calling a Lua function with three numbers and reading a number: Script.Call with DynValues,
+		/// and the typed Closure.Call.
+		/// </summary>
+		static void RunHostCalls(long n, int runs)
+		{
+			Script script = new Script();
+			DynValue fn = script.DoString("return function(a, b, c) return a * b + c end");
+			Closure closure = fn.Function;
+			DynValue two = DynValue.NewNumber(2), three = DynValue.NewNumber(3);
+
+			Measure("C# calls Lua, Script.Call(fn, DynValue x3)", "-", n, runs, "1000002000000", count =>
+			{
+				double sum = 0;
+				for (long i = 0; i < count; i++)
+					sum += script.Call(fn, DynValue.NewNumber(i), two, three).Number;
+				return sum.ToString("R");
+			});
+
+			Measure("C# calls Lua, Closure.Call<double, double, double, double>", "-", n, runs, "1000002000000", count =>
+			{
+				double sum = 0;
+				for (long i = 0; i < count; i++)
+					sum += closure.Call<double, double, double, double>(i, 2, 3);
+				return sum.ToString("R");
+			});
+		}
+
 		static void Run(string name, string source, string mode, long n, int runs, string check)
 		{
 			Register(mode);
@@ -92,6 +127,13 @@ namespace MoonSharp.GeneratedInteropBench
 			var calc = new Calc();
 
 			script.Call(fn, calc, (double)(n / 10)); // warm-up, and the lazy modes compile here
+
+			Measure(name, mode, n, runs, check, count => script.Call(fn, calc, (double)count).ToPrintString());
+		}
+
+		static void Measure(string name, string mode, long n, int runs, string check, Func<long, string> run)
+		{
+			run(n / 10); // warm-up
 
 			var times = new List<double>();
 			double bytes = 0;
@@ -102,7 +144,7 @@ namespace MoonSharp.GeneratedInteropBench
 				GC.WaitForPendingFinalizers();
 				long a0 = GC.GetAllocatedBytesForCurrentThread();
 				var sw = Stopwatch.StartNew();
-				string result = script.Call(fn, calc, (double)n).ToPrintString();
+				string result = run(n);
 				sw.Stop();
 				bytes = (GC.GetAllocatedBytesForCurrentThread() - a0) / (double)n;
 				times.Add(sw.Elapsed.TotalMilliseconds * 1e6 / n);

@@ -580,7 +580,7 @@ namespace MoonSharp.SourceGenerator
 			return w.ToString();
 		}
 
-		public static string EmitRegistry(List<TypePlan> plans, List<Target> reflection, Helpers helpers)
+		public static string EmitRegistry(List<TypePlan> plans, List<Target> reflection, List<INamedTypeSymbol> delegates, Helpers helpers)
 		{
 			var w = new StringBuilder();
 			w.Append(Header);
@@ -609,8 +609,29 @@ namespace MoonSharp.SourceGenerator
 				w.Append("\t\t\t").Append(MS).Append("UserData.RegisterType(typeof(").Append(typeOf).Append("), (").Append(MS).Append("InteropAccessMode)").Append(t.AccessMode).Append(", null);\n");
 			}
 
-			w.Append(@"		}
+			if (delegates.Count > 0)
+				w.Append("\t\t\tRegisterDelegateTypes();\n");
 
+			w.Append("\t\t}\n");
+
+			if (delegates.Count > 0)
+			{
+				w.Append(@"
+		/// <summary>
+		/// Registers how Lua functions become delegates of the types this assembly's generated members take
+		/// and of the delegate types listed with MoonSharpUserDataTypes, without reflection (RegisterAll
+		/// calls it).
+		/// </summary>
+		public static void RegisterDelegateTypes()
+		{
+");
+				foreach (INamedTypeSymbol d in delegates)
+					w.Append("\t\t\t").Append(Delegates.EmitRegistration(d)).Append("\n");
+
+				w.Append("\t\t}\n");
+			}
+
+			w.Append(@"
 		/// <summary>A new generated descriptor for the type, or null when none was generated.</summary>
 		public static " + MSI + @"IUserDataDescriptor CreateDescriptor(global::System.Type type)
 		{

@@ -100,10 +100,25 @@ namespace MoonSharp.SourceGenerator
 
 			var plans = new List<TypePlan>();
 			var registerByReflection = new List<Target>();
+			var delegates = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
 
 			for (int i = 0; i < targets.Count; i++)
 			{
 				Target t = targets[i];
+
+				// A listed delegate type gets a factory for Lua functions, not a userdata descriptor.
+				if (t.Type.TypeKind == TypeKind.Delegate)
+				{
+					string why = Delegates.WhyNotAdapted(t.Type, compilation);
+
+					if (why == null)
+						delegates.Add(t.Type);
+					else
+						context.ReportDiagnostic(Diagnostic.Create(Diagnostics.TypeNotGenerated, t.Location, t.Type.ToDisplayString(), why));
+
+					continue;
+				}
+
 				string reason = TypePlan.WhyNotGenerated(t.Type, compilation, known);
 
 				if (reason != null)
@@ -121,6 +136,10 @@ namespace MoonSharp.SourceGenerator
 				plans.Add(TypePlan.Build(t, plans.Count, compilation, known, context));
 			}
 
+			foreach (INamedTypeSymbol d in Delegates.UsedBy(plans))
+				if (Delegates.WhyNotAdapted(d, compilation) == null)
+					delegates.Add(d);
+
 			var helpers = new Helpers(known);
 
 			foreach (TypePlan plan in plans)
@@ -133,7 +152,7 @@ namespace MoonSharp.SourceGenerator
 					context.AddSource(plan.HintName.Replace(".g.cs", ".Struct.g.cs"), SourceText.From(Emitter.EmitStructPartial(plan, helpers, known), Encoding.UTF8));
 			}
 
-			context.AddSource("MoonSharp.GeneratedUserData.g.cs", SourceText.From(Emitter.EmitRegistry(plans, registerByReflection, helpers), Encoding.UTF8));
+			context.AddSource("MoonSharp.GeneratedUserData.g.cs", SourceText.From(Emitter.EmitRegistry(plans, registerByReflection, delegates.OrderBy(d => d.ToDisplayString(Names.Fq), System.StringComparer.Ordinal).ToList(), helpers), Encoding.UTF8));
 		}
 
 		/// <summary>InteropAccessMode.Default.</summary>

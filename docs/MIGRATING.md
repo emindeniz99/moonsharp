@@ -449,3 +449,10 @@ small output can ask for buffering with `io.stdout:setvbuf("full")` and
 flush itself. Affected: hosts that read the output stream and saw
 partial text before
 ([upstream #161](https://github.com/moonsharp-devs/moonsharp/issues/161)).
+
+## Delegates compiled from expression trees work on AOT runtimes
+
+On NativeAOT and IL2CPP an expression-tree delegate is interpreted, and reading its `Method` throws.
+Passing such a delegate to a script used to fail there; it is now called through its `Invoke` method.
+Passing a delegate whose type is not `Func<ScriptExecutionContext, CallbackArguments, DynValue>` but has
+the same signature used to throw `InvalidCastException`; it is now converted like any other delegate.

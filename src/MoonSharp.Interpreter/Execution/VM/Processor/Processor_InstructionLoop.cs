@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using MoonSharp.Interpreter.DataStructs;
 using MoonSharp.Interpreter.Debugging;
 using MoonSharp.Interpreter.Interop;
@@ -413,18 +412,28 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private void ExecClosure(Instruction i)
 		{
-			Closure c = new Closure(this.m_Script, i.NumVal, i.SymbolList,
-				i.SymbolList.Select(s => this.GetUpvalueSymbol(s)).ToList());
+			// Fill the upvalue list directly: no LINQ iterator, no intermediate list, no per-closure name array.
+			SymbolRef[] symbols = i.SymbolList;
+			ClosureContext context = null;
 
-			m_ValueStack.Push(DynValue.NewClosure(c));
+			if (symbols.Length > 0)
+			{
+				CallStackItem frame = m_ExecutionStack.Peek();
+				context = new ClosureContext(symbols);
+
+				for (int k = 0; k < symbols.Length; k++)
+					context.Add(GetUpvalueSymbol(frame, symbols[k]));
+			}
+
+			m_ValueStack.Push(DynValue.NewClosure(new Closure(this.m_Script, i.NumVal, context)));
 		}
 
-		private DynValue GetUpvalueSymbol(SymbolRef s)
+		private static DynValue GetUpvalueSymbol(CallStackItem frame, SymbolRef s)
 		{
 			if (s.Type == SymbolRefType.Local)
-				return m_ExecutionStack.Peek().LocalScope[s.i_Index];
+				return frame.LocalScope[s.i_Index];
 			else if (s.Type == SymbolRefType.Upvalue)
-				return m_ExecutionStack.Peek().ClosureScope[s.i_Index];
+				return frame.ClosureScope[s.i_Index];
 			else
 				throw new Exception("unsupported symbol type");
 		}

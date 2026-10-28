@@ -1,0 +1,192 @@
+# Generated userdata descriptors
+
+`src/MoonSharp.SourceGenerator` is a Roslyn source generator. At compile time
+it writes a userdata descriptor for each C# type you mark, so that Lua calls
+the type's members directly instead of through reflection. It matters most
+where MoonSharp cannot compile its fast paths at run time: IL2CPP, NativeAOT
+and other AOT targets, where every member access otherwise goes through
+`MethodBase.Invoke` with an `object[]` of boxed arguments.
+
+Nothing changes for code that does not use it. The interpreter gains one
+attribute, `MoonSharpUserDataTypes` (512 bytes of the netstandard2.0 Release
+DLL: 396,288 to 396,800 bytes at `2afebc9`).
+
+## Use
+
+1. Reference the generator as an analyzer.
+   - Unity: the UPM package ships it in `Runtime/Analyzers` with the
+     `RoslynAnalyzer` label. It runs for every assembly that references
+     `MoonSharp.Interpreter`.
+   - .NET: `<ProjectReference Include="path/MoonSharp.SourceGenerator.csproj"
+     OutputItemType="Analyzer" ReferenceOutputAssembly="false" />`. For a
+     `net4x` project add `SetTargetFramework="TargetFramework=netstandard2.0"`
+     and `SkipGetTargetFrameworkProperties="true"`.
+2. Choose the types. Mark your own with `[MoonSharpUserData]`, and list types
+   you do not own at assembly level:
+
+   ```csharp
+   [assembly: MoonSharpUserDataTypes(typeof(Vector2), typeof(List<int>))]
+   ```
+
+3. Register them once at start-up, before anything else registers the same
+   types (the first registration of a type wins):
+
+   ```csharp
+   MoonSharp.Generated.GeneratedUserData.RegisterAll();
+   // or one at a time:
+   UserData.RegisterType(MoonSharp.Generated.GeneratedUserData.CreateDescriptor(typeof(Player)));
+   ```
+
+   `GeneratedUserData` is internal to each assembly, so call it from code in
+   that assembly. There is no module initializer and no
+   `[RuntimeInitializeOnLoadMethod]`: following the decision that mobile hosts
+   register only the types they choose, registration stays an explicit call.
+   In Unity, make that call from your own start-up code.
+   `UserData.RegisterAssembly()` after it still registers the remaining
+   `[MoonSharpUserData]` types by reflection.
+
+Scripts see no difference. The descriptor has the same members, names and
+overloads as the reflection one, and the same rules apply: overload
+resolution, extension methods, fuzzy names, metamethods, `__new`, nested
+types, `[MoonSharpHidden]`/`[MoonSharpVisible]`, `[MoonSharpHideMember]`,
+custom converters and `ExactInt64Interop`. The LuaCATS generator
+([luacats.md](luacats.md)) reads the registered descriptor, so its
+declarations do not change either.
+
+## What is generated
+
+For each type, one class derived from `DispatchingUserDataDescriptor`, with
+one nested class for all its methods and one for all its fields and
+properties. Each nested class picks the member with a `switch` on a member
+number, so a type costs three classes however many members it has. xlua-ng
+measured about 8% less IL2CPP output for one switch per type than for one
+class per member, the shape MoonSharp's Hardwire uses.
+
+A method body converts each argument with a typed helper, calls the member
+and converts the result:
+
+```csharp
+case 4: // int Add(int a, int b)
+{
+    DynValue v0 = args.RawGet(j++, false) ?? DynValue.Void;
+    int a0 = ToInt32(v0);
+    DynValue v1 = args.RawGet(j++, false) ?? DynValue.Void;
+    int a1 = ToInt32(v1);
+    var r = ((Calc)obj).Add(a0, a1);
+    return FromInt32(script, r);
+}
+```
+
+`ToInt32` reads a Lua number directly when no custom converter is registered
+for it, and otherwise calls `DynValue.ToObject(typeof(int))`, the conversion
+reflection uses. Results and error messages are therefore the same as with
+reflection (the tests below compare them). Results of primitive types are
+built without boxing; other values go through `DynValue.FromObject`.
+
+Members are added to the descriptor with `AddMember`, as
+`StandardUserDataDescriptor` adds them, so MoonSharp's own overload
+resolution chooses between overloads (its weights, with its cache of recent
+argument signatures). A statically generated choice would be wrong as soon as
+a host registers a custom converter, which changes the weights at run time.
+Member names are looked up in the descriptor's dictionary, where the bound
+callback cache of `obj:Method()` calls also lives.
+
+### Structs
+
+A struct userdata holds a boxed value, and reflection changes that box in
+place (`v.x = 1`, `v:Normalize()`). Safe C# cannot write into a box, so:
+
+- a `partial` struct (and partial containing types) gets a generated
+  interface implementation, and the descriptor calls its members through the
+  box: in place, typed;
+- reads (fields, property getters) and `readonly` members work on a copy;
+- overrides of `object` methods and interface implementations are called on
+  the box through the base type or interface: in place;
+- every other member that may change the struct (setters, non-readonly
+  methods of a struct the assembly cannot make partial) is bound by
+  reflection, with warning MSUD001.
+
+Property getters are assumed not to change the struct, as the optimized
+reflection modes also assume.
+
+### Reflection fallback
+
+A member C# cannot call from generated code keeps a reflection descriptor,
+and the build reports why (MSUD001): methods returning by reference, ref
+struct parameters, init-only setters, members that are not accessible from
+the generated code (for example `[MoonSharpVisible(true)]` on a private
+member), operators C# cannot write (`op_True`, `op_Increment`) and events.
+On IL2CPP or a trimmed NativeAOT app those members must survive stripping
+(`link.xml` or a trimming descriptor).
+
+A type gets no descriptor (MSUD002) when it is not accessible from the
+generated code, is an open generic type (list closed ones with
+`MoonSharpUserDataTypes`), a delegate, an array, a pointer or a ref struct.
+Enums and `IUserDataType` types need no generated code: `RegisterAll`
+registers them with MoonSharp's own descriptors.
+
+A type from another assembly is described as compiled against: if the
+runtime's version of the type has more members (a newer BCL), scripts do not
+see them.
+
+## Roslyn version
+
+| Unity | Manual asks for | Compiler it ships (measured by xlua-ng) |
+|---|---|---|
+| 2021.3 | Microsoft.CodeAnalysis 3.8, `ISourceGenerator` | 4.3.1 in 2021.3.45f2 |
+| 2022.3 | Microsoft.CodeAnalysis 3.8, `ISourceGenerator` | 4.3.1 in 2022.3.62f3 |
+| Unity 6 | Microsoft.CodeAnalysis.CSharp 4.3 | 4.3.1 in 6000.0 to 6000.3, 4.10.0 in 6000.6 |
+
+A generator built against a newer compiler than the one running it does not
+load (warning CS9057, no output), while one built against an older compiler
+loads in every newer one. The generator therefore references
+Microsoft.CodeAnalysis 3.8, the lowest version any supported Unity line
+documents, and implements `ISourceGenerator`, since `IIncrementalGenerator`
+and `ForAttributeWithMetadataName` arrived in 4.0 and 4.3. Two builds (3.8
+and 4.3) are not an option: a newer editor would load both and emit every
+type twice. Roslyn deprecates `ISourceGenerator` in favour of incremental
+generators, but still runs it; Unity compiles whole assemblies, so the
+incremental pipeline would mostly help IDEs. Revisit when Unity's manuals
+for every supported line ask for 4.x.
+
+`tools/sourcegen/check-roslyn.sh` compiles `tools/sourcegen/Sample.cs`, which
+calls `GeneratedUserData.RegisterAll()`, with csc 3.8.0 and 4.3.1 (pinned
+compiler packages). Generated code is C# 7.3.
+
+## Tests
+
+- `InteropParityTests`: the same probe script, and a list of error cases,
+  under every `InteropAccessMode` and under generated descriptors; results and
+  error texts must match. The probes cover a partial struct, a struct the
+  generator cannot extend, a readonly struct, `ref`/`out` parameters,
+  `params`, optional parameters, overloads and C# exceptions.
+- `GeneratedDescriptorTests`:
+  - for 52 test types, the generated descriptor lists the same members as
+    `StandardUserDataDescriptor`, with the same kind, access, static-ness and
+    overload signatures;
+  - a probe over BCL types (`List<int>`, `Dictionary<string, int>`,
+    `DateTime`, `TimeSpan`, `Version`) gives the same results as reflection;
+  - 20 interop fixtures run a second time with a registration policy that
+    swaps in the generated descriptor for every type they register.
+- All of this runs in the three test runners (.NET, Mono with its hardwire
+  policy, and `EmbeddedTestRunner`, which compiles the tests as Unity does).
+  The Unity matrix (`.github/workflows/unity.yml`) compiles the same tests
+  with the generator from the UPM package in each editor; it has not run
+  yet (it needs the licence secrets).
+
+## Measurements
+
+MEASUREMENTS
+
+## Follow-ups
+
+- Run the Unity matrix once the secrets exist: it is the first real proof
+  that 2021.3, 2022.3 and 6000.0 load the generator from the package and that
+  IL2CPP players run the generated code.
+- Dispatch between overloads with precomputed checks when no custom
+  converter is registered, keeping MoonSharp's weights as the fallback.
+- Calls without the bound callback: a generated colon call could skip
+  `CallbackArguments` once the VM offers a typed call convention (roadmap
+  B7).
+- Emit a `link.xml` fragment for the members bound by reflection, once
+  Unity's linker can be fed one from an analyzer (an Editor build callback).

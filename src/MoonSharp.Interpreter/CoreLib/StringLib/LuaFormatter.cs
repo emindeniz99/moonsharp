@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Text;
+using MoonSharp.Interpreter.Execution.VM;
 
 namespace MoonSharp.Interpreter.CoreLib.StringLib
 {
@@ -34,7 +35,7 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 
 		internal static DynValue Format(CallbackArguments args)
 		{
-			string fmt = CheckString(args[0], 0);
+			string fmt = CheckString(args, 0);
 
 			StringBuilder sb = t_Builder;
 			if (sb == null)
@@ -51,14 +52,17 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 			return DynValue.NewString(result);
 		}
 
-		static double CheckNumber(DynValue v, int arg)
+		// Numbers and strings are read without creating a DynValue; anything else converts or fails as before.
+		static double CheckNumber(CallbackArguments args, int arg)
 		{
-			return v.Type == DataType.Number ? v.Number : v.CheckType("format", DataType.Number, arg, TypeValidationFlags.AutoConvert).Number;
+			LuaValue v = args.GetLuaValue(arg);
+			return v.Type == DataType.Number ? v.Number : args[arg].CheckType("format", DataType.Number, arg, TypeValidationFlags.AutoConvert).Number;
 		}
 
-		static string CheckString(DynValue v, int arg)
+		static string CheckString(CallbackArguments args, int arg)
 		{
-			return v.Type == DataType.String ? v.String : v.CheckType("format", DataType.String, arg, TypeValidationFlags.AutoConvert).String;
+			LuaValue v = args.GetLuaValue(arg);
+			return v.Type == DataType.String ? (string)v.Object : args[arg].CheckType("format", DataType.String, arg, TypeValidationFlags.AutoConvert).String;
 		}
 
 		static bool IsFlag(char c)
@@ -132,21 +136,20 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 				char ch = i < n ? fmt[i] : '\0';
 				i++;
 
-				DynValue v = args[arg];
 				double d = 0;
 				string str = null;
 
 				switch (ch)
 				{
 					case 'q':
-						AppendQuoted(sb, CheckString(v, arg));
+						AppendQuoted(sb, CheckString(args, arg));
 						continue;
 					case 's':
-						str = CheckString(v, arg);
+						str = CheckString(args, arg);
 						if (precisionStart < 0 && str.Length >= 100)
 						{
 							// Too long to format: the original value is kept, as in Lua 5.2.
-							sb.Append(v.ToPrintString());
+							sb.Append(args[arg].ToPrintString());
 							continue;
 						}
 						break;
@@ -162,7 +165,7 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 					case 'f':
 					case 'g':
 					case 'G':
-						d = CheckNumber(v, arg);
+						d = CheckNumber(args, arg);
 						break;
 					default:
 						throw new ScriptRuntimeException("invalid option '%" + ch + "' to 'format'", ch);

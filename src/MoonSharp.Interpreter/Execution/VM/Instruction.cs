@@ -17,6 +17,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 		internal int NumVal2;
 		internal int NumVal3;
 		internal SourceRef SourceCodeRef;
+		// Runtime only, never saved: the inline cache of a field or global access with a constant key.
+		internal FieldCache Cache;
 
 		internal Instruction(SourceRef sourceref)
 		{

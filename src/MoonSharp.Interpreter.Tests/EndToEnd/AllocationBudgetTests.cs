@@ -191,7 +191,26 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void AllocationBudget_CoroutineSwitch()
 		{
-			AssertLuaBudget("coroutine_switch", "return function(n) local co = coroutine.wrap(function() local i = 0 while true do i = i + 1 coroutine.yield(i) end end)\nlocal s = 0 for i = 1, n do s = s + co() end return s end", 400);
+			// Each coroutine reuses its yield request, a resume with no values pushes nil without a DynValue,
+			// and an empty argument list is a shared array (400 bytes before). Left: two call contexts, the
+			// argument objects, the yielded values' array and the yielded number's DynValue.
+			AssertLuaBudget("coroutine_switch", "return function(n) local co = coroutine.wrap(function() local i = 0 while true do i = i + 1 coroutine.yield(i) end end)\nlocal s = 0 for i = 1, n do s = s + co() end return s end", 248);
+		}
+
+		[Test]
+		public void AllocationBudget_StringFormat()
+		{
+			// The library reads its arguments in place: no argument array and no DynValue per string or
+			// number argument (368 bytes before). What is left: the call's context and argument view, the
+			// result string and its DynValue, and the DynValue the table stores.
+			AssertLuaBudget("string_format", "local format = string.format\nreturn function(n) local buf, j = {}, 1 for i = 1, n do buf[j] = format('%d:%s', i, 'x') j = j + 1 if j > 64 then j = 1 end end return buf[64] end", 216);
+		}
+
+		[Test]
+		public void AllocationBudget_BuiltinCalls()
+		{
+			// Fast-called library functions run on the value stack: no frame, context or argument list.
+			AssertLuaBudget("builtin_calls", "local floor, len, byte, max = math.floor, string.len, string.byte, math.max\nreturn function(n) local s = 0 for i = 1, n do s = s + floor(i / 3) + len('abc') + byte('xyz', 2) + max(i, 5) + select('#', i, i) + (type(s) == 'number' and 1 or 0) end return s end", NoAllocation);
 		}
 
 		[Test]

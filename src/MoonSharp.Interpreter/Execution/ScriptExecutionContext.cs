@@ -107,6 +107,14 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
+		/// A request to yield <paramref name="values"/> from the running coroutine (reused for every yield).
+		/// </summary>
+		internal DynValue YieldRequestFor(DynValue[] values)
+		{
+			return m_Processor.YieldRequestFor(values);
+		}
+
+		/// <summary>
 		/// Gets the coroutine which is performing the call
 		/// </summary>
 		public Coroutine GetCallingCoroutine()

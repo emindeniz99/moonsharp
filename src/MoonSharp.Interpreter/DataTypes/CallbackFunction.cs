@@ -69,6 +69,36 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
+		/// Set for the functions of the standard library, which read their arguments in place on the value
+		/// stack (<see cref="InvokeOnStack"/>) because they never keep a <see cref="CallbackArguments"/>.
+		/// </summary>
+		internal bool ReadsArgumentsInPlace;
+
+		/// <summary>
+		/// The builtin fast-call id of a library function (Processor_Builtins.cs), or 0.
+		/// </summary>
+		internal int BuiltinId;
+
+		/// <summary>
+		/// <see cref="Invoke"/> with the arguments read in place from the value stack: the top
+		/// <paramref name="count"/> values from <paramref name="first"/>.
+		/// </summary>
+		internal DynValue InvokeOnStack(ScriptExecutionContext executionContext, Execution.VM.ValueStack stack, int first, int count, bool isMethodCall)
+		{
+			if (isMethodCall)
+			{
+				var colon = executionContext.GetScript().Options.ColonOperatorClrCallbackBehaviour;
+
+				if (colon == ColonOperatorBehaviour.TreatAsColon)
+					isMethodCall = false;
+				else if (colon == ColonOperatorBehaviour.TreatAsDotOnUserData)
+					isMethodCall = (count > 0 && stack.Items[first].Type == DataType.UserData);
+			}
+
+			return ClrCallback(executionContext, new CallbackArguments.StackArguments(stack, first, count, isMethodCall)) ?? DynValue.Nil;
+		}
+
+		/// <summary>
 		/// Gets or sets the default access mode used when marshalling delegates
 		/// </summary>
 		/// <value>

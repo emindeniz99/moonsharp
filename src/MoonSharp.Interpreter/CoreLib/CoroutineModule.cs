@@ -29,6 +29,8 @@ namespace MoonSharp.Interpreter.CoreLib
 			DynValue v = create(executionContext, args);
 			DynValue c = DynValue.NewCallback(__wrap_wrapper);
 			c.Callback.AdditionalData = v;
+			// it copies its arguments at once
+			c.Callback.ReadsArgumentsInPlace = true;
 			return c;
 		}
 
@@ -84,7 +86,7 @@ namespace MoonSharp.Interpreter.CoreLib
 		[MoonSharpModuleMethod]
 		public static DynValue yield(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			return DynValue.NewYieldReq(args.GetArray());
+			return executionContext.YieldRequestFor(args.GetArray());
 		}
 
 

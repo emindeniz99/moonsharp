@@ -70,6 +70,10 @@ namespace MoonSharp.Interpreter
 
 		int m_InitArray = 0;
 
+		// Bits of metamethods this table, used as a metatable, is known not to have (Processor.Meta*).
+		// Cleared by every store or removal of a string key.
+		internal int MetaAbsent;
+
 		/// <summary>
 		/// Initializes a new instance of the <see cref="Table"/> class.
 		/// </summary>
@@ -106,6 +110,7 @@ namespace MoonSharp.Interpreter
 		/// </summary>
 		public void Clear()
 		{
+			MetaAbsent = 0;
 			m_Array = null;
 			m_Prefix = 0;
 			m_Entries = null;
@@ -773,6 +778,7 @@ namespace MoonSharp.Interpreter
 
 		void SetString(string s, int hash, DynValue keyValue, DynValue value)
 		{
+			MetaAbsent = 0;
 			int i = FindString(s, hash);
 
 			if (i >= 0)
@@ -1097,6 +1103,7 @@ namespace MoonSharp.Interpreter
 		/// <returns><c>true</c> if values was successfully removed; otherwise, <c>false</c>.</returns>
 		public bool Remove(string key)
 		{
+			MetaAbsent = 0;
 			return RemoveEntry(FindString(key, HashString(key)), 0);
 		}
 

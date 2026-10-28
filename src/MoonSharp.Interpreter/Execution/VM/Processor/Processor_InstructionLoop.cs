@@ -999,7 +999,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 
 			// fallback to __call metamethod
-			var m = GetMetamethod(fn, "__call");
+			var m = GetMetamethod(fn, "__call", MetaCall);
 
 			if (m != null && m.IsNotNil())
 			{
@@ -1154,7 +1154,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				if (!lc.HasValue || !rc.HasValue)
 				{
 					m_ValueStack.RemoveLast(2);
-					int ip = Internal_InvokeBinaryMetaMethod(ls, rs, ArithmeticEvent(i.OpCode), instructionPtr);
+					int ip = Internal_InvokeBinaryMetaMethod(ls, rs, ArithmeticEvent(i.OpCode), ArithmeticBit(i.OpCode), instructionPtr);
 					if (ip >= 0) return ip;
 					else throw ScriptRuntimeException.ArithmeticOnNonNumber(ls.ToDynValue(), rs.ToDynValue());
 				}
@@ -1194,6 +1194,19 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 		}
 
+		private static int ArithmeticBit(OpCode op)
+		{
+			switch (op)
+			{
+				case OpCode.Add: return MetaAdd;
+				case OpCode.Sub: return MetaSub;
+				case OpCode.Mul: return MetaMul;
+				case OpCode.Div: return MetaDiv;
+				case OpCode.Mod: return MetaMod;
+				default: return MetaPow;
+			}
+		}
+
 		/// <summary>
 		/// Lua 5.2 modulo (manual 3.4.1): a - floor(a/b)*b, so the result has the sign of the divisor.
 		/// </summary>
@@ -1222,7 +1235,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 			else
 			{
-				int ip = Internal_InvokeUnaryMetaMethod(r, "__unm", instructionPtr);
+				int ip = Internal_InvokeUnaryMetaMethod(r, "__unm", MetaUnm, instructionPtr);
 				if (ip >= 0) return ip;
 				else throw ScriptRuntimeException.ArithmeticOnNonNumber(r.ToDynValue());
 			}
@@ -1251,7 +1264,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			// then if they are userdatas, attempt meta
 			if (l.Type == DataType.UserData || r.Type == DataType.UserData)
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__eq", instructionPtr);
+				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__eq", MetaEq, instructionPtr);
 				if (ip >= 0) return ip;
 			}
 
@@ -1269,7 +1282,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			// then attempt metatables for tables
 			if ((l.Type == DataType.Table) && (GetMetatable(l) != null) && (GetMetatable(l) == GetMetatable(r)))
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__eq", instructionPtr);
+				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__eq", MetaEq, instructionPtr);
 				if (ip >= 0) return ip;
 			}
 
@@ -1305,7 +1318,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 			else
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(ls, rs, "__lt", instructionPtr);
+				int ip = Internal_InvokeBinaryMetaMethod(ls, rs, "__lt", MetaLt, instructionPtr);
 				if (ip < 0)
 					throw ScriptRuntimeException.CompareInvalidType(ls.ToDynValue(), rs.ToDynValue());
 				else
@@ -1332,10 +1345,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 			else
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__le", instructionPtr, LuaValue.False);
+				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__le", MetaLe, instructionPtr, LuaValue.False);
 				if (ip < 0)
 				{
-					ip = Internal_InvokeBinaryMetaMethod(r, l, "__lt", instructionPtr, LuaValue.True);
+					ip = Internal_InvokeBinaryMetaMethod(r, l, "__lt", MetaLt, instructionPtr, LuaValue.True);
 
 					if (ip < 0)
 						throw ScriptRuntimeException.CompareInvalidType(l.ToDynValue(), r.ToDynValue());
@@ -1357,7 +1370,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				m_ValueStack.Push(LuaValue.FromNumber(((string)r.Object).Length));
 			else
 			{
-				int ip = Internal_InvokeUnaryMetaMethod(r, "__len", instructionPtr);
+				int ip = Internal_InvokeUnaryMetaMethod(r, "__len", MetaLen, instructionPtr);
 				if (ip >= 0)
 					return ip;
 				else if (r.Type == DataType.Table)
@@ -1385,7 +1398,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 			else
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__concat", instructionPtr);
+				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__concat", MetaConcat, instructionPtr);
 				if (ip >= 0) return ip;
 				else throw ScriptRuntimeException.ConcatOnNonString(l.ToDynValue(), r.ToDynValue());
 			}
@@ -1498,7 +1511,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 						}
 					}
 
-					h = GetMetamethodRaw(obj, "__newindex");
+					h = GetMetamethodRaw(obj, "__newindex", MetaNewIndex);
 
 					if (h == null || h.IsNil())
 					{
@@ -1521,7 +1534,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				}
 				else
 				{
-					h = GetMetamethodRaw(obj, "__newindex");
+					h = GetMetamethodRaw(obj, "__newindex", MetaNewIndex);
 
 					if (h == null || h.IsNil())
 						throw ScriptRuntimeException.IndexType(obj.ToDynValue());
@@ -1580,7 +1593,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 						}
 					}
 
-					h = GetMetamethodRaw(obj, "__index");
+					h = GetMetamethodRaw(obj, "__index", MetaIndex);
 
 					if (h == null || h.IsNil())
 					{
@@ -1610,7 +1623,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				}
 				else
 				{
-					h = GetMetamethodRaw(obj, "__index");
+					h = GetMetamethodRaw(obj, "__index", MetaIndex);
 
 					if (h == null || h.IsNil())
 						throw ScriptRuntimeException.IndexType(obj.ToDynValue());

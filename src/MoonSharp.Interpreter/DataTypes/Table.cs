@@ -211,7 +211,7 @@ namespace MoonSharp.Interpreter
 
 		static int HashString(string s)
 		{
-			// the same value as DynValue.GetHashCode() for a string, which caches it
+			// the same value as DynValue.GetHashCode() for a string
 			return (((int)DataType.String) << 27) ^ s.GetHashCode();
 		}
 

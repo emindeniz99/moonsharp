@@ -31,6 +31,7 @@ WORKDIR /build
 COPY ci.sh ci.sh
 COPY src/MoonSharp.Interpreter src/MoonSharp.Interpreter/
 COPY src/MoonSharp.Interpreter.Tests src/MoonSharp.Interpreter.Tests/
+COPY src/MoonSharp.SourceGenerator src/MoonSharp.SourceGenerator/
 COPY src/MoonSharp.RemoteDebugger src/MoonSharp.RemoteDebugger/
 COPY src/MoonSharp.VsCodeDebugger src/MoonSharp.VsCodeDebugger/
 COPY src/TestRunners/ConsoleTestRunner src/TestRunners/ConsoleTestRunner/

@@ -9,7 +9,7 @@ using NUnit.Framework;
 namespace MoonSharp.Interpreter.Tests.EndToEnd
 {
 	[TestFixture]
-	public class VtUserDataMethodsTests
+	public partial class VtUserDataMethodsTests
 	{
 		public struct SomeClass_NoRegister : IComparable
 		{
@@ -130,7 +130,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			}
 		}
 
-		public struct SomeClass : IComparable
+		public partial struct SomeClass : IComparable
 		{
 			public string ManipulateString(string input, ref string tobeconcat, out string lowercase)
 			{

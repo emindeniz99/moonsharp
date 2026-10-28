@@ -21,7 +21,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		public DynValue Coroutine_Recycle(Processor mainProcessor, Closure closure)
 		{
-			// Clear the used parts of the stacks to prep for reuse
+			// Clear the used parts of the stacks to prep for reuse. A coroutine that died with an error can
+			// leave open upvalues behind; close them first, or closures would see the new coroutine's values.
+			CloseUpvalues(0);
 			this.m_ValueStack.ClearUsed();
 			this.m_ExecutionStack.ClearUsed();
 
@@ -68,9 +70,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 					int ip = Internal_ExecCall(a.Length, -1);
 
 					if (ip == YIELD_SPECIAL_TRAP)
-						retVal = m_ValueStack.Pop().ToScalar();
+						retVal = m_ValueStack.Pop().ToScalar().ToDynValue();
 					else if (ip < 0)
-						retVal = m_ValueStack.Pop();
+						retVal = m_ValueStack.Pop().ToDynValue();
 					else
 						retVal = Processing_Loop(ip);
 				}

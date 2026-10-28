@@ -47,12 +47,13 @@ namespace MoonSharp.Interpreter.Tree.Statements
 
 			bc.PushSourceRef(m_Start);
 
+			// Cleared once; each iteration ends with Emit_Leave (see ForLoopStatement).
+			bc.Emit_Enter(m_StackFrame);
+
 			int start = bc.GetJumpPointForNextInstruction();
 
 			m_Condition.Compile(bc);
 			var jumpend = bc.Emit_Jump(OpCode.Jf, -1);
-
-			bc.Emit_Enter(m_StackFrame);
 
 			m_Block.Compile(bc);
 

@@ -4,25 +4,21 @@ namespace MoonSharp.Interpreter.Execution.VM
 {
 	sealed partial class Processor
 	{
-		private void ClearBlockData(Instruction I)
+		private void ClearBlockData(Instruction I, int basePointer)
 		{
 			int from = I.NumVal;
 			int to = I.NumVal2;
 
-			var array = this.m_ExecutionStack.Peek().LocalScope;
-
 			if (to >= 0 && from >= 0 && to >= from)
 			{
-				// Blocks usually hold a few locals; a loop is cheaper than Array.Clear for those.
-				if (to - from < 8)
-				{
-					for (int k = from; k <= to; k++)
-						array[k] = null;
-				}
-				else
-				{
-					Array.Clear(array, from, to - from + 1);
-				}
+
+				// The block's locals go out of scope: closures that captured them keep their values. Locals
+				// of enclosing blocks sit in lower slots, so only this block's and nested blocks' close.
+				if (m_OpenUpvalues != null)
+					CloseUpvalues(basePointer + from);
+
+				for (int k = from; k <= to; k++)
+					m_ValueStack[basePointer + k] = LuaValue.Undeclared;
 			}
 		}
 
@@ -41,9 +37,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 				case SymbolRefType.Global:
 					return GetGlobalSymbol(GetGenericSymbol(symref.i_Env), symref.i_Name);
 				case SymbolRefType.Local:
-					return GetStackNonClrFunction(stackFrameIndex).LocalScope[symref.i_Index];
+					return m_ValueStack[m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex)).BasePointer + symref.i_Index].ToDynValue();
 				case SymbolRefType.Upvalue:
-					return GetStackNonClrFunction(stackFrameIndex).ClosureScope[symref.i_Index];
+					return m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex)).Upvalues[symref.i_Index].Get().ToDynValue();
 				default:
 					throw new InternalErrorException("Unexpected {0} LRef at resolution: {1}", symref.i_Type, symref.i_Name);
 			}
@@ -75,24 +71,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 					break;
 				case SymbolRefType.Local:
 					{
-						var stackframe = GetStackNonClrFunction(stackFrameIndex);
-
-						DynValue v = stackframe.LocalScope[symref.i_Index];
-						if (v == null)
-							stackframe.LocalScope[symref.i_Index] = v = DynValue.NewNil();
-
-						v.Assign(value);
+						ref CallStackItem stackframe = ref m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex));
+						m_ValueStack[stackframe.BasePointer + symref.i_Index] = value.ToLuaValue();
 					}
 					break;
 				case SymbolRefType.Upvalue:
 					{
-						var stackframe = GetStackNonClrFunction(stackFrameIndex);
-
-						DynValue v = stackframe.ClosureScope[symref.i_Index];
-						if (v == null)
-							stackframe.ClosureScope[symref.i_Index] = v = DynValue.NewNil();
-
-						v.Assign(value);
+						ref CallStackItem stackframe = ref m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex));
+						stackframe.Upvalues[symref.i_Index].Set(value.ToLuaValue());
 					}
 					break;
 				case SymbolRefType.DefaultEnv:
@@ -104,25 +90,27 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 		}
 
-		CallStackItem GetStackNonClrFunction(int stackFrameIndex)
+		/// <summary>
+		/// The index (from the top) of the frame of a script function: the given one, or with -1 the
+		/// innermost. Returns -1 when that frame does not exist or runs a C# function.
+		/// </summary>
+		int GetStackNonClrFunction(int stackFrameIndex)
 		{
 			if (stackFrameIndex >= 0)
 			{
-				var frame = stackFrameIndex < m_ExecutionStack.Count ? m_ExecutionStack.Peek(stackFrameIndex) : null;
-				return frame?.ClrFunction == null ? frame : null;
-			}
+				if (stackFrameIndex < m_ExecutionStack.Count && m_ExecutionStack.Peek(stackFrameIndex).ClrFunction == null)
+					return stackFrameIndex;
 
-			CallStackItem stackframe = null;
+				return -1;
+			}
 
 			for (int i = 0; i < m_ExecutionStack.Count; i++)
 			{
-				stackframe = m_ExecutionStack.Peek(i);
-
-				if (stackframe.ClrFunction == null)
-					break;
+				if (m_ExecutionStack.Peek(i).ClrFunction == null)
+					return i;
 			}
 
-			return stackframe;
+			return -1;
 		}
 
 
@@ -135,28 +123,30 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			if (m_ExecutionStack.Count > 0)
 			{
-				var stackframe = GetStackNonClrFunction(stackFrameIndex);
+				int frameIndex = GetStackNonClrFunction(stackFrameIndex);
 
-				if (stackframe != null)
+				if (frameIndex >= 0)
 				{
+					ref CallStackItem stackframe = ref m_ExecutionStack.Peek(frameIndex);
+
 					if (stackframe.Debug_Symbols != null)
 					{
 						for (int i = stackframe.Debug_Symbols.Length - 1; i >= 0; i--)
 						{
 							var l = stackframe.Debug_Symbols[i];
 
-							if (l.i_Name == name && stackframe.LocalScope[i] != null)
+							if (l.i_Name == name && !m_ValueStack[stackframe.BasePointer + i].IsUndeclared)
 								return l;
 						}
 					}
 
 
-					var closure = stackframe.ClosureScope;
+					var closure = stackframe.Function;
 
 					if (closure != null)
 					{
-						for (int i = 0; i < closure.Symbols.Length; i++)
-							if (closure.Symbols[i] == name)
+						for (int i = 0; i < closure.GetUpvaluesCount(); i++)
+							if (closure.GetUpvalueName(i) == name)
 								return SymbolRef.Upvalue(name, i);
 					}
 				}

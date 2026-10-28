@@ -1,4 +1,4 @@
-using NUnit.Framework;
+﻿using NUnit.Framework;
 
 namespace MoonSharp.Interpreter.Tests.EndToEnd
 {
@@ -24,6 +24,43 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual("1,nil,nil", r.Tuple[0].String);
 			Assert.AreEqual("1,2,3", r.Tuple[1].String);
 			Assert.AreEqual("nil,nil,nil", r.Tuple[2].String);
+		}
+
+		[Test]
+		public void CallPath_ParameterFromACallWithNoResultsIsNil()
+		{
+			// f() passes no value, but the parameter that receives it is a variable, so it holds nil (Lua
+			// 5.2). MoonSharp stored "no value" in it, and type(a) failed with "value expected".
+			DynValue r = Run(@"
+				local function none() end
+				local function g(a) return type(a) end
+				local function h(a, b) return type(a) .. ',' .. type(b) end
+				local function v(a, ...) return type(a) .. ',' .. select('#', ...) end
+				return g(none()), h(none()), h(1, none()), v(none())");
+
+			Assert.AreEqual("nil", r.Tuple[0].String);
+			Assert.AreEqual("nil,nil", r.Tuple[1].String);
+			Assert.AreEqual("number,nil", r.Tuple[2].String);
+			Assert.AreEqual("nil,0", r.Tuple[3].String);
+		}
+
+		[Test]
+		public void CallPath_NoVarArgsAreAnEmptyList()
+		{
+			// '...' that receives no values holds none (Lua 5.2). MoonSharp stored one nil, so
+			// select('#', ...) was 1 and f(...) passed f one nil argument.
+			DynValue r = Run(@"
+				local function none() end
+				local function count(...) return select('#', ...) end
+				local function v(a, ...) return select('#', ...), count(...) end
+				local function w(...) return select('#', ...), count(...) end
+				local a1, a2 = v(1)
+				local b1, b2 = w()
+				local c1, c2 = w(none())
+				local d1, d2 = v(1, 2, 3)
+				return a1 .. a2 .. ',' .. b1 .. b2 .. ',' .. c1 .. c2 .. ',' .. d1 .. d2");
+
+			Assert.AreEqual("00,00,00,22", r.String);
 		}
 
 		[Test]

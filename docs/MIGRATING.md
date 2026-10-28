@@ -292,6 +292,10 @@ compiled. The original exception is now rethrown on every path, with its
 stack trace. Affected: hosts on IL2CPP or iOS, or using `Reflection`, that
 caught `TargetInvocationException` and read `InnerException`.
 
+The same holds for property getters and setters called through reflection.
+A setter that throws `ArgumentException` itself is now reported as a type
+mismatch (`ScriptRuntimeException`), as the compiled setter already did.
+
 ## The Unity package requires Unity 2021.3
 
 `package.json` of `org.moonsharp.moonsharp` and
@@ -300,3 +304,155 @@ caught `TargetInvocationException` and read `InnerException`.
 which `.github/workflows/unity.yml` tests; 2020.3 is out of support and was
 never tested. Nothing in the package needed the lower number. Affected:
 projects on Unity 2020.3.
+
+## NativeAOT counts as an AOT platform
+
+`Script.GlobalOptions.Platform.IsRunningOnAOT()` returned false on .NET
+NativeAOT: its probe compiles an expression tree, which NativeAOT interprets
+instead of refusing. It now reads `RuntimeFeature.IsDynamicCodeSupported`
+where the runtime has it, and returns true on NativeAOT. There, as on IL2CPP,
+every descriptor uses `InteropAccessMode.Reflection` whatever mode was asked
+for, `_MOONSHARP.is_aot` is true and the platform name ends in `.aot`.
+Affected: hosts published with NativeAOT that checked these values or
+counted adapter compilations.
+
+## Generic extension overloads that AOT cannot instantiate are skipped
+
+When a script calls an extension method by name, MoonSharp instantiates each
+generic candidate for the userdata's type. On NativeAOT an instantiation the
+app never compiled threw `NotSupportedException` and ended the lookup, so
+`list:Sum()` failed although `Sum(IEnumerable<int>)` existed. Such a
+candidate is now skipped like one whose arguments do not fit; when no
+candidate is left, the member is missing, as for any unknown name.
+Affected: hosts on NativeAOT that registered extension types.
+
+## Trimmed apps keep the members of registered types
+
+`UserData.RegisterType<T>()`, `RegisterType(Type, ...)` and
+`RegisterExtensionType(Type)` carry trimming annotations
+(`DynamicallyAccessedMembers`). An app trimmed by the .NET SDK or published
+with NativeAOT now keeps every member of a type it registers with a
+`typeof` or a type argument, without a descriptor file, and grows by those
+members. A `Type` computed at run time gets a trim warning in the host's
+build, as other reflection does. Unity's linker is not known to read these
+annotations; keep using `link.xml` or `[Preserve]` there.
+
+## Extension methods from every registered class are found
+
+A userdata looked for extension methods only when an extension class had
+been registered since its previous lookup. After a script used one
+extension method of a type, the others stayed invisible ("cannot access
+field") until another extension class was registered. Every registered
+extension method is now found. Affected: hosts that register extension
+methods for one type from several static classes
+([upstream #102](https://github.com/moonsharp-devs/moonsharp/issues/102)).
+
+## Types that hide inherited members with `new` can be registered
+
+Registering a type that hides an inherited property, field or event with
+`new` (for example a command type whose `Connection` property returns a
+more derived connection) threw "Multiple members named ... are being
+added". The type now registers and scripts see the member that C# code
+sees through that type: the most derived visible one. Affected: hosts
+that worked around the exception with wrapper types
+([upstream #286](https://github.com/moonsharp-devs/moonsharp/issues/286)).
+
+## Delegates compiled at run time can be passed to scripts
+
+A delegate built with `Expression.Compile()` or a `DynamicMethod` threw
+`NullReferenceException` when converted for a script, because its method
+has no declaring type. Such delegates are now called through their
+`Invoke` method. Affected: hosts that wrapped them in a lambda to work
+around the exception
+([upstream #291](https://github.com/moonsharp-devs/moonsharp/issues/291)).
+
+## A CLR callback that returns null gives the script nil
+
+A `CallbackFunction` whose function returned `null` instead of a
+`DynValue` made the VM throw `NullReferenceException`. Scripts now
+receive `nil`. Affected: hosts that relied on the exception to detect
+such callbacks
+([upstream #307](https://github.com/moonsharp-devs/moonsharp/issues/307)).
+
+## `debug.getmetatable` returns nil for values without a metatable
+
+For a table without a metatable, or a type without a type metatable,
+`debug.getmetatable` returned a table value wrapping nothing: it was not
+`nil`, and using it threw `NullReferenceException`. It now returns `nil`,
+as `getmetatable` and Lua do. Affected: scripts that used the debug
+library to inspect metatables
+([upstream PR #173](https://github.com/moonsharp-devs/moonsharp/pull/173)).
+
+## `json.parse` reads nested arrays
+
+`json.parse` used the Lua lexer, which reads `[[` as the start of a long
+string, so JSON such as `[[1,2],[3,4]]` failed with "Unexpected token".
+It now reads `[[` as two array openings. Affected: hosts that inserted
+spaces between brackets as a workaround
+([upstream #219](https://github.com/moonsharp-devs/moonsharp/issues/219)).
+
+## `tonumber` reads Lua numerals
+
+`tonumber(s)` used .NET number parsing. It returned `nil` for
+hexadecimal numerals such as `"0x23"`, and returned numbers for strings
+that Lua rejects, such as `"1,000"` (1000) and `"(5)"` (-5). It now
+follows Lua 5.2: decimal or hexadecimal numerals (with an optional
+fraction and `p` exponent), an optional sign and surrounding whitespace.
+
+```lua
+print(tonumber("0x23"), tonumber("1,000"))   -- before: nil 1000   now: 35 nil
+```
+
+String coercion in arithmetic (`"0x10" + 1`) still uses the old parsing
+until the VM work changes it. Affected: scripts that passed formatted
+numbers to `tonumber`
+([upstream #229](https://github.com/moonsharp-devs/moonsharp/issues/229)).
+
+## Standard streams set after a script is created are used
+
+`Script.Options.Stdin`, `Stdout` and `Stderr` were read only while the
+`Script` was constructed; setting them later had no effect and `io`
+kept using the process console. The `io` module now switches to the
+stream the options name when it next uses a standard file. A file value
+a script already holds (`local out = io.stdout`) keeps its old stream.
+Affected: hosts that set these options after creating a script
+([upstream #70](https://github.com/moonsharp-devs/moonsharp/issues/70)).
+
+## `json.parse` reads JSON string escapes
+
+`json.parse` unescaped strings with Lua's rules: `é` failed with
+"'{' expected near '\u'", while Lua-only escapes such as `\x41`, `\65`
+and `\u{41}` were accepted. Strings now use JSON's escapes (`\"`, `\\`,
+`\/`, `\b`, `\f`, `\n`, `\r`, `\t`, `\uXXXX`, with surrogate pairs kept
+as two UTF-16 units), and other escapes are a parse error. Affected:
+hosts that pre-processed JSON to avoid `\u` escapes, and input that
+relied on Lua escapes.
+
+## `json.serialize` writes mixed tables as objects
+
+A table with keys 1..n was written as a JSON array even when it had other
+keys, which were dropped: `{ 10, name = "x" }` became `[10]`. Such a
+table is now an object, with integer keys written as strings
+(`{"1":10,"name":"x"}`), as the host's JSON writer already did. A table
+whose keys are exactly 1..n is still an array, and a table with only
+integer keys that are not 1..n (`{ [3] = "c" }`) is now an object
+instead of `{}`. Affected: scripts that relied on the dropped keys being
+left out.
+
+## `io.write` to the standard streams is not buffered
+
+`io.write` and `io.stdout:write` kept text in a `StreamWriter` buffer
+until `io.flush()`. Nothing flushed it when a script finished, so output
+appeared late or never (each `Script` has its own writer). The standard
+output and error files now write through. A script that writes much
+small output can ask for buffering with `io.stdout:setvbuf("full")` and
+flush itself. Affected: hosts that read the output stream and saw
+partial text before
+([upstream #161](https://github.com/moonsharp-devs/moonsharp/issues/161)).
+
+## Delegates compiled from expression trees work on AOT runtimes
+
+On NativeAOT and IL2CPP an expression-tree delegate is interpreted, and reading its `Method` throws.
+Passing such a delegate to a script used to fail there; it is now called through its `Invoke` method.
+Passing a delegate whose type is not `Func<ScriptExecutionContext, CallbackArguments, DynValue>` but has
+the same signature used to throw `InvalidCastException`; it is now converted like any other delegate.

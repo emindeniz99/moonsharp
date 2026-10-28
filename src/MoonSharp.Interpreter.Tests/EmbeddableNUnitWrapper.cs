@@ -14,7 +14,11 @@ namespace NUnit.Framework
 	{ }
 
 	public class IgnoreAttribute : Attribute
-	{ }
+	{
+		public IgnoreAttribute() { }
+
+		public IgnoreAttribute(string reason) { }
+	}
 
 	public class TestFixtureAttribute : Attribute
 	{ }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using MoonSharp.Interpreter.Compatibility;
@@ -13,9 +14,10 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 	/// Metamethods are also by default dispatched to operator overloads and other similar methods - see
 	/// <see cref="MetaIndex"/> .
 	/// </summary>
+	// Keeps the methods of every subclass for IsPlain, which looks for overrides by reflection.
+	[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)]
 	public abstract class DispatchingUserDataDescriptor : IUserDataDescriptor, IOptimizableDescriptor
 	{
-		private int m_ExtMethodsVersion = 0;
 		private Dictionary<string, IMemberDescriptor> m_MetaMembers = new Dictionary<string, IMemberDescriptor>();
 		private Dictionary<string, IMemberDescriptor> m_Members = new Dictionary<string, IMemberDescriptor>();
 
@@ -85,15 +87,14 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 
 			if (plain == 0)
 			{
-				Type self = GetType();
 				plain = PLAIN_KNOWN;
 
-				if (IsDeclaredHere(self, "Index", BindingFlags.Public, typeof(Script), typeof(object), typeof(DynValue), typeof(bool))
-					&& IsDeclaredHere(self, "TryIndex", BindingFlags.NonPublic, typeof(Script), typeof(object), typeof(string)))
+				if (IsDeclaredHere("Index", BindingFlags.Public, typeof(Script), typeof(object), typeof(DynValue), typeof(bool))
+					&& IsDeclaredHere("TryIndex", BindingFlags.NonPublic, typeof(Script), typeof(object), typeof(string)))
 					plain |= PLAIN_INDEX;
 
-				if (IsDeclaredHere(self, "SetIndex", BindingFlags.Public, typeof(Script), typeof(object), typeof(DynValue), typeof(DynValue), typeof(bool))
-					&& IsDeclaredHere(self, "TrySetIndex", BindingFlags.NonPublic, typeof(Script), typeof(object), typeof(string), typeof(DynValue)))
+				if (IsDeclaredHere("SetIndex", BindingFlags.Public, typeof(Script), typeof(object), typeof(DynValue), typeof(DynValue), typeof(bool))
+					&& IsDeclaredHere("TrySetIndex", BindingFlags.NonPublic, typeof(Script), typeof(object), typeof(string), typeof(DynValue)))
 					plain |= PLAIN_SET_INDEX;
 
 				m_Plain = plain;
@@ -102,9 +103,9 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 			return (plain & flag) != 0;
 		}
 
-		private static bool IsDeclaredHere(Type self, string name, BindingFlags visibility, params Type[] parameters)
+		private bool IsDeclaredHere(string name, BindingFlags visibility, params Type[] parameters)
 		{
-			MethodInfo mi = self.GetMethod(name, BindingFlags.Instance | visibility, null, parameters, null);
+			MethodInfo mi = GetType().GetMethod(name, BindingFlags.Instance | visibility, null, parameters, null);
 			return mi != null && mi.DeclaringType == typeof(DispatchingUserDataDescriptor);
 		}
 
@@ -285,10 +286,10 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 			DynValue v = TryIndex(script, obj, index.String);
 			if (v == null) v = TryIndexFuzzy(script, obj, index.String);
 
-			if (v == null && m_ExtMethodsVersion < UserData.GetExtensionMethodsChangeVersion())
+			// Every miss looks for extension methods: a miss is an error or a member seen for the first
+			// time, and a found extension method becomes a member, so later reads do not get here.
+			if (v == null)
 			{
-				m_ExtMethodsVersion = UserData.GetExtensionMethodsChangeVersion();
-
 				v = TryIndexOnExtMethod(script, obj, index.String);
 				if (v == null && (Script.GlobalOptions.FuzzySymbolMatching & FuzzySymbolMatchingBehavior.UpperFirstLetter) == FuzzySymbolMatchingBehavior.UpperFirstLetter) v = TryIndexOnExtMethod(script, obj, UpperFirstLetter(index.String));
 				if (v == null && (Script.GlobalOptions.FuzzySymbolMatching & FuzzySymbolMatchingBehavior.Camelify) == FuzzySymbolMatchingBehavior.Camelify) v = TryIndexOnExtMethod(script, obj, Camelify(index.String));

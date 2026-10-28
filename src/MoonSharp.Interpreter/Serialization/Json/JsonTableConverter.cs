@@ -37,17 +37,19 @@ namespace MoonSharp.Interpreter.Serialization.Json
 		{
 			bool first = true;
 
-			if (table.Length == 0)
+			if (!IsSequence(table))
 			{
 				sb.Append("{");
 				foreach (TablePair pair in table.Pairs)
 				{
-					if (pair.Key.Type == DataType.String && IsValueJsonCompatible(pair.Value))
+					string key = ObjectKey(pair.Key);
+
+					if (key != null && IsValueJsonCompatible(pair.Value))
 					{
 						if (!first)
 							sb.Append(',');
 
-						ValueToJson(sb, pair.Key);
+						sb.Append(EscapeString(key));
 						sb.Append(':');
 						ValueToJson(sb, pair.Value);
 
@@ -74,6 +76,37 @@ namespace MoonSharp.Interpreter.Serialization.Json
 				}
 				sb.Append("]");
 			}
+		}
+
+		// A table is a JSON array when its keys are exactly 1..n; other keys make it an object.
+		private static bool IsSequence(Table table)
+		{
+			int length = table.Length;
+
+			if (length == 0)
+				return false;
+
+			int keys = 0;
+
+			foreach (TablePair pair in table.Pairs)
+			{
+				if (!pair.Value.IsNil())
+					++keys;
+			}
+
+			return keys == length;
+		}
+
+		// Object keys: strings, and integer numbers written as strings; other keys are skipped.
+		private static string ObjectKey(DynValue key)
+		{
+			if (key.Type == DataType.String)
+				return key.String;
+
+			if (key.Type == DataType.Number && Math.Floor(key.Number) == key.Number && Math.Abs(key.Number) < 9007199254740992.0)
+				return ((long)key.Number).ToString(CultureInfo.InvariantCulture);
+
+			return null;
 		}
 
 		/// <summary>
@@ -165,7 +198,7 @@ namespace MoonSharp.Interpreter.Serialization.Json
 		/// <returns>A table containing the representation of the given json.</returns>
 		public static DynValue ParseString(string json, Script script, bool emptyArrays, JsonBigIntegerMode bigIntegers)
 		{
-			Lexer L = new Lexer(0, json, false);
+			Lexer L = Lexer.ForJson(json);
 
 			if (L.Current.Type == TokenType.Brk_Open_Curly)
 				return ParseJsonObject(L, script, emptyArrays, bigIntegers);

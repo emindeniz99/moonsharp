@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using MoonSharp.Interpreter.Compatibility;
 using MoonSharp.Interpreter.Interop.BasicDescriptors;
 
@@ -47,7 +46,15 @@ namespace MoonSharp.Interpreter.Interop
 			IsUnsigned = ((UnderlyingType == typeof(byte)) || (UnderlyingType == typeof(ushort)) || (UnderlyingType == typeof(uint)) || (UnderlyingType == typeof(ulong)));
 
 			names = names ?? Enum.GetNames(this.Type);
-			values = values ?? Enum.GetValues(this.Type).OfType<object>().ToArray();
+
+			// Not Enum.GetValues: it builds an array of the enum type, which AOT platforms may not have.
+			if (values == null)
+			{
+				values = new object[names.Length];
+
+				for (int i = 0; i < names.Length; i++)
+					values[i] = Enum.Parse(this.Type, names[i]);
+			}
 
 			FillMemberList(names, values);
 		}

@@ -13,6 +13,7 @@ namespace MoonSharp.Interpreter.Tree
 		int m_Col = 0;
 		int m_SourceId;
 		bool m_AutoSkipComments = false;
+		bool m_Json = false;
 
 		public Lexer(int sourceID, string scriptContent, bool autoSkipComments)
 		{
@@ -24,6 +25,15 @@ namespace MoonSharp.Interpreter.Tree
 				m_Code = m_Code.Substring(1);
 
 			m_AutoSkipComments = autoSkipComments;
+		}
+
+		/// <summary>
+		/// A lexer for JSON: "[[" opens two arrays instead of a Lua long string, and strings use
+		/// JSON's escapes instead of Lua's.
+		/// </summary>
+		internal static Lexer ForJson(string json)
+		{
+			return new Lexer(0, json, false) { m_Json = true };
 		}
 
 		public Token Current
@@ -213,7 +223,7 @@ namespace MoonSharp.Interpreter.Tree
 				case '[':
 					{
 						char next = CursorCharNext();
-						if (next == '=' || next == '[')
+						if (!m_Json && (next == '=' || next == '['))
 						{
 							string str = ReadLongString(fromLine, fromCol, null, "string");
 							return CreateToken(TokenType.String_Long, fromLine, fromCol, str);
@@ -511,7 +521,7 @@ namespace MoonSharp.Interpreter.Tree
 				{
 					CursorCharNext();
 					Token t = CreateToken(TokenType.String, fromLine, fromCol);
-					t.Text = LexerUtils.UnescapeLuaString(t, text.ToString());
+					t.Text = m_Json ? LexerUtils.UnescapeJsonString(t, text.ToString()) : LexerUtils.UnescapeLuaString(t, text.ToString());
 					return t;
 				}
 				else

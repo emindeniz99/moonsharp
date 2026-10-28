@@ -152,6 +152,11 @@ namespace MoonSharp.Interpreter.Interop.UserDataRegistries
 
 				if (descriptor == null)
 				{
+					// The built-in policies keep the first descriptor, so a repeated registration (the io and
+					// dynamic modules register their types for every new Script) builds none by reflection.
+					if (oldDescriptor != null && KeepsFirstDescriptor(RegistrationPolicy))
+						return oldDescriptor;
+
 					if (IsTypeBlacklisted(type))
 						return null;
 
@@ -194,6 +199,12 @@ namespace MoonSharp.Interpreter.Interop.UserDataRegistries
 					return descriptor;
 				}
 			}
+		}
+
+		private static bool KeepsFirstDescriptor(IRegistrationPolicy policy)
+		{
+			Type t = policy.GetType();
+			return t == typeof(DefaultRegistrationPolicy) || t == typeof(AutomaticRegistrationPolicy) || t == typeof(PermanentRegistrationPolicy);
 		}
 
 		private static IUserDataDescriptor PerformRegistration(Type type, IUserDataDescriptor newDescriptor, IUserDataDescriptor oldDescriptor)

@@ -82,12 +82,15 @@ namespace MoonSharp.Interpreter.CoreLib
 			DynValue v = args[0];
 			Script S = executionContext.GetScript();
 
+			Table meta = null;
+
 			if (v.Type.CanHaveTypeMetatables())
-				return DynValue.NewTable(S.GetTypeMetatable(v.Type));
+				meta = S.GetTypeMetatable(v.Type);
 			else if (v.Type == DataType.Table)
-				return DynValue.NewTable(v.Table.MetaTable);
-			else
-				return DynValue.Nil;
+				meta = v.Table.MetaTable;
+
+			// A table DynValue around null is not nil and breaks anything that touches it.
+			return (meta != null) ? DynValue.NewTable(meta) : DynValue.Nil;
 		}
 
 		[MoonSharpModuleMethod]

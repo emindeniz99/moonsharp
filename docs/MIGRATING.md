@@ -691,3 +691,21 @@ did not point to anything") instead of printing "Key '{0}' ...".
 Setting `TablePair.Value` recursed until the process
 ended with a stack overflow; it now sets the pair's value (a copy: the
 table does not change). Affected: hosts that caught those exceptions.
+
+## Fused instructions: dump format, instruction counts, debugger stops
+
+The compiler emits fewer, larger instructions. Results do not change; what a
+host can see:
+
+- **Binary dumps** (`Script.Dump`, `string.dump`) are format 0x154, or
+  0x153 without source locations. Older MoonSharp versions reject them with
+  "Invalid version". Dumps in the previous formats (0x152, 0x151) still load.
+- **Instruction counts** are lower, so `AutoYieldCounter` yields and
+  `ScriptOptions.InterruptHandler` calls come after more script work than
+  before. A numeric `for` iteration with an empty body was 5 instructions and
+  is now 1.
+- **Debugger stops in a numeric `for`.** The `for` line is a stop when the
+  loop starts; each later iteration stops on the `end` line only. Stepping
+  through `for i = 1, 2 do x = x + i end` written on lines 2 to 4 went
+  2, 3, 4, 2, 3, 4, 2, 4; it now goes 2, 3, 4, 3, 4. A breakpoint on the `for`
+  line is hit once per loop, not once per iteration.

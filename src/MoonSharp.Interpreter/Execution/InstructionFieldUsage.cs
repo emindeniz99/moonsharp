@@ -13,6 +13,7 @@ namespace MoonSharp.Interpreter.Execution
 		Value = 0x8,
 		NumVal = 0x10,
 		NumVal2 = 0x20,
+		NumVal3 = 0x40,
 		NumValAsCodeAddress = 0x8010
 	}
 
@@ -92,6 +93,8 @@ namespace MoonSharp.Interpreter.Execution
 					return InstructionFieldUsage.NumVal | InstructionFieldUsage.Name;
 				case OpCode.Meta:
 					return InstructionFieldUsage.NumVal | InstructionFieldUsage.NumVal2 | InstructionFieldUsage.Value | InstructionFieldUsage.Name;
+				case OpCode.ForLoop:
+					return InstructionFieldUsage.NumValAsCodeAddress | InstructionFieldUsage.NumVal2 | InstructionFieldUsage.NumVal3 | InstructionFieldUsage.Symbol;
 				default:
 					throw new NotImplementedException(string.Format("InstructionFieldUsage for instruction {0}", (int)op));
 			}

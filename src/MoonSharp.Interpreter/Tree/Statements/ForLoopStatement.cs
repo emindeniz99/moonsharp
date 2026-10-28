@@ -67,24 +67,23 @@ namespace MoonSharp.Interpreter.Tree.Statements
 			m_Start.Compile(bc);
 			bc.Emit_ToNum(1);
 
-			// The block's slots are cleared once here; every iteration ends with Emit_Leave, which closes
-			// and clears them again, so the next iteration starts with a fresh local.
+			// The block's slots are cleared once here; every iteration ends with ForLoop, which closes and
+			// clears them again (as Emit_Leave does), so the next iteration starts with a fresh local.
 			bc.Emit_Enter(m_StackFrame);
 
-			int start = bc.GetJumpPointForNextInstruction();
+			// The first test and store run once; after each iteration ForLoop steps, tests, stores and
+			// jumps back in one instruction.
 			var jumpend = bc.Emit_Jump(OpCode.JFor, -1);
-
 			bc.Emit_Store(m_VarName, 0, 0);
+
+			int start = bc.GetJumpPointForNextInstruction();
 
 			m_InnerBlock.Compile(bc);
 
 			bc.PopSourceRef();
 			bc.PushSourceRef(m_RefEnd);
 
-			bc.Emit_Debug("..end");
-			bc.Emit_Leave(m_StackFrame);
-			bc.Emit_Incr(1);
-			bc.Emit_Jump(OpCode.Jump, start);
+			bc.Emit_ForLoop(m_VarName, m_StackFrame, start);
 
 			bc.LoopTracker.Loops.Pop();
 

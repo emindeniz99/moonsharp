@@ -71,6 +71,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 		IterPrep,   // Prepares an iterator for execution 
 		IterUpd,	// Updates the var part of an iterator
 
+		// Opcodes added after the 0x152 dump format; new ones go here, before Invalid, so the values of
+		// older opcodes in dumps keep their meaning.
+		ForLoop,	// Ends an iteration of a numeric for: clears the block's locals (NumVal2..NumVal3) as Clean does, adds the step to the counter and, while it is in range, copies it into the loop variable (Symbol) and jumps to NumVal.
+
 		// Meta
 		Invalid,	// Crashes the executor with an unrecoverable NotImplementedException. This MUST always be the last opcode in enum
 	}

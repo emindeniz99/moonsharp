@@ -128,9 +128,10 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		{
 			// A yield comes after exactly AutoYieldCounter instructions, so the totals are the same however
 			// the loop fetches. 8270 with the List-based loop; 2 fewer since the for loop clears its block
-			// once before its 3 iterations instead of at the start of each.
-			Assert.AreEqual(8268, AutoYieldCycles(1));
-			Assert.AreEqual(1181, AutoYieldCycles(7));
+			// once before its 3 iterations instead of at the start of each; 8257 since the ForLoop opcode
+			// ends an iteration in one instruction instead of six.
+			Assert.AreEqual(8257, AutoYieldCycles(1));
+			Assert.AreEqual(1179, AutoYieldCycles(7));
 			Assert.AreEqual(82, AutoYieldCycles(100));
 		}
 	}

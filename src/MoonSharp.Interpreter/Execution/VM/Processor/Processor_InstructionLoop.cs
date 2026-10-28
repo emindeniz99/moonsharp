@@ -263,6 +263,32 @@ namespace MoonSharp.Interpreter.Execution.VM
 							instructionPtr = ExecJFor(i, instructionPtr);
 							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
 							break;
+						case OpCode.ForLoop:
+							{
+								// stack: limit, step, counter (numbers, checked by ToNum before the loop)
+								LuaValue[] items = m_ValueStack.Items;
+								int from = i.NumVal2;
+
+								// Leave the iteration's block, as Clean does: closures that captured its
+								// locals keep this iteration's values.
+								if (m_OpenUpvalues != null)
+									CloseUpvalues(basePointer + from);
+
+								for (int k = from; k <= i.NumVal3; k++)
+									items[basePointer + k] = LuaValue.Undeclared;
+
+								int top = m_ValueStack.Count;
+								double step = items[top - 2].Number;
+								double counter = items[top - 1].Number + step;
+								items[top - 1].Number = counter;
+
+								if (step > 0 ? counter <= items[top - 3].Number : counter >= items[top - 3].Number)
+								{
+									items[basePointer + i.Symbol.i_Index] = LuaValue.FromNumber(counter);
+									instructionPtr = i.NumVal;
+								}
+							}
+							break;
 						case OpCode.NewTable:
 							m_ValueStack.Push(LuaValue.FromObject(DataType.Table, new Table(i.NumVal == 0 ? this.m_Script : null)));
 							break;

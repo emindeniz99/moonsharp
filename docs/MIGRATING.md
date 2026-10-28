@@ -682,10 +682,12 @@ dead-key rule above). What a host can see:
   fields while enumerating is allowed; whether a key added during the
   enumeration is visited is not defined.
 
-## `Table.Set` with a null value, and multi-key errors
+## `Table.Set` with a null value, multi-key errors and `TablePair.Value`
 
 `Table.Set(key, null)` threw `NullReferenceException`; a null value now
 means nil, as `t[k] = nil` in a script. The error of a multi-key
 `Table.Get`/`Set` whose path breaks now names the key ("Key 'settings'
 did not point to anything") instead of printing "Key '{0}' ...".
-Affected: hosts that caught those exceptions.
+Setting `TablePair.Value` recursed until the process
+ended with a stack overflow; it now sets the pair's value (a copy: the
+table does not change). Affected: hosts that caught those exceptions.

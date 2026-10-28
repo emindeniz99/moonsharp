@@ -205,3 +205,55 @@ registration.
 
 Affected: hosts that inspect `require` as a Lua function. A debugger attached before the first
 `require` call receives the bytecode of `libfunc_require` when it is compiled.
+
+## Host JSON output skips fields set to nil
+
+`ScriptHost` wrote a table's fields set to nil as `null`, because the C#
+`Table.Pairs` still lists them, and counted them when deciding between an
+array and an object. A table shortened with `table.remove` therefore left
+the host as an object:
+
+```lua
+local t = { 1, 2, 3, 4 }
+table.remove(t)
+return t   -- before: {"1":1,"2":2,"3":3,"4":null}   now: [1,2,3]
+```
+
+Fields set to nil are now skipped, as Lua's `pairs` skips them. Affected:
+hosts (CLI, browser, Java) that read such results.
+
+## Host JSON output rejects unpaired surrogates
+
+A string holding half of a character outside the BMP, such as
+`('👋'):sub(1, 1)`, reached each host differently: the browser got the
+lone code unit, the Java worker and the in-process builds got U+FFFD from
+the UTF-8 encoder, and a .NET caller parsing the envelope with
+System.Text.Json got an exception. It is now an `output` error on every
+host ("a string with an unpaired surrogate at code unit 1 has no JSON
+representation"). Affected: scripts that return such strings to a host;
+return whole characters, or the code units from `string.unicode`.
+
+## Host contexts can be created with the int64 modules
+
+Every transport can now create a context with `CoreModules.Int64`:
+`ScriptHost.Create(true)`, the worker's `create` request, `create(context,
+int64)` on the Java `MoonSharpHost`, and `createContext({ int64: true })`
+in TypeScript. Two signatures changed for it:
+
+- C: `moonsharp_context_create(void)` is now
+  `moonsharp_context_create(int32_t options)`; pass 0 for the old
+  behaviour or `MOONSHARP_CONTEXT_INT64`.
+- Java: `MoonSharpHost` has a new `create` method, so a class outside this
+  repository that implements the interface must add it.
+
+The browser export `CreateContext` takes a boolean; `createContext()` in
+TypeScript keeps working without arguments.
+
+## `moonsharp-host test` checks known failures
+
+`moonsharp-host test` takes suite files or directories and compares the
+results with `known-failures/<host>.json` next to the suites. It exits 1
+on a new failure, a changed failure, a listed failure that passes and a
+listed case that does not exist, and prints one line per case (`pass`,
+`known`, `FAIL`, `CHANGED`, `FIXED`, `STALE`) and a count line. Before,
+it exited 1 on any failure and printed `pass` or `FAIL`.

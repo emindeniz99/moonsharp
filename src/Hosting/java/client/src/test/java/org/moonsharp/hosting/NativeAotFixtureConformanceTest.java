@@ -6,4 +6,9 @@ class NativeAotFixtureConformanceTest extends FixtureConformanceTest {
     MoonSharpHost open() {
         return InProcessMoonSharp.nativeAot(Fixtures.jniLibrary(), Fixtures.aotLibrary());
     }
+
+    @Override
+    String hostName() {
+        return "java-nativeaot";
+    }
 }

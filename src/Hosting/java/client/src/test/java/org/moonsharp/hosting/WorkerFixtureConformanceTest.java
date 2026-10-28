@@ -6,4 +6,9 @@ class WorkerFixtureConformanceTest extends FixtureConformanceTest {
     MoonSharpHost open() {
         return MoonSharpWorker.startDll(Fixtures.hostDll());
     }
+
+    @Override
+    String hostName() {
+        return "java-worker";
+    }
 }

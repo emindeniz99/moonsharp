@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        C entry points for hosting MoonSharp inside another process (the JVM, through src/Hosting/native).
+        One source, two builds:
+          dotnet build -c Release                                    a component that hostfxr loads into CoreCLR
+          dotnet publish -c Release -r linux-x64 -p:NativeAot=true   a self-contained NativeAOT shared library
+        (NativeAot, not PublishAot, on the command line: a global PublishAot also reaches the netstandard2.0
+        projects this one references, and the SDK rejects AOT for them.)
+    -->
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <Nullable>disable</Nullable>
+        <IsPackable>false</IsPackable>
+        <RootNamespace>MoonSharp.Hosting.Native</RootNamespace>
+        <AssemblyName>MoonSharp.Hosting.Native</AssemblyName>
+        <!-- NativeAOT: build a .so that exports the [UnmanagedCallersOnly] entry points. -->
+        <PublishAot Condition="'$(NativeAot)' == 'true'">true</PublishAot>
+        <NativeLib>Shared</NativeLib>
+        <!-- Embedded in a JVM: keep the GC small and avoid one GC heap and thread per core. -->
+        <ServerGarbageCollector>false</ServerGarbageCollector>
+        <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    </PropertyGroup>
+
+    <!-- CoreCLR component: writes runtimeconfig.json and deps.json next to the assembly for hostfxr. -->
+    <PropertyGroup Condition="'$(PublishAot)' != 'true'">
+        <EnableDynamicLoading>true</EnableDynamicLoading>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- NativeAOT: MoonSharp registers its standard library (string, table, require...) by reflection over
+             attributed methods. Without this root the trimmer removes them and scripts see nil, exactly as in
+             the browser build. See docs/hosting.md, "NativeAOT". -->
+        <TrimmerRootAssembly Include="MoonSharp.Interpreter" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\MoonSharp.Hosting\MoonSharp.Hosting.csproj" />
+    </ItemGroup>
+
+</Project>

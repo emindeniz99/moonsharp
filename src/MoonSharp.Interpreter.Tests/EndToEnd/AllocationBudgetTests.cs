@@ -207,6 +207,23 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
+		public void AllocationBudget_StringPattern()
+		{
+			// The string_pattern workload: find with two captures, gsub of one character, match at the end.
+			// 48,840 bytes with the KopiLua matcher; what is left is the calls' contexts and argument views,
+			// the captures, results and their DynValues, and gsub's result string.
+			AssertLuaBudget("string_pattern", "local s = 'the quick brown fox 123 jumps over the lazy dog 4567'\nreturn function(n) local c = 0 for i = 1, n do local a, b = s:find('(%a+) (%d+)') local r, k = s:gsub('o', '0') c = c + a + k + #s:match('%d+$') end return c end", 968);
+		}
+
+		[Test]
+		public void AllocationBudget_GsubCapture()
+		{
+			// Lua-CSharp's "patterns" case: gsub with a capture and a %1 replacement. 7,528 bytes with the
+			// KopiLua matcher.
+			AssertLuaBudget("gsub_capture", "local gsub = string.gsub\nreturn function(n) local c = 0 for i = 1, n do c = c + #gsub('hello 123 world 456', '(%a+)', '[%1]') end return c end", 328);
+		}
+
+		[Test]
 		public void AllocationBudget_BuiltinCalls()
 		{
 			// Fast-called library functions run on the value stack: no frame, context or argument list.

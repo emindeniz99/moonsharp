@@ -27,7 +27,6 @@ namespace MoonSharp.LuaCats.Tests
 		static readonly string[] ExpectedWarnings =
 		{
 			"Sample.Player.GetSecret: Sample.Secret is not registered: a script that reads one gets an error (\"cannot convert clr type\"); declared as any",
-			"Sample.Player.OnTick: System.Action<System.Double>: a script cannot pass a function for this delegate type (MoonSharp converts functions only to Closure and ScriptFunctionDelegate, or through a custom converter)",
 		};
 
 		static int s_Failures;

@@ -153,27 +153,26 @@ namespace MoonSharp.Interpreter.CoreLib
 		[MoonSharpModuleMethod]
 		public static DynValue match(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			return executionContext.EmulateClassicCall(args, "match", KopiLua_StringLib.str_match);
+			return LuaPatterns.Find(args, false);
 		}
 
 
 		[MoonSharpModuleMethod]
 		public static DynValue gmatch(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			return executionContext.EmulateClassicCall(args, "gmatch", KopiLua_StringLib.str_gmatch);
+			return LuaPatterns.GMatch(args);
 		}
 
 		[MoonSharpModuleMethod]
 		public static DynValue gsub(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			return executionContext.EmulateClassicCall(args, "gsub", KopiLua_StringLib.str_gsub);
+			return LuaPatterns.GSub(executionContext, args);
 		}
 
 		[MoonSharpModuleMethod]
 		public static DynValue find(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			return executionContext.EmulateClassicCall(args, "find",
-				KopiLua_StringLib.str_find);
+			return LuaPatterns.Find(args, true);
 		}
 
 

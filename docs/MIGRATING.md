@@ -249,6 +249,23 @@ in TypeScript. Two signatures changed for it:
 The browser export `CreateContext` takes a boolean; `createContext()` in
 TypeScript keeps working without arguments.
 
+## Host contexts can limit each call
+
+`create` takes an instruction limit and a time limit for each call; a call
+past either returns an error of the new kind `interrupted` (docs/hosting.md,
+"Limits"). Contexts created without them behave as before. Signatures that
+changed:
+
+- C: `moonsharp_context_create(int32_t options)` is now
+  `moonsharp_context_create(int32_t options, int64_t instruction_limit,
+  int32_t time_limit_ms)`; pass 0, 0 for no limits.
+- Java: `MoonSharpHost.create(String, ContextOptions)` is the method to
+  implement; `create(String, boolean)` is now a default method calling it.
+- Browser: the export `CreateContext` takes two more numbers;
+  `createContext(options)` in TypeScript keeps working as before.
+
+Code that switches over error kinds should expect `interrupted`.
+
 ## `moonsharp-host test` checks known failures
 
 `moonsharp-host test` takes suite files or directories and compares the
@@ -873,3 +890,111 @@ the module or its loader; scripts should call `require`.
 **Affected:** hosts or tests that match the text of the "not found" error;
 scripts that tested `package.path` or `package.preload` for nil; modules that
 fill `package.loaded` themselves and relied on `require` returning `true`.
+
+## Lua patterns follow Lua 5.2
+
+`string.find`, `match`, `gmatch` and `gsub` no longer run KopiLua's port of the Lua 5.1 matcher.
+A port of Lua 5.2.4's `lstrlib.c` over string indices replaced it: it gives the same results as
+`lua5.2` on 219,075 generated ASCII cases. A pattern item still matches one UTF-16 code unit.
+What a script can notice:
+
+| Case | Before | Now |
+|---|---|---|
+| `('  ' .. long .. '  '):match('^%s*(.-)%s*$')` on a string of more than a few dozen characters ([#318](https://github.com/moonsharp-devs/moonsharp/issues/318)) | error "pattern too complex" | the trimmed string; the limit is 200 nested items, as in Lua |
+| A code unit above 255 in the subject or the pattern ([#187](https://github.com/moonsharp-devs/moonsharp/issues/187)) | compared by its low byte: `'\n'` matched `上` (U+4E0A), `%s` matched it too | compared whole; it belongs to no class (`%a`, `%s`, `%p`...), so only `.`, itself, a range such as `[一-龥]` or a complement (`%A`, `[^x]`) matches it |
+| `%p` ([#134](https://github.com/moonsharp-devs/moonsharp/issues/134)) | .NET `IsPunctuation`: missed `$`, `+`, `<`, `=`, `>`, `^`, `` ` ``, `\|` and `~` | C's `ispunct`: every printable ASCII character that is not a letter, digit or space; below 256 also symbols such as `¢ © ° ×` |
+| `'\0'` in a pattern | rewritten to `%z`, so `[\0-\31]` matched only `'\0'`, `'-'` and `'\31'` | an ordinary character; `%z` still works |
+| `s:find(p, init)` or `s:match(p, init)` with `init` past `#s + 1` | moved back to the end: `('abc'):find('', 10)` gave `4 3` | `nil`, as in Lua 5.2 |
+| `%b` without its two characters | error "unbalanced pattern" | error "malformed pattern (missing arguments to '%b')" |
+| A back reference to a missing capture, `('a'):find('(a)%2')` | error "invalid capture index 2" | error "invalid capture index %2" |
+| A `gmatch` iterator called through `pcall` or another C# function | `NullReferenceException` | works |
+
+Unchanged: classification below 256 other than `%p` (`é` is still a letter), `gsub` with a table
+reading it without `__index`, and `gsub` with a negative count replacing nothing (Lua 5.2 replaces
+everything there; Lua 5.3 and later replace nothing). A `gsub` that matches nothing now returns the
+subject string itself.
+
+Affected: scripts that relied on any "Before" column. The old matcher is kept in the tests
+(`KopiLuaPatternOracle`); `StringPatternTests` compares the two over 228,000 generated cases and
+allows only the differences above.
+
+## LuaBase, CharPtr and LuaLBuffer are gone
+
+The public classes `LuaBase`, `CharPtr` and `LuaLBuffer` in
+`MoonSharp.Interpreter.Interop.LuaStateInterop` were helpers for porting C library code: a C-string
+pointer emulation, `ctype.h` functions and `lua_*`/`luaL_*` look-alikes. MoonSharp's own ports used
+them (`string.format` and the pattern functions); neither does any more, so they left the
+interpreter (7 KB of the DLL). `LuaState` and `ScriptExecutionContext.EmulateClassicCall` stay.
+
+Affected: hosts that subclass `LuaBase` or use `CharPtr`. Copy the three files from MoonSharp 2.0
+([LuaStateInterop](https://github.com/moonsharp-devs/moonsharp/tree/fbd03678d5c0f731d731d099211c7f4a3a1ae8b7/src/MoonSharp.Interpreter/Interop/LuaStateInterop))
+into your project; they need only the public API. Scripts are not affected.
+
+## Typed calls from C# to Lua
+
+New, nothing changes for existing calls. `Closure.Call<TResult>()` up to
+`Closure.Call<T1, T2, T3, T4, TResult>(...)` call a Lua function with typed
+arguments and return its first result as `TResult`:
+
+```csharp
+Closure area = script.DoString("return function(w, h) return w * h end").Function;
+double a = area.Call<double, double, double>(3, 4.5);
+```
+
+Arguments convert as `Call(params object[])` converts them (custom
+converters, `ExactInt64Interop`, ownership checks and errors included), and
+the result as `DynValue.ToObject<T>()` converts it. Numbers, booleans,
+strings, tables, functions and `DynValue`s go to the function without boxing,
+without an argument array and without a `DynValue` each; a `double`,
+`float`, `int`, `long`, `bool`, `string`, `Table` or `Closure` result comes
+back without a `DynValue`. A call with three numbers and a number result
+allocates nothing (224 bytes through `Script.Call`). With `DynValue` as
+`TResult` all results come back, as `Call()` returns them; use it when the
+result does not matter.
+
+## Lua functions convert to delegate parameters
+
+**Before:** a Lua function passed to a C# parameter of type `Action`,
+`Func<...>` or any other delegate type failed with "cannot convert" (or
+"function call doesn't match any overload"); only `Closure`,
+`ScriptFunctionDelegate`, `object` and `DynValue` parameters took one
+([upstream #186](https://github.com/moonsharp-devs/moonsharp/issues/186)).
+
+**After:** the function converts to the delegate when its `Invoke` has up to
+four parameters, none by reference; the delegate converts its arguments and
+result as the typed calls above. `Closure.ToDelegate<TDelegate>()` does the
+same from C#. A function returns the same delegate for a type every time, so
+a handler added with `+=` can be removed with `-=`. The delegate keeps the
+function and its script alive. Overloads still prefer `Closure`,
+`ScriptFunctionDelegate`, `object` and `DynValue` parameters; a delegate
+parameter weighs less, so only calls that failed before change.
+
+On AOT platforms the delegate for a type with value-type parameters or
+result needs code compiled ahead of time: the source generator writes it for
+delegate types its generated members take and for delegate types listed with
+`[assembly: MoonSharpUserDataTypes]` (`GeneratedUserData.RegisterAll()` or
+`RegisterDelegateTypes()` registers them), or register one with
+`UserData.RegisterDelegateType<TDelegate>(factory)`. Without one, the
+conversion fails with an error that names the type and these fixes.
+
+**Affected:** hosts whose scripts relied on such calls failing; the source
+generator no longer registers a listed delegate type as a userdata type by
+reflection (it warned MSUD002 for it before), it writes the factory instead.
+
+## Overload choices follow custom converters added later
+
+**Before:** the overload resolver remembered its choice for the last five
+argument signatures of a method, and kept it after a custom converter was
+set or removed. With `G(int)` and `G(string)`, `o:G(2)` called `G(int)`;
+after a number-to-`string` converter it still called `G(int)`, although the
+converter weighs more than the number downcast.
+
+**After:** setting, removing or clearing a script-to-CLR converter makes
+every method resolve its overloads again. Overloaded calls whose arguments
+are nil, booleans, numbers, strings or functions now look the overload up in
+a table keyed by the argument kinds (and whether each number has a fraction),
+filled from the same weights; the table is skipped while any custom
+converter is registered or an extension method of the same name applies.
+
+**Affected:** hosts that register custom converters after scripts have
+called overloaded methods.

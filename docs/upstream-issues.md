@@ -20,8 +20,8 @@ again; planned work goes in [ROADMAP.md](ROADMAP.md), and fork-only changes in
 
 | Status | Issues | Pull requests |
 |---|---|---|
-| fixed in the fork | 20 | 7 |
-| reproduces, waits for other work | 6 | 2 |
+| fixed in the fork | 23 | 8 |
+| reproduces, waits for other work | 3 | 1 |
 | needs the owner | 5 | 2 |
 | does not reproduce | 16 | 3 |
 | question, answered | 8 | 0 |
@@ -32,6 +32,7 @@ again; planned work goes in [ROADMAP.md](ROADMAP.md), and fork-only changes in
 Fixed on branch `fix/upstream-issues`: #70, #102 (with #305, #328), #161, #173, #219 (with #257),
 #229 (`tonumber`), #286, #291, #307. Fixed on branch `perf/vm-group-a`: #229 (arithmetic),
 #258, #263. Fixed on branch `perf/table-array-part`: #308 (with PR #355), #315, PR #179.
+Fixed on branch `perf/lua-patterns`: #318, #187 (with PR #184), #134.
 Fixed earlier in the fork: #221, #304, #348,
 and #300 in part (opt-in 64-bit integers). Two JSON bugs found by the
 conformance corpus have no upstream issue: `\u` escapes in `json.parse`
@@ -54,7 +55,7 @@ keys 1..n (`77c8662`).
 | [#330](https://github.com/moonsharp-devs/moonsharp/issues/330) | API Reference link returns 404 | docs | out of scope | Upstream website |
 | [#328](https://github.com/moonsharp-devs/moonsharp/issues/328) | Chaining Extension Methods only works after running the script again | bug | fixed | `099a347` (same cause as #102); `Issue102_EveryRegisteredExtensionMethodIsFound` |
 | [#319](https://github.com/moonsharp-devs/moonsharp/issues/319) | json.parse fails on negative integers | bug | does not reproduce | `json.parse('{"foo": -1}')` and `'[-1, -2.5e3]'` parse (probe on this branch) |
-| [#318](https://github.com/moonsharp-devs/moonsharp/issues/318) | KopiLua string.gsub() "pattern too complex" error | bug | waits: string library | Reproduces: `'^%s*(.-)%s*$'` on a 300-character string. Ignored test `UpstreamIssueTests.Issue318_TrimIdiomWorksOnLongStrings` |
+| [#318](https://github.com/moonsharp-devs/moonsharp/issues/318) | KopiLua string.gsub() "pattern too complex" error | bug | fixed | Branch `perf/lua-patterns`: the new matcher gives its recursion budget back, as Lua 5.2 does; `Issue318_TrimIdiomWorksOnLongStrings` |
 | [#317](https://github.com/moonsharp-devs/moonsharp/issues/317) | Unexpected result on string XOR | bug | does not reproduce | The issue's script returns `test1234567890`. Related, not reported: `string.char(300)` gives `?` where Lua raises "value out of range" |
 | [#315](https://github.com/moonsharp-devs/moonsharp/issues/315) | Lua code can set table[0], but C# can't read it | bug | fixed | Branch `perf/table-array-part`: the table rewrite keeps keys below 1 in one place for scripts and `Table.Get(int)`; `Issue315_TableGetReadsZeroAndNegativeKeys` |
 | [#313](https://github.com/moonsharp-devs/moonsharp/issues/313) | Watch Item Location | bug | does not reproduce | `ScriptRuntimeException.CallStack` has a location for every frame of the issue's script |
@@ -114,8 +115,8 @@ keys 1..n (`77c8662`).
 | [#196](https://github.com/moonsharp-devs/moonsharp/issues/196) | Support for .Net 4.5 portable profile 111 | feature | out of scope | PCL profiles are gone; the interpreter targets netstandard2.0 and net45 |
 | [#192](https://github.com/moonsharp-devs/moonsharp/issues/192) | CTRL-Z crashes with unhandled exception | bug | does not reproduce | The REPL loop checks for end of input (`src/MoonSharp/Program.cs`) |
 | [#190](https://github.com/moonsharp-devs/moonsharp/issues/190) | Optional parameters / params list | feature | does not reproduce | Optional parameters and `params` arrays work (`o.M(1)`, `o.P(1,2,3)`, checked on this branch) |
-| [#187](https://github.com/moonsharp-devs/moonsharp/issues/187) | unicode replace string bug? | bug | waits: string library | Reproduces. Ignored test `UpstreamIssueTests.Issue187_PatternsCompareWholeCharacters`; upstream [PR #184](https://github.com/moonsharp-devs/moonsharp/pull/184) |
-| [#186](https://github.com/moonsharp-devs/moonsharp/issues/186) | ScriptRuntimeException: cannot convert a function to a clr type System.Action | question | feature: worth adding | Reproduces: a Lua function does not convert to `Action` or `Func<>`. Fits the roadmap's typed calls from C# to Lua |
+| [#187](https://github.com/moonsharp-devs/moonsharp/issues/187) | unicode replace string bug? | bug | fixed | Branch `perf/lua-patterns`: patterns compare whole code units; code units above 255 are in no class; `Issue187_PatternsCompareWholeCharacters`; upstream [PR #184](https://github.com/moonsharp-devs/moonsharp/pull/184) |
+| [#186](https://github.com/moonsharp-devs/moonsharp/issues/186) | ScriptRuntimeException: cannot convert a function to a clr type System.Action | question | fixed | A Lua function converts to `Action`, `Func<>` and other delegates with up to four parameters, cached per function (`Closure.ToDelegate`); AOT-safe through factories from the source generator. `ClosureDelegateTests` |
 | [#185](https://github.com/moonsharp-devs/moonsharp/issues/185) | loadstring() not usable | question | answered | Lua 5.2 removed `loadstring`; `load` works |
 | [#183](https://github.com/moonsharp-devs/moonsharp/issues/183) | Proxy operator overloads | feature | feature: not planned | No roadmap item |
 | [#181](https://github.com/moonsharp-devs/moonsharp/issues/181) | Non-global TypeDescriptorRegistry and ExtensionMethodsRegistry | feature | needs owner | Per-script registration would let one process run scripts with different trust levels; it changes the static `UserData` API |
@@ -129,7 +130,7 @@ keys 1..n (`77c8662`).
 | [#137](https://github.com/moonsharp-devs/moonsharp/issues/137) | debug.traceback() ? | question | answered | `debug.traceback` works with `Preset_Complete`; C# gets frames from `InterpreterException.CallStack` |
 | [#136](https://github.com/moonsharp-devs/moonsharp/issues/136) | Unity Testbed project missing .meta files | tech debt | out of scope | Waits for the Unity CI matrix |
 | [#135](https://github.com/moonsharp-devs/moonsharp/issues/135) | Lua stack trace in exception | enhancement | feature: planned | `InterpreterException.CallStack` exists; better messages are on the roadmap |
-| [#134](https://github.com/moonsharp-devs/moonsharp/issues/134) | Unicode-based string pattern matching breaks compatibility | bug | waits: string library | Reproduces: `%p` misses `=`, `+`, `$`, `<`, `\|`, `~`, `^` and the backtick. Ignored test `UpstreamIssueTests.Issue134_PunctuationClassMatchesAsciiPunctuation` |
+| [#134](https://github.com/moonsharp-devs/moonsharp/issues/134) | Unicode-based string pattern matching breaks compatibility | bug | fixed | Branch `perf/lua-patterns`: `%p` is C's `ispunct`; `Issue134_PunctuationClassMatchesAsciiPunctuation` |
 | [#106](https://github.com/moonsharp-devs/moonsharp/issues/106) | Create Unity asset store package | enhancement | out of scope | The fork ships UPM packages |
 | [#103](https://github.com/moonsharp-devs/moonsharp/issues/103) | implementation of lua 5.3 features | feature | feature: partly done | See #300; bitwise operators wait for the integer decision |
 | [#102](https://github.com/moonsharp-devs/moonsharp/issues/102) | Wrong extension methods caching? | bug | fixed | `099a347`; `Issue102_EveryRegisteredExtensionMethodIsFound` |
@@ -162,7 +163,7 @@ keys 1..n (`77c8662`).
 | [#246](https://github.com/moonsharp-devs/moonsharp/pull/246) | Implement script async execution control | feature | feature: planned | Same need as #231 |
 | [#202](https://github.com/moonsharp-devs/moonsharp/pull/202) | m_IsRunningOnAOT doesn't be used | tech debt | out of scope | A compiler warning under IL2CPP defines; waits for the Unity CI matrix |
 | [#191](https://github.com/moonsharp-devs/moonsharp/pull/191) | Make TimeZone changeable | feature | feature: not planned | No roadmap item |
-| [#184](https://github.com/moonsharp-devs/moonsharp/pull/184) | Fix stringlib against non-ascii chars | bug | waits: string library | Same as #187 |
+| [#184](https://github.com/moonsharp-devs/moonsharp/pull/184) | Fix stringlib against non-ascii chars | bug | fixed | Same as #187 |
 | [#179](https://github.com/moonsharp-devs/moonsharp/pull/179) | No NullReferenceException when passing null to Table.Set | bug | fixed | Branch `perf/table-array-part`: a null value is nil; `PR179_TableSetWithNullRemovesTheKey` |
 | [#173](https://github.com/moonsharp-devs/moonsharp/pull/173) | Fixed : call debug.getmetatable maybe cause NullReferenceException | bug | fixed | `ed11539`; `Issue173_DebugGetmetatableReturnsNilWithoutMetatable` |
 | [#146](https://github.com/moonsharp-devs/moonsharp/pull/146) | fixed crash in web browser + unity + webgl | bug | out of scope | Same as #212 |

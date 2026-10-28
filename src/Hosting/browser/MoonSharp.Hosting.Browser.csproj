@@ -7,16 +7,13 @@
         <Nullable>disable</Nullable>
         <IsPackable>false</IsPackable>
         <InvariantGlobalization>true</InvariantGlobalization>
+        <!-- MoonSharp.Interpreter is trimmed like any other assembly: its embedded ILLink.Descriptors.xml
+             keeps the standard library it registers by reflection. Rooting the whole assembly cost
+             71 KB brotli (docs/hosting.md, "Browser budget"). -->
     </PropertyGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\MoonSharp.Hosting\MoonSharp.Hosting.csproj" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <!-- MoonSharp registers its standard library (string, table, require...) by reflection over
-             attributed methods. Without this the trimmer removes them and scripts see nil. -->
-        <TrimmerRootAssembly Include="MoonSharp.Interpreter" />
     </ItemGroup>
 
 </Project>

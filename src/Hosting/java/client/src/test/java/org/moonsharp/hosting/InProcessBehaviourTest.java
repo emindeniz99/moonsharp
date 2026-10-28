@@ -114,6 +114,41 @@ abstract class InProcessBehaviourTest {
         assertEquals("runtime", host.run("opts", "max", "return tostring(int64.max)", null).error().kind());
     }
 
+    // In process, a script that never returns would hold the Java thread forever: Thread.interrupt() does not
+    // reach .NET code. The limits stop it with an error envelope, and the context stays usable.
+    @Test
+    void limitsStopAScriptThatNeverReturns() {
+        host.create("limit", ContextOptions.DEFAULT.withInstructionLimit(100_000));
+        HostResult r = host.run("limit", "loop.lua", "while true do end", null);
+        assertEquals("interrupted", r.error().kind());
+        assertEquals("instruction limit of 100000 exceeded", r.error().message());
+        assertEquals(2, host.run("limit", "after", "return 1 + 1", null).valueOrThrow().asInt());
+
+        host.create("time", ContextOptions.DEFAULT.withTimeLimitMs(50));
+        long t0 = System.nanoTime();
+        r = host.run("time", "loop.lua", "local ok = pcall(function() while true do end end)", null);
+        assertEquals("interrupted", r.error().kind());
+        assertEquals("time limit of 50 ms exceeded", r.error().message());
+        assertTrue(System.nanoTime() - t0 < 5_000_000_000L, "stopped within 5 s");
+    }
+
+    // Recursion through a CLR callback used to overflow the .NET stack, which ended the JVM. The stack guard
+    // must turn it into a Lua error even on a Java thread with a small stack (in-process calls run on the
+    // caller's stack; the default is 1 MB).
+    @Test
+    void recursionThroughACallbackIsAnErrorOnASmallJavaStack() throws Exception {
+        HostResult[] r = new HostResult[2];
+        Thread t = new Thread(null, () -> {
+            r[0] = host.run("guard", "gsub.lua", "local function f(s) return (string.gsub(s, '.', f)) end return f('x')", null);
+            r[1] = host.run("guard", "after", "return 1 + 1", null);
+        }, "small-stack", 256 * 1024);
+        t.start();
+        t.join();
+        assertEquals("runtime", r[0].error().kind());
+        assertTrue(r[0].error().message().endsWith("C stack overflow"), r[0].error().message());
+        assertEquals(2, r[1].valueOrThrow().asInt());
+    }
+
     // One context per thread runs in parallel and stays isolated.
     @Test
     void threadsWithTheirOwnContextsRunInParallel() throws Exception {

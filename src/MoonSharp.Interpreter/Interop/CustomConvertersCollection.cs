@@ -96,6 +96,40 @@ namespace MoonSharp.Interpreter.Interop
 			{
 				map[clrDataType] = converter;
 			}
+
+			CountScriptToClrConversions();
+		}
+
+		/// <summary>
+		/// Whether any converter from a script type to a CLR type is registered. Overload resolution
+		/// weighs such conversions, so its signature table is used only while there are none.
+		/// </summary>
+		internal bool HasScriptToClrConversions
+		{
+			get { return m_Script2ClrCount > 0; }
+		}
+
+		/// <summary>
+		/// Changes whenever a converter from a script type to a CLR type is set, removed or cleared, so
+		/// overload resolution can forget choices made under other converters.
+		/// </summary>
+		internal int ScriptToClrVersion
+		{
+			get { return m_Script2ClrVersion; }
+		}
+
+		int m_Script2ClrCount;
+		int m_Script2ClrVersion;
+
+		void CountScriptToClrConversions()
+		{
+			int count = 0;
+			m_Script2ClrVersion++;
+
+			foreach (var map in m_Script2Clr)
+				count += map.Count;
+
+			m_Script2ClrCount = count;
 		}
 
 		/// <summary>
@@ -184,6 +218,9 @@ namespace MoonSharp.Interpreter.Interop
 
 			for (int i = 0; i < m_Script2Clr.Length; i++)
 				m_Script2Clr[i].Clear();
+
+			m_Script2ClrCount = 0;
+			m_Script2ClrVersion++;
 		}
 
 	}

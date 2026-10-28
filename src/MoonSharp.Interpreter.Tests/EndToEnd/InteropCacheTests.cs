@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using MoonSharp.Interpreter.Diagnostics;
 using MoonSharp.Interpreter.Interop;
@@ -6,6 +6,11 @@ using NUnit.Framework;
 
 namespace MoonSharp.Interpreter.Tests.EndToEnd
 {
+	public static class SignatureProbeExtensions
+	{
+		public static string G(this InteropCacheTests.SignatureProbe p, bool b) { return "ext bool"; }
+	}
+
 	/// <summary>
 	/// The interop caches (descriptors resolved through base types and interfaces, custom converter
 	/// lookups, delegate descriptors) must give the same answers as computing everything again: a
@@ -188,6 +193,91 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			{
 				Script.GlobalOptions.CustomConverters.Clear();
 				UserData.UnregisterType<NumericEcho>();
+			}
+		}
+
+		public class SignatureProbe
+		{
+			public string F(int a) { return "int"; }
+			public string F(double a) { return "double"; }
+			public string F(string a) { return "string"; }
+			public string F(bool a) { return "bool"; }
+			public string F(Closure a) { return "closure"; }
+			public string F(int a, string b) { return "int,string"; }
+			public string F(params int[] a) { return "params"; }
+			public string G(int a) { return "int"; }
+			public string G(string a) { return "string"; }
+			public static string S(int a) { return "static int"; }
+			public static string S(string a) { return "static string"; }
+		}
+
+		[Test]
+		public void Interop_Cache_OverloadSignaturesChooseAsScoringDoes()
+		{
+			// Overloaded calls look their overload up by the argument signature (one entry per signature,
+			// more than the five recent ones the old cache kept). Every call must pick what MoonSharp's
+			// weights pick (#293: a whole number weighs most for double, a fraction never picks int), in any
+			// order and however many signatures alternate. (F(1, 2, 3) takes F(double) and ignores two arguments:
+			// an unused argument costs less than the params malus.)
+			string[] calls = { "o:F(1)", "o:F(1.5)", "o:F('x')", "o:F(true)", "o:F(function() end)", "o:F(1, 'x')", "o:F()", "o:F(1, 2, 3)", "o:G(2)", "o:G('2')", "P.S(1)", "P.S('1')" };
+			string[] expected = { "double", "double", "string", "bool", "closure", "int,string", "params", "double", "int", "string", "static int", "static string" };
+
+			foreach (InteropAccessMode mode in new[] { InteropAccessMode.Reflection, InteropAccessMode.LazyOptimized })
+			{
+				UserData.UnregisterType<SignatureProbe>();
+				UserData.RegisterType<SignatureProbe>(mode);
+
+				try
+				{
+					Script s = new Script();
+					s.Globals["o"] = new SignatureProbe();
+					s.Globals["P"] = typeof(SignatureProbe);
+
+					for (int round = 0; round < 3; round++)
+						for (int k = 0; k < calls.Length; k++)
+						{
+							int i = round == 1 ? calls.Length - 1 - k : k;
+							Assert.AreEqual(expected[i], s.DoString("return " + calls[i]).String, mode + " " + calls[i]);
+						}
+				}
+				finally
+				{
+					UserData.UnregisterType<SignatureProbe>();
+				}
+			}
+		}
+
+		[Test]
+		public void Interop_Cache_OverloadSignaturesGiveWayToConvertersAndExtensions()
+		{
+			// A custom converter or an extension method registered after the first call changes the weights:
+			// neither the signature lookup nor the cache of recent argument types may keep the old choice.
+			// The cache did, for converters: o:G(2) stayed on G(int) after a number-to-string converter.
+			UserData.RegisterType<SignatureProbe>();
+
+			try
+			{
+				Script s = new Script();
+				s.Globals["o"] = new SignatureProbe();
+				Assert.AreEqual("string", s.DoString("return o:G('2')").String);
+				Assert.AreEqual("int", s.DoString("return o:G(2)").String);
+
+				Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion(DataType.String, typeof(int), v => 7);
+				Assert.AreEqual("string", s.DoString("return o:G('2')").String, "an exact match beats a converter (#294)");
+				Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion(DataType.Number, typeof(string), v => "n");
+				Assert.AreEqual("string", s.DoString("return o:G(2)").String, "the converter now outweighs the number downcast");
+				Script.GlobalOptions.CustomConverters.Clear();
+				Assert.AreEqual("int", s.DoString("return o:G(2)").String);
+
+				Assert.IsFalse(s.DoString("return pcall(function() return o:G(true) end)").Boolean);
+				UserData.RegisterExtensionType(typeof(SignatureProbeExtensions));
+				Assert.AreEqual("ext bool", s.DoString("return o:G(true)").String);
+				Assert.AreEqual("int", s.DoString("return o:G(2)").String);
+			}
+			finally
+			{
+				Script.GlobalOptions.CustomConverters.Clear();
+				UserData.UnregisterType<SignatureProbe>();
 			}
 		}
 

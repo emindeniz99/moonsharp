@@ -50,10 +50,12 @@ enum moonsharp_context_option {
 };
 
 /*
- * Creates a context with the given options (enum moonsharp_context_option, 0 for none). Returns its id,
- * or 0 when the library is not open or the context could not be created.
+ * Creates a context with the given options (enum moonsharp_context_option, 0 for none) and limits for each
+ * call: instruction_limit instructions and time_limit_ms milliseconds, 0 for none. A call over a limit
+ * returns an error envelope of kind "interrupted". Returns the context's id, or 0 when the library is not
+ * open or the context could not be created.
  */
-MOONSHARP_API int64_t moonsharp_context_create(int32_t options);
+MOONSHARP_API int64_t moonsharp_context_create(int32_t options, int64_t instruction_limit, int32_t time_limit_ms);
 
 /* Drops a context. Returns 1 if it existed. */
 MOONSHARP_API int32_t moonsharp_context_dispose(int64_t context);

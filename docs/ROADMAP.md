@@ -50,9 +50,9 @@ chat or a pull request.
 | Target | State in this fork |
 |---|---|
 | .NET 8 / .NET 10 | Tested in CI (unit tests, fixtures). |
-| Browser (.NET 10 WebAssembly) | Chromium tested in CI with Playwright. Firefox and WebKit not tested. |
+| Browser (.NET 10 WebAssembly) | Chromium, Firefox and WebKit tested in CI with Playwright (the whole corpus and the Web Worker path); a first-load budget check runs with them ([hosting.md](hosting.md), "Browser budget"). Real phones and Safari not tested. |
 | Java 17+ (worker process) | Tested in CI, with a Spring Boot 4 sample. |
-| Java in-process (hostfxr or NativeAOT) | Experimental, Linux x64: fixtures pass with CoreCLR and NativeAOT on branch `feat/jvm-in-process`. The worker stays the default ([hosting.md](hosting.md)). |
+| Java in-process (hostfxr or NativeAOT) | Supported option, Linux x64, with per-call limits and a capped .NET heap: fixtures pass with CoreCLR and NativeAOT, and recursion through callbacks and endless loops come back as errors instead of ending or holding the JVM. The worker stays the default ([hosting.md](hosting.md), "Java: in process"). |
 | NativeAOT (.NET 8), as a stand-in for IL2CPP | The unit suite runs in CI (`nativeaot-unit` in `ci.yml`): all tests pass, none on the known-failures list. How well it predicts IL2CPP is unmeasured ([hosting.md](hosting.md), "The unit suite under NativeAOT"). |
 | Unity 2021.3 / 2022.3 / 6 LTS, Mono and IL2CPP | **Not run yet.** `.github/workflows/unity.yml` runs the suite in the editor and in a Linux IL2CPP player on 2021.3.45f2, 2022.3.62f3 and 6000.0.85f1 once the licence secrets exist. Without Unity: the test bed compiles with each line's own compiler and references, and its assemblies pass the suite on .NET. |
 
@@ -112,18 +112,20 @@ Not measured yet: an Android ARM64 APK and `libil2cpp.so` (follow-up below), an 
 | branch `perf/compiler-fusion` | Fewer instructions per operation (PLAN A16). A numeric `for` iteration ends with one `ForLoop` instruction (was 5). A pass after each compile (`InstructionFusion`) rewrites the first instruction of a comparison feeding an `if`/`while` branch (`JLt`..`JNe`) and of arithmetic on locals and number constants, with an optional store into a local (`AddF`..`PowF`); the rest of each sequence stays in place, so numbers and strings take the fused path and everything else (metamethods, coercion, errors, a debugger) runs the unfused code. Dumps are format 0x154/0x153; 0x152/0x151 still load and are fused on load. `goto` out of a `for` loop no longer leaves the loop's values on the stack. `workloads 7` against `next` a157f5c (with the inline caches; ns, better median of two runs each): empty_loop 31.5 to 7.6, int_math 103 to 44, float_math 178 to 71, fib_recursive 78 to 54 us, function_call 164 to 119, table_array_read 185 to 74; `ab` (15 rounds; A/A 0.97-1.01 on these rows): SumLoop100K 0.42, Fib20 0.73, TableInsertLookup1K 0.79. Interpreter DLL (netstandard2.0 Release) 423,936 to 429,568 bytes (+5.5 KB). See [MIGRATING.md](MIGRATING.md). |
 | branch `feat/luacats-generator` | LuaCATS definitions generated from the registry and globals of a configured `Script` (`src/Tools/MoonSharp.LuaCats`, `moonsharp-luacats` CLI with `--check`), checked with lua-language-server 3.19.1 in a new workflow. Explicit registration for mobile hosts documented and tested; no runtime change was needed. See [luacats.md](luacats.md) and [registration.md](registration.md). |
 | branch `feat/source-generator` | A Roslyn source generator writes userdata descriptors at compile time for `[MoonSharpUserData]` types and types listed with `[assembly: MoonSharpUserDataTypes]`: typed argument and result conversion, one `switch` per type, structs changed in place, per-member reflection fallback with a diagnostic, explicit registration (`GeneratedUserData.RegisterAll()`). Shipped in the UPM package. Results and error texts match reflection in the parity suite, and 20 interop fixtures pass on generated descriptors. See [source-generator.md](source-generator.md). |
+| branch `feat/hosting-hardening` | Per-call instruction and time limits in the hosting contract (`instructionLimit`, `timeLimitMs`, error kind `interrupted`) on the CLI worker, the browser and Web Worker API, the Java worker, pool and both in-process backends; `limits` and `time-limit` corpus suites (244 cases on every host). The JVM crash probes rerun: recursion through `gsub` or `sort` callbacks is a "C stack overflow" error on CoreCLR and NativeAOT in process (it used to end the JVM), an endless loop with a limit returns `interrupted` in 22–126 ms, and an allocation without bound is a `host` error once `DOTNET_GCHeapHardLimit` caps the .NET heap. In process becomes a supported option; the worker stays the default ([hosting.md](hosting.md)). The corpus also runs in Firefox 155 and WebKit 26.6 (245/245 each), and a first-load budget check (`budget.json`, `test/budget.mjs`) reports bytes, desktop start and a slow-4G phone model in CI; the download fell from 1,948,632 to 1,774,807 bytes brotli (no `System.Text.RegularExpressions`, interpreter trimmed through its descriptor). |
 | branch `fix/interop-decisions` | The owner's interop decisions: a fractional number picks a floating-point overload and the overload cache tells whole from fractional numbers ([#293](https://github.com/moonsharp-devs/moonsharp/issues/293); `overload_call` interop workload B/A 0.95 to 0.98 against `next` after the struct-value merge, inside noise); an exact type match beats a custom converter ([#294](https://github.com/moonsharp-devs/moonsharp/issues/294)); derived types expose their base classes' static members, except those declared in the core library ([#175](https://github.com/moonsharp-devs/moonsharp/issues/175)); lists and dictionaries become tables under automatic registration ([#274](https://github.com/moonsharp-devs/moonsharp/issues/274)). `MoonSharp.Interpreter.dll` (netstandard2.0 Release) 416,256 to 417,792 bytes (+1,536). The source generator follows the #175 rule. See [MIGRATING.md](MIGRATING.md). |
 | branch `perf/inline-caches` | Runtime lookups and calls (PLAN A17 stage A, A18, A19, B7-lite). Library functions read their arguments in place on the value stack (`CallbackArguments.StackArguments`; host callbacks keep the list form); metatables remember the metamethods they lack (`Table.MetaAbsent`); field, method and global accesses with a constant name keep a per-instruction cache keyed by table shape and id, through up to four `__index` tables (`FieldCache`); `math.abs/ceil/floor/sqrt/sin/cos/exp/max/min`, `string.len/sub/byte`, `type`, `select('#')` and `table.insert(t, v)` run without a call frame when the argument types match, guarded by the registered `CallbackFunction`; coroutines reuse their yield request. Bytes per iteration: string_format 368 to 216, coroutine_switch 400 to 248, builtin calls 0. `workloads 7` medians, `next` a3f40d2 to this branch (one run each, about 10-20% noise): method_call 364 to 248 ns, coroutine_switch 611 to 416, oop_inherit 282 to 250, string_format 533 to 511, table_hash_set_get unchanged. A/B against `next`, 21 interleaved rounds (A/A within 0.99-1.05 for these rows): StringFormat1K 0.85, StringFormatMix1K 0.86 (allocation 507 to 275 KB), Concat1K 0.85, SumLoop100K 0.91, CallEligibility 0.91; `new Script()` allocates 50.7 to 51.8 KB (one cache field per instruction). `MoonSharp.Interpreter.dll` 417,792 to 423,936 bytes (+6,144). See [MIGRATING.md](MIGRATING.md). |
 | branch `ci/size-tracking` | Size tracking ([Size tracking](#size-tracking)): a `size` job in `ci.yml` checks the interpreter DLL against a committed baseline and reports what MoonSharp adds to a NativeAOT binary; `unity.yml` reports what it adds to a Linux IL2CPP player per Unity version (not run yet). No runtime change. |
 | branch `fix/require-package` | `require` and `package` follow Lua 5.2 where hosts depend on them: `package.preload` ([#285](https://github.com/moonsharp-devs/moonsharp/issues/285)), `package.path` searched by `ScriptLoaderBase` before the host's `ModulePaths` ([#332](https://github.com/moonsharp-devs/moonsharp/issues/332)), `package.searchers` (and `package.loaders`), a module's own `package.loaded` entry kept, and a "not found" error that lists what was tried at the caller's position. `require` stays Lua compiled on first use, so it still yields in coroutines and works under `pcall` and `Script.Call`. `MoonSharp.Interpreter.dll` (netstandard2.0 Release) 429,568 to 431,616 bytes (+2,048) against `next` with the inline caches. See [MIGRATING.md](MIGRATING.md). |
+| branch `perf/lua-patterns` | `string.find`, `match`, `gmatch` and `gsub` run a port of Lua 5.2.4's `lstrlib.c` over string indices instead of KopiLua's `CharPtr` matcher (PLAN B11): one reused match state per thread, classes from a 256-entry table, text between `gsub` matches copied in one piece. Fixed: [#318](https://github.com/moonsharp-devs/moonsharp/issues/318) (trim idiom "pattern too complex"), [#187](https://github.com/moonsharp-devs/moonsharp/issues/187) (low-byte comparison), [#134](https://github.com/moonsharp-devs/moonsharp/issues/134) (`%p`), a `gmatch` iterator under `pcall`; Lua 5.2 rules for an init past the end and `'\0'` in patterns. Identical to `lua5.2` on 219,075 generated ASCII cases; against the old matcher over 228,000 cases only the listed differences. `workloads 7` string_pattern 23,913-27,115 to 4,736-4,773 ns (native Lua 3,199, Lua-CSharp 6,474), 48,840 to 968 bytes. `ab` against `next` 9695eb7 (15 rounds): StringPattern 0.18, Gsub 0.22, Gmatch 0.27, GsubCapture (Lua-CSharp's `patterns` case) 0.19 with 7.4 KB to 328 B; other rows 0.94-1.26, as in the A/A run (0.94-1.29, a build ran alongside). `LuaBase`, `CharPtr` and `LuaLBuffer` moved to the tests. `MoonSharp.Interpreter.dll` (netstandard2.0 Release) 431,616 to 423,936 bytes (-7,680). See [MIGRATING.md](MIGRATING.md). |
 
+| branch `feat/typed-calls` | C# to Lua calls without boxing (PLAN B9): `Closure.Call<T1..T4, TResult>` push numbers, booleans, strings, tables, functions and `DynValue`s onto the value stack as `LuaValue`s and read the result without a `DynValue` (the loop now returns a `LuaValue`; `Processing_Loop` wraps it). C# calling `function(a, b, c) return a * b + c end` with three numbers: 0 bytes per call (`Script.Call` 224), JIT 205-212 ns against 346-351, NativeAOT 238-281 against 317-375 (two runs, load 6-11). Lua functions convert to `Action`, `Func<>` and other delegates with up to four parameters, cached per function, so `-=` works (upstream #186, `Closure.ToDelegate`); the source generator writes typed factories (`GeneratedUserData.RegisterDelegateTypes`) so NativeAOT, which cannot close the generic bridge for value types, needs no `MakeGenericMethod`. Overloads are looked up by argument signature (`ab-interop` overload_call 0.955 of `next`, IQR 0.887-0.987), and the old overload cache now resets when custom converters change (it kept stale choices). `ab` against `next`: no row slower outside noise (Fib20 0.947, SumLoop100K 0.892). LuaCATS declares delegate parameters as `fun(...)`. `MoonSharp.Interpreter.dll` 431,616 to 442,368 bytes (+10,752, measured with `tools/size/size.sh` against `next` 51fad04). See [MIGRATING.md](MIGRATING.md). |
 ## In progress
 
 | Work | Where |
 |---|---|
 | Measured comparison with Lua-CSharp on the same workloads | report pending |
 | Comparison of other engines (Lua-CSharp, Luau, Jint, xLua, xlua-ng, WattleScript, UniLua and others) and a profile of MoonSharp | to be published under `docs/research/` |
-| In-process JVM hosting | branch `feat/jvm-in-process` |
 
 ## Next: the VM, in order
 
@@ -166,7 +168,6 @@ float_math 71 vs 42.6 (1.7x), fib_recursive 54 vs 40.8 us (1.3x). The stack VM i
 - Stop allocating a bound callback on every `obj:Method()` call.
 - Choose argument converters once per parameter, not per call.
 - Hash userdata by identity so userdata keys do not all collide.
-- Call Lua from C# with typed arguments and no boxing.
 
 - Found with the NativeAOT suite, not fixed:
   - `CallbackFunction.FromDelegate` caches descriptors in a `ConditionalWeakTable` keyed by `Delegate.Method`. NativeAOT returns a new `MethodInfo` on every read (measured: `ReferenceEquals(d.Method, d.Method)` is false), so the cache never hits there and each conversion builds a descriptor. Key it by equality. IL2CPP not measured.
@@ -180,6 +181,7 @@ float_math 71 vs 42.6 (1.7x), fib_recursive 54 vs 40.8 us (1.3x). The stack VM i
   an enclosing `for` reads them as its own counters and fails with "stack overflow" (reproduced on
   `next`; found while testing the struct values).
 
+- An `__index` function that indexes its own table (`__index = function(t, k) return t[k] end`) runs forever without growing any stack, where Lua 5.2 raises "C stack overflow"; found with the hosting limits, which now stop it (corpus case `limits / an __index function that indexes its own table is interrupted`).
 - Run the official Lua 5.2 test suite and track failures.
 - Name the variable in runtime errors ("attempt to call a nil value (global 'foo')").
 - A `Script` keeps every chunk it compiles, so a long-lived `Script` that compiles in a loop grows without bound.
@@ -188,16 +190,17 @@ float_math 71 vs 42.6 (1.7x), fib_recursive 54 vs 40.8 us (1.3x). The stack VM i
 - A cyclic `require` ends, as in Lua 5.2, with "stack overflow", but the message carries `bytecode:<n>` instead of a source position.
 - Property getters and setters called through reflection (AOT platforms, `InteropAccessMode.Reflection`) still wrap a thrown exception in `TargetInvocationException`; methods no longer do. A setter's own `ArgumentException` is also reported as a type mismatch on the compiled path.
 - `PlatformAutoDetector` and `UnityAssetsScriptLoader` test `UNITY_5`, which Unity 2017 and later no longer define, so the package always takes the reflection path (`IsUnityNative` is false). The Unity test bed checks the default loader; replace the checks with `UNITY_5_3_OR_NEWER` if it fails or once the matrix is green.
-- Upstream bugs that reproduce in the string library, the VM core and the compiler: each has an ignored test in `UpstreamIssueTests.cs` that fails without the `Ignore` (list in [upstream-issues.md](upstream-issues.md)). Remove the `Ignore` with the fix.
+- Upstream bugs that reproduce in `string.format`, the VM core and the compiler: each has an ignored test in `UpstreamIssueTests.cs` that fails without the `Ignore` (list in [upstream-issues.md](upstream-issues.md)). Remove the `Ignore` with the fix.
 - Found by the conformance corpus; each is a case with a `note`, so a fix updates its expectation. The owner decides which are bugs to fix (in `legacy` too) and which stay as documented differences:
   - `math.huge` is `Double.MaxValue`, so `math.huge == 1/0` is false.
   - `error(t)` with a table, and `error()`, raise "bad argument #1 to 'error'"; `pcall` never sees the error object.
   - The lexer reads `1e15+0.5` as one malformed number.
   - `string.format`: `%e` writes three exponent digits, `%d` of 2^63 wraps instead of failing, `%s` rejects nil.
-  - `string.find(s, '', init)` with `init` past the end still matches.
   - `tostring` writes shortest round-trip digits, `NaN` and `Infinity`, where Lua 5.2 writes `%.14g`, `nan` and `inf`.
 
 ## Later, and ideas
+
+- Pattern follow-ups: `gsub` with a table reads it raw (Lua 5.2 uses `__index`); a `gsub` with a function still builds a `DynValue[]` and a `DynValue` per capture for each call of it.
 
 - Table follow-ups from the array-part work:
   - the array part never shrinks: a 1M-element array cleared with `t[i] = nil` keeps its 8 MB until `Clear()` or the table dies. Lua shrinks on rehash; re-check the "more than half live" rule when the hash part is rebuilt.
@@ -220,10 +223,13 @@ float_math 71 vs 42.6 (1.7x), fib_recursive 54 vs 40.8 us (1.3x). The stack VM i
 - Run the bytecode leg of the corpus on the browser and Java hosts too (they accept the base64 dump text today; only the .NET runner compiles).
 - The JSON contract for int64 results (the decision above): today a context with int64 returns them as an `output` error.
 - Publish per-host corpus results over time, as JsonLogic's compat tables do.
-- In-process JVM hosting as the default: the native stack guard and the execution budget (`ScriptOptions.InterruptHandler`) now exist; the hosting layer needs an error kind for an interrupted script, then a new measurement against the worker.
-- Browser: AOT-compiled WebAssembly against the interpreter build; Firefox and WebKit tests.
+- Hosting limits follow-ups ([hosting.md](hosting.md), "Limits"):
+  - a single long library call (`gsub`, `rep`, `sort` without a comparator) is not interrupted: one `gsub` over 20 million characters ran 2.6–3.4 s under a 100 ms limit. Checking the limit inside the long string and table loops would need the VM-core files;
+  - no memory limit per context: in process one capped .NET heap serves every context;
+  - cancelling a running call from another thread (for example a Java `Future.cancel` reaching the context), on top of the time limit;
+  - in-process builds for macOS and Windows, which the default would need.
+- Browser: AOT-compiled WebAssembly against the interpreter build; a native relink (`wasm-tools` workload) to shrink `dotnet.native.wasm` (976 KB brotli); whether the interpreter's CLR interop can stop pulling in `System.Linq.Expressions` (112 KB brotli) for hosts that register no types.
 - From upstream feature requests ([upstream-issues.md](upstream-issues.md)):
-  - convert Lua functions to `Action` and `Func<...>` parameters (upstream #186), with the typed calls from C# to Lua above;
   - a `ScriptedImporter` for `.lua` files in the Unity package (upstream #235), with the Unity CI matrix;
   - send bytecode and source to an attached debugger only when its `GetDebuggerCaps()` asks for them (upstream #261), a two-line check in `Script.cs`.
 - LuaCATS follow-ups:
@@ -231,8 +237,12 @@ float_math 71 vs 42.6 (1.7x), fib_recursive 54 vs 40.8 us (1.3x). The stack VM i
   - typed host global functions: a global set from a delegate is declared `fun(...): any`, because a `CallbackFunction` keeps no signature;
   - `T?` for C# nullable reference annotations (only `Nullable<T>` is read today);
   - move the lua-language-server pin to 3.19.2 once its release digests have been read.
-- Source generator follow-ups ([source-generator.md](source-generator.md#follow-ups)): run it in the Unity matrix (needs the secrets); overload dispatch with precomputed checks when no custom converter is registered; a typed call convention for generated members once the VM has one; a `link.xml` fragment for the members it binds by reflection.
-- Convert script functions to delegate parameters (`Action<T>`, `Func<T>`). Today only `Closure` and `ScriptFunctionDelegate` parameters take a function, unless the host adds a custom converter; the LuaCATS generator reports such parameters.
+- Source generator follow-ups ([source-generator.md](source-generator.md#follow-ups)): run it in the Unity matrix (needs the secrets); a typed call convention for generated members once the VM has one; a `link.xml` fragment for the members it binds by reflection; `void` delegate factories that discard the result without a `DynValue`.
+- Typed calls follow-ups (branch `feat/typed-calls`):
+  - `Script.Call` still allocates a CLR `SourceRef` per call (48 bytes) for the frame's calling location; the typed calls share one. A one-line change in `Processor.cs`.
+  - `Script.Call<TResult>` for a `DynValue` that may be a C# function or a table with `__call`; today the typed calls are on `Closure` only.
+  - Event handlers (`obj.Event.add(f)`) still go through `EventMemberDescriptor`'s own subscription list, not `Closure.ToDelegate`.
+  - IL2CPP: the delegate factories and typed calls are proven on NativeAOT only; the Unity matrix will show whether IL2CPP needs the factories on 2022.3+ (full generic sharing).
 - The Teal vs TypeScriptToLua trial from the decisions table.
 - A Debug Adapter Protocol server, so any editor can debug scripts.
 - Save and restore a `Script`'s state.
@@ -248,4 +258,5 @@ float_math 71 vs 42.6 (1.7x), fib_recursive 54 vs 40.8 us (1.3x). The stack VM i
   5. Each job uploads `unity-<version>-results` (one line per test). A red job lists the tests that failed or did not run; tests that skip themselves on Unity (the three trim-descriptor tests) are listed but allowed. The job summary also has the size of MoonSharp in a Linux IL2CPP player ([Size tracking](#size-tracking)).
 - Android and iOS devices for IL2CPP player runs.
 - Approval before any upstream pull request.
+- The browser budget's network assumption. Under Lighthouse's "slow 4G" (1.6 Mbit/s, 150 ms, 4× CPU) the 5 s first load is out of reach for any .NET WebAssembly build: `dotnet.native.wasm` alone takes 4.7 s. CI enforces today's size and start time and reports the phone model (12.5–14.3 s) without failing on it. Choose a faster assumption, a page that renders before the runtime starts, or a smaller engine for the web ([hosting.md](hosting.md), "Browser budget").
 - Per-script type registries (#181), postponed; details in [upstream-issues.md](upstream-issues.md#decisions-for-the-owner).

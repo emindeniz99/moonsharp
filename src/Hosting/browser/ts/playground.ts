@@ -93,11 +93,14 @@ function args(): { json: string } {
   return { json: text === "" ? "[]" : text };   // passed as text, so large integers are not rounded by JSON.parse
 }
 
+// A script typed here that never returns stops after 5 s instead of freezing the page.
+const limits = { timeLimitMs: 5000 };
+
 async function useWorker(): Promise<boolean> {
   if (!$<HTMLInputElement>("use-worker").checked) return false;
   if (!worker) {
     worker = WorkerClient.start();
-    workerContext = await worker.createContext();
+    workerContext = await worker.createContext(limits);
   }
   return true;
 }
@@ -163,7 +166,7 @@ async function main() {
 
   const start = performance.now();
   runtime = await createMoonSharp("./_framework");
-  context = runtime.createContext();
+  context = runtime.createContext(limits);
   $("engine").textContent = runtime.version;
   status.className = "status ok";
   status.textContent = `Runtime ready in ${(performance.now() - start).toFixed(0)} ms`;

@@ -4,9 +4,9 @@
 using System;
 using lua_Integer = System.Int32;
 
-namespace MoonSharp.Interpreter.Interop.LuaStateInterop
+namespace MoonSharp.Interpreter.Tests.EndToEnd
 {
-	public partial class LuaBase
+	internal partial class LuaBase
 	{
 		protected static lua_Integer memcmp(CharPtr ptr1, CharPtr ptr2, uint size)
 		{

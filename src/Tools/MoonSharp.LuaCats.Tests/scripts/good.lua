@@ -4,6 +4,7 @@
 local p = Player.__new("ann", 50)
 p:Damage(5)
 assert(p:Heal(10, true))
+p:OnTick(function(dt) end)
 assert(p.Health == 55)
 p.Shield = nil
 p.Shield = 3

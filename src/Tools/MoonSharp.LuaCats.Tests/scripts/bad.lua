@@ -10,7 +10,7 @@ p.Team = "blue" -- expect: assign-type-mismatch
 p:SetTags("a") -- expect: param-type-mismatch
 print(p.Password) -- expect: undefined-field
 p:Internal() -- expect: undefined-field
-p:OnTick(function() end) -- expect: param-type-mismatch
+p:OnTick(42) -- expect: param-type-mismatch
 p:AddScore("1") -- expect: param-type-mismatch
 print(hero.Inventory.Size) -- expect: undefined-field
 

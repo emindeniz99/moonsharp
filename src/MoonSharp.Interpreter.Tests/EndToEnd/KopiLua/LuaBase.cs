@@ -2,22 +2,17 @@
 #pragma warning disable 1591
 
 using System;
+using MoonSharp.Interpreter.Interop.LuaStateInterop;
 using lua_Integer = System.Int32;
 
-namespace MoonSharp.Interpreter.Interop.LuaStateInterop
+namespace MoonSharp.Interpreter.Tests.EndToEnd
 {
 	/// <summary>
-	/// Classes using the classic interface should inherit from this class.
-	/// This class defines only static methods and is really meant to be used only
-	/// from C# and not other .NET languages. 
-	/// 
-	/// For easier operation they should also define:
-	///		using ptrdiff_t = System.Int32;
-	///		using lua_Integer = System.Int32;
-	///		using LUA_INTFRM_T = System.Int64;
-	///		using UNSIGNED_LUA_INTFRM_T = System.UInt64;
+	/// The helpers MoonSharp's KopiLua ports (string.format, the pattern matcher) were written against, moved
+	/// here from the interpreter's public LuaStateInterop namespace (at a3f40d2) when the last port left it.
+	/// The test oracles KopiLuaFormatOracle and KopiLuaPatternOracle still use them.
 	/// </summary>
-	public partial class LuaBase
+	internal partial class LuaBase
 	{
 		protected const int LUA_TNONE = -1;
 		protected const int LUA_TNIL = 0;

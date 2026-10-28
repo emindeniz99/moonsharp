@@ -658,8 +658,8 @@ namespace MoonSharp.LuaCats
 
 			string fun = "fun(" + string.Join(", ", args.ToArray()) + ")";
 
-			if (!calledByClr && invoke.ReturnType != typeof(void))
-				fun += ": " + Out(invoke.ReturnType);
+			if (invoke.ReturnType != typeof(void))
+				fun += ": " + (calledByClr ? In(invoke.ReturnType) : Out(invoke.ReturnType));
 
 			return fun;
 		}
@@ -773,10 +773,20 @@ namespace MoonSharp.LuaCats
 			if (userdata != null)
 				return userdata;
 
-			// Scripts can pass a userdata of a registered type that derives from t, and nothing else.
-			if (typeof(Delegate).IsAssignableFrom(t))
-				Warn(string.Format("{0}: a script cannot pass a function for this delegate type (MoonSharp converts functions only to Closure and ScriptFunctionDelegate, or through a custom converter)", Display(t)));
+			// A Lua function converts to a delegate whose Invoke has up to four parameters, none by reference
+			// (Closure.ToDelegate).
+			if (typeof(Delegate).IsAssignableFrom(t) && t != typeof(Delegate) && t != typeof(MulticastDelegate))
+			{
+				MethodInfo invoke = t.GetMethod("Invoke");
+				ParameterInfo[] ps = invoke != null ? invoke.GetParameters() : null;
 
+				if (ps != null && ps.Length <= 4 && !invoke.ReturnType.IsByRef && ps.All(p => !p.ParameterType.IsByRef && !p.ParameterType.IsPointer))
+					return Function(t, true);
+
+				Warn(string.Format("{0}: a script cannot pass a function for this delegate type (MoonSharp converts functions only to delegates with up to 4 parameters, none by reference, or through a custom converter)", Display(t)));
+			}
+
+			// Scripts can pass a userdata of a registered type that derives from t, and nothing else.
 			return StubOf(t).Name;
 		}
 

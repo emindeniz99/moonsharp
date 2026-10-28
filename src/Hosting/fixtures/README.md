@@ -7,7 +7,7 @@ Every host runs these suites and must produce the same results:
 | `dotnet` | `moonsharp-host test` (.NET CLI, also run with invariant globalization) |
 | `dotnet-tr-TR` | `moonsharp-host test --host dotnet-tr-TR` with `LANG=tr_TR.UTF-8`, a culture with a decimal comma |
 | `dotnet-bytecode` | `moonsharp-host test --bytecode`: every chunk is compiled first, as `moonsharp-host compile` does at publish time, and loaded as bytecode |
-| `browser` | `src/Hosting/browser/test/smoke.mjs` (headless Chromium, .NET WebAssembly) |
+| `browser-chromium`, `browser-firefox`, `browser-webkit` | `src/Hosting/browser/test/smoke.mjs` (headless browsers through Playwright, .NET WebAssembly) |
 | `java-worker`, `java-coreclr`, `java-nativeaot` | `FixtureConformanceTest` and its subclasses in `src/Hosting/java` |
 
 All of them run the same interpreter, so a case that fails on one host and passes
@@ -30,6 +30,8 @@ check follows quickjs-ng's test262 runner.
 | `errors` | Error kinds, exact messages and lines for runtime, syntax and library errors |
 | `json` | The host's JSON boundary (2^53, null, `json.emptyarray()`, nesting up to the 128 limit, unpaired surrogates) and the `json` module |
 | `int64` | The `int64` and `uint64` modules and `json.parse`'s `"int64"` and `"string"` modes |
+| `limits` | The per-call instruction limit (`interrupted` errors that `pcall` cannot catch, a usable context afterwards) and the stack guard for recursion through CLR callbacks |
+| `time-limit` | The per-call time limit |
 
 The expectations are what MoonSharp does today on every host. Where that differs
 from reference Lua 5.2, the case has a `note` saying what Lua 5.2 does; some of
@@ -43,7 +45,7 @@ owner decided for the table rewrite (docs/ROADMAP.md).
 {
   "suite": "logic",
   "description": "...",
-  "context": { "int64": true },
+  "context": { "int64": true, "instructionLimit": 1000000, "timeLimitMs": 100 },
   "modules": { "offers": "scripts/offers.lua" },
   "cases": [
     { "name": "...", "module": "offers", "function": "select_offers", "args": [ ... ], "expect": ... },
@@ -59,7 +61,9 @@ owner decided for the table rewrite (docs/ROADMAP.md).
 
 - Each suite gets one fresh script context. `context.int64` creates it with the
   int64 and uint64 modules (`ScriptHost.Create(true)`); without it the context has
-  `ScriptHost.PortableModules`.
+  `ScriptHost.PortableModules`. `context.instructionLimit` and
+  `context.timeLimitMs` set the context's limits for each call
+  (docs/hosting.md, "Limits").
 - `modules` (optional) maps module ids to files, relative to the suite. Every
   module is loaded into the suite's context, so modules can `require` each other.
 - `op` is `invoke` (the default), `validate` or `run`. `chunk` is the chunk name
@@ -71,7 +75,8 @@ owner decided for the table rewrite (docs/ROADMAP.md).
 - `expect` is compared structurally: object key order is ignored and numbers
   compare by value. To pin exact text, such as a number's formatting or an object's
   key order, return a string from the script.
-- `expectError` checks `kind` (`syntax`, `runtime`, `input`, `output`, `host`),
+- `expectError` checks `kind` (`syntax`, `runtime`, `input`, `output`, `host`,
+  `interrupted`),
   `messageContains` and `line`. Each field is optional. Most cases put the whole
   message in `messageContains`, position included.
 - `note` is for people; runners ignore it.
@@ -100,8 +105,8 @@ with its file and fails on any difference:
 So a fix must update the file, and a regression cannot hide behind an old entry.
 When a run fails this way, the runner prints the file content that matches the
 run; review it and copy it into the file. Each runner ends with a count line, for
-example `browser: 225 cases, 225 passed, 0 known failures; 0 new, 0 changed,
-0 fixed, 0 stale`, and CI copies those lines into the job summary.
+example `browser-firefox: 245 cases, 245 passed, 0 known failures; 0 new,
+0 changed, 0 fixed, 0 stale`, and CI copies those lines into the job summary.
 
 ## Adding a case
 

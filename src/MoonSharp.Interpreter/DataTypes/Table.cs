@@ -32,10 +32,19 @@ namespace MoonSharp.Interpreter
 	public class Table : RefIdObject, IScriptPrivateResource
 	{
 		/// <summary>
-		/// SPIKE: the ordering variant, read once from MOONSHARP_TABLE_ORDER ("a", "b" or "c"; default "a").
-		/// static readonly, so the tier-1 JIT folds the checks below into one variant.
+		/// SPIKE: the ordering variant, read once from MOONSHARP_TABLE_ORDER ("a", "b" or "c"). Without the
+		/// variable the build's default applies (-p:TableOrder=A|B|C, default A). static readonly, so the
+		/// tier-1 JIT folds the checks below into one variant.
 		/// </summary>
-		internal static readonly TableOrder Order = ReadOrder();
+		internal static readonly TableOrder DefaultOrder = ReadOrder();
+
+#if TABLE_ORDER_DYNAMIC
+		// (d) a per-table switch: the order is an instance field, so no check can be folded away.
+		readonly TableOrder m_Order = DefaultOrder;
+		TableOrder Order { get { return m_Order; } }
+#else
+		static readonly TableOrder Order = DefaultOrder;
+#endif
 
 		static TableOrder ReadOrder()
 		{
@@ -46,10 +55,18 @@ namespace MoonSharp.Interpreter
 
 			switch (s)
 			{
+				case "a": return TableOrder.Insertion;
 				case "b": return TableOrder.ArrayFirst;
 				case "c": return TableOrder.Unordered;
-				default: return TableOrder.Insertion;
 			}
+
+#if TABLE_ORDER_B
+			return TableOrder.ArrayFirst;
+#elif TABLE_ORDER_C
+			return TableOrder.Unordered;
+#else
+			return TableOrder.Insertion;
+#endif
 		}
 
 		struct Entry
@@ -88,6 +105,8 @@ namespace MoonSharp.Interpreter
 		// keys on the next insert, so a key set again after that goes to the end; this list reproduces it.
 		// An entry index (>= 0), or ~key for an array key (Insertion only).
 		List<int> m_Pending;
+		// array growth checks to skip after the array was found too sparse to grow
+		int m_GrowSkip;
 
 		readonly Script m_Owner;
 
@@ -137,6 +156,7 @@ namespace MoonSharp.Interpreter
 			m_Prefix = 0;
 			m_Length = 0;
 			m_Pending = null;
+			m_GrowSkip = 0;
 		}
 
 		/// <summary>
@@ -744,6 +764,34 @@ namespace MoonSharp.Interpreter
 
 			if (key > newLen || key - len > MaxArrayGap)
 				return false;
+
+			// Lua's "more than half used" rule, checked only when growing (amortised by the doubling): a queue
+			// over ever-growing integer keys would otherwise grow the array without bound while few slots live.
+			if (len > 0)
+			{
+				// after a refusal, skip the next len checks so the scan stays amortised O(1) per insert
+				if (m_GrowSkip > 0)
+				{
+					m_GrowSkip--;
+					return false;
+				}
+
+				int live = 0;
+
+				for (int i = 0; i < len; i++)
+				{
+					DynValue a = m_Array[i];
+
+					if (a != null && a.Type != DataType.Nil)
+						live++;
+				}
+
+				if (live + 1 <= newLen / 2)
+				{
+					m_GrowSkip = len;
+					return false;
+				}
+			}
 
 			DynValue[] grown = new DynValue[newLen];
 

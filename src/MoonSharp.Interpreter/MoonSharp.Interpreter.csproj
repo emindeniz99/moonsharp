@@ -56,4 +56,14 @@
         <DefineConstants>$(DefineConstants);HASDYNAMIC</DefineConstants>
     </PropertyGroup>
 
+    <!-- SPIKE (spike/table-order): -p:TableOrder=B|C picks the default pairs order, -p:TableOrderDynamic=true
+         makes it a per-table field (option d). -->
+    <PropertyGroup Condition=" '$(TableOrder)' != '' ">
+        <DefineConstants>$(DefineConstants);TABLE_ORDER_$(TableOrder)</DefineConstants>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" '$(TableOrderDynamic)' == 'true' ">
+        <DefineConstants>$(DefineConstants);TABLE_ORDER_DYNAMIC</DefineConstants>
+    </PropertyGroup>
+
 </Project>

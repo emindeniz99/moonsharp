@@ -57,6 +57,7 @@ Every call takes and returns JSON text. A result is an envelope:
 - `input`: the arguments are not valid for the contract (bad JSON, an integer beyond 2^53).
 - `output`: the result cannot be expressed as JSON (a function, a cycle, NaN).
 - `host`: an unknown module or function, or an exception from host code.
+- `interrupted`: the call ran past the context's instruction or time limit (see "Limits" below).
 
 ### Operations
 
@@ -67,7 +68,7 @@ Every call takes and returns JSON text. A result is an envelope:
 | `invoke(moduleId, function, argsJson)` | Call a function of a loaded module. The compiled function is cached. |
 | `run(chunk, source, inputJson)` | Compile and run once. If the chunk returns a function, call it with the input. |
 | `unload(moduleId)`, `dispose(context)` | Free a module or a whole context. |
-| `create(context, int64)` | Create a context, replacing one of that name. Contexts are also created on first use; `create` is for options. With `int64` the context has the `int64` and `uint64` modules ([int64.md](int64.md)). |
+| `create(context, options)` | Create a context, replacing one of that name. Contexts are also created on first use, without limits; `create` is for options. With `int64` the context has the `int64` and `uint64` modules ([int64.md](int64.md)); `instructionLimit` and `timeLimitMs` limit each call (see "Limits"). |
 
 A context is one `Script` (one Lua state). Globals and modules are per context.
 Every transport creates it through `ScriptHost.Create(int64)`, with
@@ -76,6 +77,50 @@ int64 value to the host is an `output` error for now; return
 `tostring(x)` or `json.serialize` it.
 A context is not thread-safe: the browser has one thread per runtime, and the
 Java pool gives each worker process its own contexts.
+
+### Limits
+
+A context can stop a call that runs too long. Both limits are off (0) unless
+`create` sets them, and each applies to every call on its own:
+
+| Option | Stops a call after | Same on every host |
+|---|---|---|
+| `instructionLimit` | that many VM instructions | yes: the count does not depend on the machine |
+| `timeLimitMs` | that many milliseconds | the outcome, not the moment |
+
+The VM checks both every 10,000 instructions
+(`ScriptOptions.InterruptHandler`), so a call stops at the first check past
+the limit. The call then returns an `interrupted` error that names the chunk
+and line where it stopped:
+
+```json
+{ "ok": false, "error": { "kind": "interrupted", "message": "instruction limit of 1000000 exceeded",
+                          "chunk": "rules", "line": 7, "stack": ["M.spin rules:(7,2-15)"] }, "output": "" }
+```
+
+`pcall`, `xpcall` and `coroutine.resume` cannot catch it, so a script cannot
+keep running after its budget is spent, and the context stays usable for the
+next call. A call is one entry into Lua: `load` runs the module body, `invoke`
+the function, and `run` the chunk and then, with its own budget, the function
+the chunk returns. The time limit covers the whole operation.
+
+What the limits do not stop: a single long library call is not interrupted,
+because the check runs between VM instructions. `string.rep('a', 2e7):gsub('a',
+'b')` runs for 2.5 s in one call, and a 100 ms limit stops the script only
+after it returns. Memory is not limited either.
+
+Which limit to choose: an instruction limit is deterministic, so a script
+that passes in tests passes in production on any machine. A numeric `for`
+loop costs 10 instructions per iteration, and 1,000,000 instructions of such a
+loop take 6 ms on the machine in "Status" (warm worker, median of 30); library
+calls cost more time per instruction. A time limit bounds latency whatever the
+script does between checks, and a context can set both.
+
+The stack guard needs no option: recursion that passes through C# code (a
+`gsub` replacement function, a `table.sort` comparator, a C# callback that
+calls Lua) fails with a `runtime` error "C stack overflow" after 200 nested
+calls, or earlier when the thread's stack runs low, and `pcall` catches it as
+in Lua 5.2. The `limits` suite in the corpus checks both on every host.
 
 ### Value mapping
 
@@ -125,8 +170,9 @@ reply per line on stdout, in order:
 ```
 
 `args` may also be sent as text in `argsJson`, and `input` (for `run`) as
-`inputJson`. `{"id":3,"op":"create","context":"c2","int64":true}` creates a
-context with options. Run several workers for parallel
+`inputJson`.
+`{"id":3,"op":"create","context":"c2","int64":true,"instructionLimit":1000000,"timeLimitMs":100}`
+creates a context with options. Run several workers for parallel
 calls: `MoonSharpPool` keeps a fixed set, loads every module into each of them,
 and replaces a worker that dies.
 
@@ -484,7 +530,10 @@ changes with the MoonSharp version.
 - Pass 64-bit IDs as strings. For raw JSON text use `invoke(module, fn, { json })`
   and `runJson(chunk, source, inputJson)`.
 - `runtime.createContext({ int64: true })` creates a context with the int64 and
-  uint64 modules.
+  uint64 modules; `instructionLimit` and `timeLimitMs` set the limits. A script
+  on the page's main thread blocks the page until it returns, so set a limit
+  there, or run it in the Web Worker (`WorkerClient.createContext(options)`).
+  The playground uses a 5 s time limit.
 
 ## Status
 

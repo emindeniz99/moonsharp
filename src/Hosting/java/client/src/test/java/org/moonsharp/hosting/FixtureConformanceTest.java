@@ -82,7 +82,9 @@ abstract class FixtureConformanceTest {
             suites.add(name);
 
             if (skip == null) {
-                host.create(name, suite.path("context").path("int64").asBoolean(false));
+                JsonNode context = suite.path("context");
+                host.create(name, new ContextOptions(context.path("int64").asBoolean(false),
+                    context.path("instructionLimit").asLong(0), context.path("timeLimitMs").asInt(0)));
                 for (Iterator<Map.Entry<String, JsonNode>> it = suite.path("modules").fields(); it.hasNext(); ) {
                     Map.Entry<String, JsonNode> m = it.next();
                     String source = Files.readString(suitePath.getParent().resolve(m.getValue().asText()));

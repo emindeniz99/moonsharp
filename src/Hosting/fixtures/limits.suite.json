@@ -1,0 +1,22 @@
+{
+  "suite": "limits",
+  "description": "The per-call instruction limit (context.instructionLimit, ScriptHost.InstructionLimit) and the native stack guard. A script over the limit fails with kind 'interrupted', which pcall cannot catch; the context stays usable. spin(n) runs about 10n instructions, so two spin(60000) calls pass only if each call has its own budget.",
+  "context": { "instructionLimit": 1000000 },
+  "modules": { "limits": "scripts/limits.lua" },
+  "cases": [
+    {"name": "a call under the limit returns", "module": "limits", "function": "spin", "args": [60000], "expect": 1800030000},
+    {"name": "each call has its own budget", "module": "limits", "function": "spin", "args": [60000], "expect": 1800030000},
+    {"name": "a call over the limit is interrupted", "module": "limits", "function": "spin", "args": [1000000], "expectError": {"kind": "interrupted", "messageContains": "instruction limit of 1000000 exceeded"}},
+    {"name": "an endless loop is interrupted", "op": "run", "chunk": "limits.lua", "source": "\n\nwhile true do end", "expectError": {"kind": "interrupted", "messageContains": "instruction limit of 1000000 exceeded", "line": 3}, "note": "the error names the chunk and line where the script was stopped"},
+    {"name": "an endless tail call is interrupted", "op": "run", "chunk": "limits.lua", "source": "local function f() return f() end\nreturn f()", "expectError": {"kind": "interrupted", "messageContains": "instruction limit of 1000000 exceeded"}},
+    {"name": "pcall does not catch the interruption", "op": "run", "chunk": "limits.lua", "source": "local ok = pcall(function() while true do end end)\nreturn 'after pcall'", "expectError": {"kind": "interrupted", "messageContains": "instruction limit of 1000000 exceeded"}},
+    {"name": "coroutine.resume does not catch the interruption", "op": "run", "chunk": "limits.lua", "source": "local co = coroutine.create(function() while true do end end)\nlocal ok = coroutine.resume(co)\nreturn 'after resume'", "expectError": {"kind": "interrupted", "messageContains": "instruction limit of 1000000 exceeded"}},
+    {"name": "a loop inside a CLR callback is interrupted", "op": "run", "chunk": "limits.lua", "source": "return (string.gsub('x', '.', function() while true do end end))", "expectError": {"kind": "interrupted", "messageContains": "instruction limit of 1000000 exceeded"}},
+    {"name": "an __index function that indexes its own table is interrupted", "op": "run", "chunk": "limits.lua", "source": "local t = setmetatable({}, { __index = function(t, k) return t[k] end })\nreturn t.x", "expectError": {"kind": "interrupted", "messageContains": "instruction limit of 1000000 exceeded"}, "note": "Lua 5.2 raises 'C stack overflow'; MoonSharp runs this metamethod without growing any stack, so without a limit it never returns"},
+    {"name": "output printed before the interruption is kept", "op": "run", "chunk": "limits.lua", "source": "print('started')\nwhile true do end", "expectError": {"kind": "interrupted"}},
+    {"name": "the context works after an interruption", "module": "limits", "function": "spin", "args": [10], "expect": 55},
+    {"name": "recursion through a CLR callback is a C stack overflow error", "op": "run", "chunk": "limits.lua", "source": "local function f(s) return (string.gsub(s, '.', f)) end\nreturn f('x')", "expectError": {"kind": "runtime", "messageContains": "limits.lua:(1,20-51): C stack overflow", "line": 1}},
+    {"name": "pcall catches a C stack overflow", "op": "run", "chunk": "limits.lua", "source": "local function f(s) return (string.gsub(s, '.', f)) end\nlocal ok, e = pcall(f, 'x')\nreturn { ok, e }", "expect": [false, "limits.lua:(1,20-51): C stack overflow"]},
+    {"name": "Lua recursion is still a stack overflow error", "op": "run", "chunk": "limits.lua", "source": "local function f(n) return 1 + f(n + 1) end\nreturn f(1)", "expectError": {"kind": "runtime", "messageContains": "limits.lua:(1,20-39): stack overflow", "line": 1}}
+  ]
+}

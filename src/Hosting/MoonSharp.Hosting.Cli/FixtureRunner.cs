@@ -100,7 +100,10 @@ namespace MoonSharp.Hosting.Cli
 		{
 			JsonNode suite = JsonNode.Parse(File.ReadAllText(suitePath), null, Deep);
 			string baseDir = Path.GetDirectoryName(Path.GetFullPath(suitePath));
-			var host = ScriptHost.Create((bool?)suite["context"]?["int64"] ?? false);
+			JsonNode context = suite["context"];
+			var host = ScriptHost.Create((bool?)context?["int64"] ?? false);
+			host.InstructionLimit = (long?)context?["instructionLimit"] ?? 0;
+			host.TimeLimitMs = (int?)context?["timeLimitMs"] ?? 0;
 			var cases = new JsonArray();
 
 			foreach (var module in suite["modules"]?.AsObject() ?? new JsonObject())

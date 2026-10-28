@@ -19,15 +19,22 @@ public final class MoonSharpPool implements AutoCloseable {
     public static final String CONTEXT = "pool";
 
     private final Supplier<MoonSharpWorker> factory;
+    private final ContextOptions options;
     private final BlockingQueue<MoonSharpWorker> idle;
     private final List<MoonSharpWorker> all = Collections.synchronizedList(new ArrayList<>());
     private final Map<String, String> modules = Collections.synchronizedMap(new LinkedHashMap<>());
 
     public MoonSharpPool(int size, Supplier<MoonSharpWorker> factory) {
+        this(size, factory, ContextOptions.DEFAULT);
+    }
+
+    /** A pool whose workers create their context with the given options, for example an instruction or time limit. */
+    public MoonSharpPool(int size, Supplier<MoonSharpWorker> factory, ContextOptions options) {
         this.factory = factory;
+        this.options = options;
         this.idle = new ArrayBlockingQueue<>(size);
         for (int i = 0; i < size; i++) {
-            MoonSharpWorker w = factory.get();
+            MoonSharpWorker w = start();
             all.add(w);
             idle.add(w);
         }
@@ -93,7 +100,7 @@ public final class MoonSharpPool implements AutoCloseable {
     // Not synchronized on the pool: load() holds that lock while it waits for this worker to come back.
     private MoonSharpWorker replace(MoonSharpWorker dead) {
         dead.close();
-        MoonSharpWorker fresh = factory.get();
+        MoonSharpWorker fresh = start();
         Map<String, String> snapshot;
 
         synchronized (modules) {
@@ -107,6 +114,12 @@ public final class MoonSharpPool implements AutoCloseable {
         }
 
         return fresh;
+    }
+
+    private MoonSharpWorker start() {
+        MoonSharpWorker w = factory.get();
+        w.create(CONTEXT, options);
+        return w;
     }
 
     @Override

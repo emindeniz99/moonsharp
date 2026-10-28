@@ -47,12 +47,15 @@ try {
     await w.load(ctx, "eligibility", src);
     const r = await w.invoke(ctx, "eligibility", "eligible", [{ level: 12, country: "DE", flags: { beta: true } }, "offers"]);
     const big = await w.invoke(ctx, "eligibility", "eligible", { json: "[9007199254740993]" });
+    const limited = await w.createContext({ instructionLimit: 100000 });
+    const loop = await w.run(limited, "loop.lua", "while true do end");
     w.terminate();
-    return { r, big };
+    return { r, big, loop };
   });
 
-  const workerOk = viaWorker.r.ok && viaWorker.r.value === true && !viaWorker.big.ok && viaWorker.big.error.kind === "input";
-  console.log(`${workerOk ? "pass" : "FAIL"}  web worker / eligibility and 2^53+1 rejection`);
+  const workerOk = viaWorker.r.ok && viaWorker.r.value === true && !viaWorker.big.ok && viaWorker.big.error.kind === "input"
+    && !viaWorker.loop.ok && viaWorker.loop.error.kind === "interrupted";
+  console.log(`${workerOk ? "pass" : "FAIL"}  web worker / eligibility, 2^53+1 rejection, instruction limit`);
   if (!workerOk) { failed++; console.log(JSON.stringify(viaWorker)); }
 
   // Cached invocation cost, including JSON marshaling between JS and .NET.

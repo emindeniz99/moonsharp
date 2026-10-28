@@ -1,7 +1,7 @@
 // TypeScript API for MoonSharp running on .NET WebAssembly in the browser.
 // Scripts run locally: nothing is sent to a server.
 
-export type ErrorKind = "syntax" | "runtime" | "input" | "output" | "host";
+export type ErrorKind = "syntax" | "runtime" | "input" | "output" | "host" | "interrupted";
 
 export interface HostError {
   kind: ErrorKind;
@@ -18,6 +18,13 @@ export type HostResult<T = unknown> =
 export interface ContextOptions {
   /** Adds the int64 and uint64 modules (exact 64-bit integers). */
   int64?: boolean;
+  /**
+   * Instructions one call may run before it stops with error kind "interrupted" (0 or absent: no limit).
+   * Checked every 10,000 instructions; the count is the same on every host.
+   */
+  instructionLimit?: number;
+  /** Milliseconds one call may run before it stops with error kind "interrupted" (0 or absent: no limit). */
+  timeLimitMs?: number;
 }
 
 /** Arguments as JS values, or raw JSON text when a JS number cannot hold the value exactly. */
@@ -25,7 +32,7 @@ export type Args = unknown[] | { json: string };
 
 interface Exports {
   Version(): string;
-  CreateContext(int64: boolean): number;
+  CreateContext(int64: boolean, instructionLimit: number, timeLimitMs: number): number;
   DisposeContext(context: number): boolean;
   Validate(context: number, chunk: string, source: string): string;
   Load(context: number, moduleId: string, source: string): string;
@@ -100,9 +107,13 @@ export class MoonSharpRuntime {
     return this.exports.Version();
   }
 
-  /** A new Lua state. With int64: true it has the int64 and uint64 modules (docs/int64.md). */
+  /**
+   * A new Lua state. With int64: true it has the int64 and uint64 modules (docs/int64.md); instructionLimit
+   * and timeLimitMs stop a call that runs too long (docs/hosting.md, "Limits").
+   */
   createContext(options: ContextOptions = {}): ScriptContext {
-    return new ScriptContext(this.exports, this.exports.CreateContext(options.int64 ?? false));
+    const id = this.exports.CreateContext(options.int64 ?? false, options.instructionLimit ?? 0, options.timeLimitMs ?? 0);
+    return new ScriptContext(this.exports, id);
   }
 }
 

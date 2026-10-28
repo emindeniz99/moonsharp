@@ -94,6 +94,21 @@ class WorkerBehaviourTest {
         }
     }
 
+    // The pool creates every worker's context with its options, including workers that replace dead ones.
+    @Test
+    void poolContextsGetTheLimits() {
+        ContextOptions limit = ContextOptions.DEFAULT.withInstructionLimit(100_000);
+        try (MoonSharpPool pool = new MoonSharpPool(2, () -> MoonSharpWorker.startDll(Fixtures.hostDll()), limit)) {
+            assertTrue(pool.load("loop", "return { spin = function() while true do end end, ok = function() return 1 end }").ok());
+            for (int i = 0; i < 4; i++) {
+                HostResult r = pool.invoke("loop", "spin");
+                assertEquals("interrupted", r.error().kind());
+                assertEquals("instruction limit of 100000 exceeded", r.error().message());
+                assertEquals(1, pool.invoke("loop", "ok").valueOrThrow().asInt());
+            }
+        }
+    }
+
     @Test
     void mapsAndListsConvertToLuaTables() {
         try (MoonSharpWorker w = MoonSharpWorker.startDll(Fixtures.hostDll())) {

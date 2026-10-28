@@ -50,8 +50,8 @@ final class NativeBridge {
     /** Option bit for {@link #contextCreate}: the int64 and uint64 modules. */
     static final int CONTEXT_INT64 = 1;
 
-    /** Returns a context id, or 0 on failure. options is 0 or {@link #CONTEXT_INT64}. */
-    static native long contextCreate(int options);
+    /** Returns a context id, or 0 on failure. options is 0 or {@link #CONTEXT_INT64}; a limit of 0 means none. */
+    static native long contextCreate(int options, long instructionLimit, int timeLimitMs);
 
     static native boolean contextDispose(long context);
 

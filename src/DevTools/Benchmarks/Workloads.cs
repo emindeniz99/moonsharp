@@ -74,6 +74,12 @@ return function(n)
 	return c
 end";
 
+		// The "patterns" case of Lua-CSharp's sandbox/Benchmark comparison (400 per chunk there): gsub with
+		// a capture and a %1 replacement.
+		public const string GsubCapture = @"
+local gsub = string.gsub
+return function(n) local c = 0 for i = 1, n do c = c + #gsub('hello 123 world 456', '(%a+)', '[%1]') end return c end";
+
 		// gmatch over words and over key=value pairs, and the trim idiom.
 		public const string Gmatch = @"
 local s = 'the quick brown fox 123 jumps over the lazy dog 4567'

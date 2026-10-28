@@ -93,6 +93,7 @@ namespace MoonSharp.Benchmarks
 				CallWorkload("StringPattern", Workloads.StringPattern, 1000, 20, 1000),
 				CallWorkload("Gsub", Workloads.Gsub, 200, 20, 200),
 				CallWorkload("Gmatch", Workloads.Gmatch, 500, 20, 500),
+				CallWorkload("GsubCapture", Workloads.GsubCapture, 400, 50, 400),
 			};
 
 			Console.WriteLine("A: {0}", Path.GetFullPath(args[0]));

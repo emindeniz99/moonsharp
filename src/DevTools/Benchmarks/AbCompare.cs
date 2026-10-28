@@ -94,6 +94,7 @@ namespace MoonSharp.Benchmarks
 				CallWorkload("Gsub", Workloads.Gsub, 200, 20, 200),
 				CallWorkload("Gmatch", Workloads.Gmatch, 500, 20, 500),
 				CallWorkload("GsubCapture", Workloads.GsubCapture, 400, 50, 400),
+				CallWorkload("CallsVarArgs", Workloads.CallsVarArgs, 2000, 50, 2000),
 			};
 
 			Console.WriteLine("A: {0}", Path.GetFullPath(args[0]));

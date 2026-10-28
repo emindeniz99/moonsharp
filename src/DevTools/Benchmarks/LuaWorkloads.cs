@@ -82,6 +82,10 @@ namespace MoonSharp.Benchmarks
 			Lua("table_insert_len_10k", 10, "return function(n) local s = 0 for r = 1, n do local t = {} for i = 1, 10000 do table.insert(t, i) end s = s + #t end return s end", "100000", "MoonSharp-only; one iteration = 10k table.insert then #t"),
 			Lua("table_remove_readd_10k", 5 * K, "local t, keys = {}, {} for i = 1, 10000 do t[i] = i end for i = 1, 64 do keys[i] = 'k' .. i t[keys[i]] = i end\nreturn function(n) local s, j = 0, 1 for i = 1, n do local v = table.remove(t) t[#t + 1] = v local k = keys[j] t[k] = nil t[k] = i j = j % 64 + 1 s = s + #t end return s end", "50000000", "MoonSharp-only; delete/reinsert churn on a 10k-entry table"),
 
+			// Lua-CSharp's calls-varargs case as a loop, and '...' passed on (MoonSharp-only).
+			Lua("calls_varargs", 1000 * K, "local function f(a, ...) local b, c = ... return a + b + c end\nreturn function(n) local s = 0 for i = 1, n do s = s + f(i, 2, 3) end return s end", "500005500000", "Lua-CSharp's calls-varargs"),
+			Lua("varargs_forward", 1000 * K, "local function g(...) return select('#', ...) + math.max(...) end\nlocal function f(...) return g(...) end\nreturn function(n) local s = 0 for i = 1, n do s = s + f(1, 2, 3) end return s end", "6000000", "MoonSharp-only; '...' passed on to Lua and library functions"),
+
 			// ---- host boundary and interop (not in flag_bench) ----
 
 			// C# -> Lua: Script.Call on a compiled function with 3 number arguments and 1 number result.
@@ -114,6 +118,20 @@ namespace MoonSharp.Benchmarks
 			{
 				script.Globals["f"] = DynValue.NewCallback((ctx, args) => DynValue.NewNumber(args[0].Number + 1));
 				DynValue fn = script.DoString("local f = f\nreturn function(n) local s = 0 for i = 1, n do s = s + f(i) end return s end");
+				return n => script.Call(fn, DynValue.NewNumber(n)).ToPrintString();
+			}),
+			// Lua-CSharp's host-calls case as a loop: a host callback with two number arguments.
+			Host("host_calls", 1000 * K, "500000500000", "Lua-CSharp's host-calls", script =>
+			{
+				script.Globals["host_add"] = DynValue.NewCallback((ctx, args) => DynValue.NewNumber(args[0].Number + args[1].Number));
+				DynValue fn = script.DoString("local add = host_add\nreturn function(n) local s = 0 for i = 1, n do s = add(s, i) end return s end");
+				return n => script.Call(fn, DynValue.NewNumber(n)).ToPrintString();
+			}),
+			// The same callback, declared to use its arguments only during the call (read in place).
+			Host("host_calls_in_place", 1000 * K, "500000500000", "CallbackFunction.UsesArgumentsOnlyDuringCall", script =>
+			{
+				script.Globals["host_add"] = new CallbackFunction((ctx, args) => DynValue.NewNumber(args[0].Number + args[1].Number)) { UsesArgumentsOnlyDuringCall = true };
+				DynValue fn = script.DoString("local add = host_add\nreturn function(n) local s = 0 for i = 1, n do s = add(s, i) end return s end");
 				return n => script.Call(fn, DynValue.NewNumber(n)).ToPrintString();
 			}),
 			// Lua calls an instance method with 2 int arguments and reads an int property, default access mode

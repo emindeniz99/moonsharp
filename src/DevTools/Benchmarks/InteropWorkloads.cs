@@ -43,11 +43,14 @@ namespace MoonSharp.Benchmarks
 			public Color GetColor() { return Color.Green; }
 			public BaseThing MakeDerived() { return s_Derived; }
 			public Func<int, int> GetFunc() { return s_Inc; }
+			public BaseThing NewKey() { return new BaseThing(); }
 		}
 
 		const string CallSource = "return function(obj, n) local s = 0 for i = 1, n do s = s + obj:Add(i, 2) + obj.Value end return s end";
 		const string EnumSource = "return function(obj, n) local s, g = 0, obj:GetColor() for i = 1, n do if obj:GetColor() == g then s = s + 1 end end return s end";
 		const string DelegateSource = "return function(obj, n) local s = 0 for i = 1, n do s = s + obj:GetFunc()(1) end return s end";
+		// 1000 distinct userdata as table keys, then lookups.
+		const string KeysSource = "return function(obj, n) local keys, t = {}, {} for k = 1, 1000 do local u = obj:NewKey() keys[k] = u t[u] = k end local s = 0 for i = 1, n do s = s + t[keys[(i % 1000) + 1]] end return s end";
 		const string DerivedSource = "return function(obj, n) local s = 0 for i = 1, n do s = s + obj:MakeDerived().Id end return s end";
 
 		sealed class Case
@@ -68,6 +71,7 @@ namespace MoonSharp.Benchmarks
 			new Case { Name = "clr_interop_hardwired", Iterations = 1000000, Source = CallSource, CalcType = typeof(Calc<Hw>), Mode = null, Check = "500003500000" },
 			new Case { Name = "enum_push", Iterations = 500000, Source = EnumSource, CalcType = typeof(Calc<Lazy>), Mode = "Default", Check = "500000" },
 			new Case { Name = "delegate_push", Iterations = 20000, Source = DelegateSource, CalcType = typeof(Calc<Lazy>), Mode = "Default", Check = "40000" },
+			new Case { Name = "userdata_keys", Iterations = 100000, Source = KeysSource, CalcType = typeof(Calc<Lazy>), Mode = "Default", Check = "50050000" },
 			new Case { Name = "derived_type_push", Iterations = 500000, Source = DerivedSource, CalcType = typeof(Calc<Lazy>), Mode = "Default", Check = "500000" },
 		};
 

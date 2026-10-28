@@ -251,6 +251,7 @@ namespace MoonSharp.Interpreter.Interop
 			found.Method = bestOverload;
 			found.HitIndexAtLastHit = ++m_CacheHits;
 			found.ArgsDataType.Clear();
+			found.ArgsUserDataType.Clear();
 			found.HasObject = hasObject;
 
 			for (int i = 0; i < args.Count; i++)

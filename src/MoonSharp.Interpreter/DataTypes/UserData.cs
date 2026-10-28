@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Reflection;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using MoonSharp.Interpreter.Compatibility;
 using MoonSharp.Interpreter.Interop;
 using MoonSharp.Interpreter.Interop.BasicDescriptors;
 using MoonSharp.Interpreter.Interop.RegistrationPolicies;
@@ -39,6 +41,42 @@ namespace MoonSharp.Interpreter
 		public IUserDataDescriptor Descriptor { get; private set; }
 
 
+
+		// Types whose Equals(object) is Object.Equals, that is reference equality.
+		private static readonly Dictionary<Type, bool> s_ReferenceEqualityTypes = new Dictionary<Type, bool>();
+
+		/// <summary>
+		/// A hash code consistent with DynValue.Equals for userdata, which requires the same descriptor
+		/// and objects that are Equals. An object compared by reference hashes by identity; any other
+		/// object hashes by its descriptor only, because its Equals may follow state that changes while
+		/// the value is a table key.
+		/// </summary>
+		internal int GetHashCodeForEquals()
+		{
+			object o = Object;
+
+			if (o != null && UsesReferenceEquality(o.GetType()))
+				return RuntimeHelpers.GetHashCode(o);
+
+			return RuntimeHelpers.GetHashCode(Descriptor);
+		}
+
+		private static bool UsesReferenceEquality(Type t)
+		{
+			lock (s_ReferenceEqualityTypes)
+			{
+				bool result;
+
+				if (!s_ReferenceEqualityTypes.TryGetValue(t, out result))
+				{
+					MethodInfo equals = Framework.Do.GetMethod(t, "Equals", new Type[] { typeof(object) });
+					result = equals != null && equals.DeclaringType == typeof(object);
+					s_ReferenceEqualityTypes[t] = result;
+				}
+
+				return result;
+			}
+		}
 
 		static UserData()
 		{

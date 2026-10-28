@@ -103,6 +103,17 @@ abstract class InProcessBehaviourTest {
         assertTrue(r.error().message().contains("not loaded"), r.error().message());
     }
 
+    // create() replaces a context of the same name, and only a context created with int64 has the module.
+    @Test
+    void createReplacesTheContextWithTheChosenModules() {
+        host.load("opts", "m", "return { f = function() return 1 end }");
+        host.create("opts", true);
+        assertEquals("host", host.invoke("opts", "m", "f").error().kind());
+        assertEquals("9223372036854775807", host.run("opts", "max", "return tostring(int64.max)", null).valueOrThrow().asText());
+        host.create("opts", false);
+        assertEquals("runtime", host.run("opts", "max", "return tostring(int64.max)", null).error().kind());
+    }
+
     // One context per thread runs in parallel and stays isolated.
     @Test
     void threadsWithTheirOwnContextsRunInParallel() throws Exception {

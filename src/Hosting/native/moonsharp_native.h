@@ -44,8 +44,16 @@ MOONSHARP_API const char *moonsharp_open_coreclr(const char *runtime_config_path
 /* Loads a NativeAOT build of the managed entry points. Returns NULL on success, or a static error message. */
 MOONSHARP_API const char *moonsharp_open_aot(const char *library_path);
 
-/* Creates a context. Returns its id, or 0 when the library is not open or the context could not be created. */
-MOONSHARP_API int64_t moonsharp_context_create(void);
+/* Options for moonsharp_context_create, combined with |. */
+enum moonsharp_context_option {
+    MOONSHARP_CONTEXT_INT64 = 1 /* the int64 and uint64 modules (docs/int64.md) */
+};
+
+/*
+ * Creates a context with the given options (enum moonsharp_context_option, 0 for none). Returns its id,
+ * or 0 when the library is not open or the context could not be created.
+ */
+MOONSHARP_API int64_t moonsharp_context_create(int32_t options);
 
 /* Drops a context. Returns 1 if it existed. */
 MOONSHARP_API int32_t moonsharp_context_dispose(int64_t context);

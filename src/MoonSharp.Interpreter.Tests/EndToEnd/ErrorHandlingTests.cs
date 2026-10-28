@@ -176,6 +176,30 @@ return a()
 			AssertOriginalExceptionFrame(exception, typeof(ClassWithMember));
 		}
 
+		private class ClassWithReflectedMember
+		{
+			[MethodImpl(MethodImplOptions.NoInlining)]
+			public void MethodWithError()
+			{
+				throw new NullReferenceException();
+			}
+		}
+
+		// AOT platforms (IL2CPP, iOS) always call through reflection, which wrapped the exception in a
+		// TargetInvocationException, so hosts there caught a different type than on .NET or Mono.
+		[Test]
+		public void Errors_Get_OriginalException_WhenUsingMemberThroughReflection()
+		{
+			Script script = new Script(CoreModules.None);
+
+			UserData.RegisterType<ClassWithReflectedMember>(InteropAccessMode.Reflection);
+
+			script.Globals["objectWithMethod"] = new ClassWithReflectedMember();
+
+			var exception = Assert.Throws<NullReferenceException>(() => script.DoString("objectWithMethod.MethodWithError()"));
+			AssertOriginalExceptionFrame(exception, typeof(ClassWithReflectedMember));
+		}
+
 		// A long-lived Script (a game session, a server worker) must survive any number of failed calls.
 		// Each failed call used to leave the function, its arguments and the argument count on the value
 		// stack, so the Script broke for good after 131072 / (args + 2) errors.

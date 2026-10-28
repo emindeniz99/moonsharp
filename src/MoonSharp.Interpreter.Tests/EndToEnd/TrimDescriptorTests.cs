@@ -15,8 +15,8 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 	/// src/DevTools/TrimTest; these catch a forgotten module without needing a browser.
 	/// </summary>
 	/// <remarks>
-	/// Not in the Unity test list: Unity compiles the sources, so there is no embedded resource there
-	/// (the package ships the same file as link.xml instead).
+	/// Skipped on Unity: Unity compiles the sources, so there is no embedded resource there (the
+	/// package ships the same file as link.xml, and the IL2CPP player run proves it keeps the modules).
 	/// </remarks>
 	[TestFixture]
 	public class TrimDescriptorTests
@@ -33,6 +33,9 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 		private static Dictionary<string, string> LoadPreservedTypes()
 		{
+#if UNITY_5_3_OR_NEWER
+			TestRunner.Skip();
+#endif
 			using (Stream stream = Interpreter.GetManifestResourceStream("ILLink.Descriptors.xml"))
 			{
 				Assert.IsNotNull(stream, "ILLink.Descriptors.xml must be embedded in the assembly under exactly that name, or the trimmer ignores it");

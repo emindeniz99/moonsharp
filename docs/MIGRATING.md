@@ -282,3 +282,23 @@ culture.
   `75987868744874290` now prints `7.598786874487429E+16`. The digits are the same.
 
 Who is affected: scripts and hosts that compare printed numbers as text, mostly on Unity.
+
+## Exceptions from C# methods called through reflection
+
+A C# method that threw, called from Lua through reflection, reached the
+host as a `TargetInvocationException` wrapping the real exception; through
+the compiled path it reached the host as itself. Reflection is what
+`InteropAccessMode.Reflection` uses, what every call uses on AOT platforms
+(IL2CPP, iOS), and what a `BackgroundOptimized` method uses until it is
+compiled. The original exception is now rethrown on every path, with its
+stack trace. Affected: hosts on IL2CPP or iOS, or using `Reflection`, that
+caught `TargetInvocationException` and read `InnerException`.
+
+## The Unity package requires Unity 2021.3
+
+`package.json` of `org.moonsharp.moonsharp` and
+`org.moonsharp.debugger.vscode` declares `"unity": "2021.3"` (it was
+`2020.3`). The fork targets Unity 2021.3 LTS, 2022.3 LTS and Unity 6 LTS,
+which `.github/workflows/unity.yml` tests; 2020.3 is out of support and was
+never tested. Nothing in the package needed the lower number. Affected:
+projects on Unity 2020.3.

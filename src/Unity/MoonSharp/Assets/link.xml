@@ -2,4 +2,6 @@
        <assembly fullname="System.Core">
                <type fullname="System.Linq.Enumerable" preserve="all"/>
        </assembly>
+       <!-- The test sources compile into Assembly-CSharp; the runner finds the fixtures by reflection. -->
+       <assembly fullname="Assembly-CSharp" preserve="all"/>
 </linker>

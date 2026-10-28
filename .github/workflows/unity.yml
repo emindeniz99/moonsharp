@@ -1,0 +1,247 @@
+name: Unity
+
+# Runs the MoonSharp test suite on real Unity editors, for each LTS line the package
+# supports: in the editor (Mono) and in a Linux IL2CPP player. Each run is compared test
+# by test with the same suite on .NET (src/TestRunners/EmbeddedTestRunner). It pulls a
+# 4-6 GB editor image and builds an IL2CPP player per version, so it runs on master and by
+# hand, not on pull requests. Without the Unity secrets the matrix is skipped.
+#
+# Secrets (docs/ROADMAP.md, "Needs the owner"): UNITY_EMAIL and UNITY_PASSWORD, plus
+# UNITY_TOTP_KEY (authenticator-app 2FA, used to exchange a Personal activation file on
+# the Unity website) or UNITY_SERIAL (the serial from a Personal licence activated in Unity
+# Hub). UNITY_SERIAL wins when both are set.
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      activation: ${{ steps.check.outputs.activation }}
+    steps:
+      - name: Check Unity secrets
+        id: check
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_TOTP_KEY: ${{ secrets.UNITY_TOTP_KEY }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+        run: |
+          activation=none
+          if [ -n "$UNITY_EMAIL" ] && [ -n "$UNITY_PASSWORD" ]; then
+            if [ -n "$UNITY_SERIAL" ]; then
+              activation=serial
+            elif [ -n "$UNITY_TOTP_KEY" ]; then
+              activation=totp
+            fi
+          fi
+          if [ "$activation" = none ]; then
+            echo "::notice::Unity tests skipped: set UNITY_EMAIL, UNITY_PASSWORD and UNITY_TOTP_KEY (or UNITY_SERIAL)."
+          fi
+          echo "activation=$activation" >> "$GITHUB_OUTPUT"
+
+  unity:
+    name: Unity ${{ matrix.unity }}
+    needs: secrets
+    if: needs.secrets.outputs.activation != 'none'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      # One version at a time: every job signs in to the same Unity account, and parallel
+      # sign-ins would reuse one authenticator code within its 30-second window.
+      max-parallel: 1
+      matrix:
+        # The newest patch of each LTS line that Unity's public release API lists (so a
+        # Personal licence can activate it; 2021.3 patches after 45f2 are Extended LTS),
+        # as game-ci's linux-il2cpp image, pinned by digest. The image also runs the editor
+        # (Mono) leg. Unity 6 is 6000.0 LTS, the oldest Unity 6 line.
+        include:
+          - unity: 2021.3.45f2
+            image: unityci/editor:ubuntu-2021.3.45f2-linux-il2cpp-3.2.2@sha256:903ced48a1d4f415b597280b76c4f01f1bd38f66c654805fb3ffd16874d7d2ee
+          - unity: 2022.3.62f3
+            image: unityci/editor:ubuntu-2022.3.62f3-linux-il2cpp-3.2.2@sha256:13aff281d283f6e7ce4a61d1444e057dfb0b9aa8667ac033fbd212d3eeed0b26
+          - unity: 6000.0.85f1
+            image: unityci/editor:ubuntu-6000.0.85f1-linux-il2cpp-3.2.2@sha256:471ca24da0a8b2e544dcbad67b8142fa7d3fdcd0327f7e7a775b3328846cd831
+    env:
+      ACTIVATION: ${{ needs.secrets.outputs.activation }}
+      UNITY_IMAGE: ${{ matrix.image }}
+      # Inside the container the workspace is mounted at /github/workspace.
+      PROJECT: /github/workspace/src/Unity/UnityTestBed
+      RESULTS: .unity-results
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      # The editor images unpack to 10-15 GB; the runner image's Android SDK, Haskell and
+      # CodeQL bundles are not used here.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      # The .NET SDK and runtime, and Node for the activation tool, pinned in mise.toml.
+      - name: Setup tools from mise.toml
+        uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
+        with:
+          # A mise release older than seven days.
+          version: 2026.10.11
+          install_args: dotnet node
+
+      - name: Reference run on .NET
+        run: |
+          mkdir -p "$RESULTS"
+          dotnet build src/TestRunners/EmbeddedTestRunner -c Release -v minimal
+          dotnet src/TestRunners/EmbeddedTestRunner/bin/Release/net8.0/EmbeddedTestRunner.dll "$RESULTS/reference.tsv" | tail -n 3
+
+      - name: Stage the UPM package and the test sources
+        run: |
+          tools/upm/stage-local-package.sh "0.0.0-ci.${{ github.run_number }}"
+          src/Unity/UnityTestBed/sync.sh
+
+      - name: Pull and start the Unity editor container
+        run: |
+          docker pull "$UNITY_IMAGE"
+          docker run -d --name unity --workdir /github/workspace \
+            --volume "$PWD:/github/workspace" "$UNITY_IMAGE" sleep infinity
+
+      - name: Activate Unity (serial)
+        id: activate-serial
+        if: env.ACTIVATION == 'serial'
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+        run: |
+          docker exec -e UNITY_EMAIL -e UNITY_PASSWORD -e UNITY_SERIAL unity bash -c \
+            'unity-editor -batchmode -nographics -quit -logFile - -username "$UNITY_EMAIL" -password "$UNITY_PASSWORD" -serial "$UNITY_SERIAL"'
+
+      # Personal licences: the editor writes an activation request (.alf), the Unity website
+      # turns it into a licence (.ulf) after signing in with the authenticator code, and the
+      # editor loads it.
+      - name: Activate Unity (activation file and authenticator code)
+        id: activate-totp
+        if: env.ACTIVATION == 'totp'
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_TOTP_KEY: ${{ secrets.UNITY_TOTP_KEY }}
+        run: |
+          workdir="$PWD/.unity-license"
+          mkdir -p "$workdir"
+
+          docker exec --workdir /github/workspace/.unity-license unity \
+            unity-editor -batchmode -nographics -quit -logFile /github/workspace/.unity-license/alf.log -createManualActivationFile || true
+          alf="$(find "$workdir" -maxdepth 1 -name '*.alf' | head -n 1)"
+          if [ -z "$alf" ]; then
+            echo "::error::The editor wrote no activation file (.alf)."
+            tail -n 100 "$workdir/alf.log" || true
+            exit 1
+          fi
+
+          npm install --global github:game-ci/unity-license-activate#2be4152c6ade907c090817c988588d5d9f3bc974
+
+          code=1
+          for attempt in 1 2 3; do
+            set +e
+            (cd "$workdir" && timeout 120 unity-license-activate "$UNITY_EMAIL" "$UNITY_PASSWORD" "$alf" \
+              --authenticator-key "$UNITY_TOTP_KEY") > "$workdir/activate.out" 2>&1
+            code=$?
+            set -e
+            [ "$code" -eq 0 ] && break
+            if grep -q "2FA (Email)" "$workdir/activate.out"; then
+              echo "::error::Unity asked for email 2FA; the account needs authenticator-app 2FA for UNITY_TOTP_KEY."
+              break
+            fi
+            if ! grep -Eq "ERR_NETWORK_CHANGED|ETIMEDOUT|Navigation timeout" "$workdir/activate.out"; then
+              break
+            fi
+            echo "Network failure on attempt $attempt of 3; retrying."
+            sleep 30
+          done
+          ulf="$(find "$workdir" -maxdepth 1 -name '*.ulf' | head -n 1)"
+          if [ "$code" -ne 0 ] || [ -z "$ulf" ]; then
+            echo "::error::The Unity website did not return a licence (.ulf); exit code $code."
+            tail -n 100 "$workdir/activate.out" || true
+            exit 1
+          fi
+
+          # Where the editor looks for a licence, and the explicit install on top.
+          docker exec unity bash -c "mkdir -p ~/.local/share/unity3d/Unity && cp '/github/workspace/.unity-license/$(basename "$ulf")' ~/.local/share/unity3d/Unity/Unity_lic.ulf"
+          set +e
+          docker exec unity unity-editor -batchmode -nographics -quit \
+            -logFile /github/workspace/.unity-license/install.log -manualLicenseFile "/github/workspace/.unity-license/$(basename "$ulf")"
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ] && ! grep -q "License file loaded" "$workdir/install.log"; then
+            echo "::error::The editor did not load the licence (exit code $code)."
+            tail -n 100 "$workdir/install.log" || true
+            exit 1
+          fi
+
+      - name: Editor (Mono)
+        id: editor
+        if: steps.activate-serial.outcome == 'success' || steps.activate-totp.outcome == 'success'
+        timeout-minutes: 40
+        run: |
+          set +e
+          docker exec unity unity-editor -batchmode -nographics -quit -logFile - \
+            -projectPath "$PROJECT" -executeMethod MoonSharp.UnityTestBed.BatchRunner.RunTests \
+            -moonsharpResults "/github/workspace/$RESULTS/editor.tsv"
+          code=$?
+          set -e
+          src/Unity/UnityTestBed/compare-results.sh "$RESULTS/reference.tsv" "$RESULTS/editor.tsv" "Unity ${{ matrix.unity }} editor" || code=1
+          exit "$code"
+
+      - name: Build the Linux IL2CPP player
+        id: build
+        if: always() && (steps.activate-serial.outcome == 'success' || steps.activate-totp.outcome == 'success')
+        timeout-minutes: 45
+        run: |
+          docker exec unity unity-editor -batchmode -nographics -quit -logFile - \
+            -projectPath "$PROJECT" -executeMethod MoonSharp.UnityTestBed.BatchRunner.BuildLinuxIl2cpp \
+            -moonsharpBuild /github/workspace/.unity-build/TestBed.x86_64
+
+      - name: Player (IL2CPP)
+        if: always() && steps.build.outcome == 'success'
+        timeout-minutes: 20
+        run: |
+          set +e
+          docker exec unity /github/workspace/.unity-build/TestBed.x86_64 -batchmode -nographics -logFile - \
+            -moonsharpResults "/github/workspace/$RESULTS/il2cpp.tsv"
+          code=$?
+          set -e
+          src/Unity/UnityTestBed/compare-results.sh "$RESULTS/reference.tsv" "$RESULTS/il2cpp.tsv" "Unity ${{ matrix.unity }} IL2CPP player" || code=1
+          exit "$code"
+
+      # The results files only: the editor logs, which may name the account, stay in the
+      # job log, where GitHub masks the secrets.
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: unity-${{ matrix.unity }}-results
+          path: .unity-results/*.tsv
+          if-no-files-found: ignore
+
+      - name: Return the Unity licence
+        if: always() && steps.activate-serial.outcome == 'success'
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        run: |
+          docker exec -e UNITY_EMAIL -e UNITY_PASSWORD unity bash -c \
+            'unity-editor -batchmode -nographics -quit -logFile - -returnlicense -username "$UNITY_EMAIL" -password "$UNITY_PASSWORD"'

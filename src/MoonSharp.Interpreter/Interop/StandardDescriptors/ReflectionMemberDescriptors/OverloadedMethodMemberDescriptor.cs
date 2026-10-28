@@ -136,6 +136,15 @@ namespace MoonSharp.Interpreter.Interop
 		}
 
 		/// <summary>
+		/// Gets a copy of the overloads a call resolves against, without extension methods. Tools that
+		/// describe the API to script authors (the LuaCATS generator) read the signatures from here.
+		/// </summary>
+		public IOverloadableMemberDescriptor[] Overloads
+		{
+			get { return m_Overloads.ToArray(); }
+		}
+
+		/// <summary>
 		/// Performs the overloaded call.
 		/// </summary>
 		/// <param name="script">The script.</param>

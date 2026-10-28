@@ -19,6 +19,12 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			long executedInstructions = 0;
 			bool canAutoYield = (AutoYieldCounter > 0) && m_CanYield && (this.State != CoroutineState.Main);
+			DebugContext debug = m_Debug;
+
+			// Fetch from an array rather than through List<Instruction>. Code is only appended (load(),
+			// string.dump), so this array stays valid; a null slot or an address past its end means code
+			// was added after it was taken, and GetCodeArray returns one that holds it.
+			Instruction[] code = m_RootChunk.GetCodeArray();
 
 			repeat_execution:
 
@@ -26,19 +32,28 @@ namespace MoonSharp.Interpreter.Execution.VM
 			{
 				while (true)
 				{
-					Instruction i = m_RootChunk.Code[instructionPtr];
+					Instruction i;
 
-					if (m_Debug.DebuggerAttached != null)
+					if ((uint)instructionPtr >= (uint)code.Length || (i = code[instructionPtr]) == null)
 					{
-						ListenDebugger(i, instructionPtr);
+						code = m_RootChunk.GetCodeArray();
+						i = code[instructionPtr];
 					}
 
-					++executedInstructions;
-
-					if (canAutoYield && executedInstructions > AutoYieldCounter)
+					// One test for both slow paths. The debugger is checked on every instruction, as
+					// before, so attaching it while a script runs stops at the next instruction.
+					if (canAutoYield || debug.DebuggerAttached != null)
 					{
-						m_SavedInstructionPtr = instructionPtr;
-						return DynValue.NewForcedYieldReq();
+						if (debug.DebuggerAttached != null)
+						{
+							ListenDebugger(i, instructionPtr);
+						}
+
+						if (canAutoYield && ++executedInstructions > AutoYieldCounter)
+						{
+							m_SavedInstructionPtr = instructionPtr;
+							return DynValue.NewForcedYieldReq();
+						}
 					}
 
 					++instructionPtr;

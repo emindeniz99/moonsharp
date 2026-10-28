@@ -13,6 +13,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 	{
 		public List<Instruction> Code = new List<Instruction>();
 		public Script Script { get; private set; }
+
+		// The instructions as a plain array for the processor's fetch (see GetCodeArray).
+		Instruction[] m_CodeArray = new Instruction[0];
+		int m_CodeArrayCount = 0;
 		private List<SourceRef> m_SourceRefStack = new List<SourceRef>();
 		private SourceRef m_CurrentSourceRef = null;
 
@@ -75,6 +79,42 @@ namespace MoonSharp.Interpreter.Execution.VM
 			File.WriteAllText(file, sb.ToString());
 		}
 	#endif
+
+		/// <summary>
+		/// Returns the instructions as an array, so the processor fetches without going through List&lt;T&gt;.
+		/// Code is only ever appended, so an array handed out earlier stays valid for every address it holds.
+		/// Slots past the last instruction are null; a caller that meets a null slot or runs past the end
+		/// calls this again. New instructions fill the current array before a larger one replaces it, so a
+		/// replaced array is always complete.
+		/// </summary>
+		internal Instruction[] GetCodeArray()
+		{
+			int count = Code.Count;
+
+			if (m_CodeArrayCount != count)
+			{
+				Instruction[] array = m_CodeArray;
+				int i = m_CodeArrayCount;
+
+				for (; i < count && i < array.Length; i++)
+					array[i] = Code[i];
+
+				if (i < count)
+				{
+					Instruction[] larger = new Instruction[Math.Max(count, array.Length * 2)];
+					Array.Copy(array, larger, array.Length);
+
+					for (; i < count; i++)
+						larger[i] = Code[i];
+
+					m_CodeArray = larger;
+				}
+
+				m_CodeArrayCount = count;
+			}
+
+			return m_CodeArray;
+		}
 
 		public int GetJumpPointForNextInstruction()
 		{

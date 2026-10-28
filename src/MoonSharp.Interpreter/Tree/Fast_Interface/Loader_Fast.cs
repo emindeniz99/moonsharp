@@ -63,6 +63,7 @@ namespace MoonSharp.Interpreter.Tree.Fast_Interface
 					stat.Compile(bytecode);
 					bytecode.Emit_Nop(string.Format("End chunk {0}", source.Name));
 					InstructionFusion.Fuse(bytecode.Code, beginIp);
+					RegisterCompiler.CompileAll(bytecode);
 				}
 
 				//Debug_DumpByteCode(bytecode, source.SourceID);
@@ -99,6 +100,7 @@ namespace MoonSharp.Interpreter.Tree.Fast_Interface
 					beginIp = fnx.CompileBody(bytecode, source.Name);
 					bytecode.Emit_Nop(string.Format("End function {0}", source.Name));
 					InstructionFusion.Fuse(bytecode.Code, beginIp);
+					RegisterCompiler.CompileAll(bytecode);
 				}
 
 				//Debug_DumpByteCode(bytecode, source.SourceID);

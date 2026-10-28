@@ -31,6 +31,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 		// which Lua raises for each metamethod call. Normal calls keep the caller's count.
 		public int CCalls;
 
+		// SPIKE (register VM): a register frame's next pc while it waits for a call or a slow path.
+		public int SavedPc;
+
 		// The running closure and its upvalues (the same array; kept here to save a load per access).
 		public Closure Function;
 		public Upvalue[] Upvalues;

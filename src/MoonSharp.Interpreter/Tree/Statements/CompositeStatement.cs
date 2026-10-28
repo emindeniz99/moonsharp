@@ -7,7 +7,7 @@ namespace MoonSharp.Interpreter.Tree.Statements
 {
 	class CompositeStatement : Statement 
 	{
-		List<Statement> m_Statements = new List<Statement>();
+		internal List<Statement> m_Statements = new List<Statement>();
 
 		public CompositeStatement(ScriptLoadingContext lcontext)
 			: base(lcontext)

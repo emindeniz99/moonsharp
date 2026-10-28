@@ -7,7 +7,7 @@ namespace MoonSharp.Interpreter.Tree.Statements
 {
 	class BreakStatement : Statement
 	{
-		SourceRef m_Ref;
+		internal SourceRef m_Ref;
 
 		public BreakStatement(ScriptLoadingContext lcontext)
 			: base(lcontext)

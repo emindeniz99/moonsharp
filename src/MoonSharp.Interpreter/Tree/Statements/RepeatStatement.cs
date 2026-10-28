@@ -7,10 +7,10 @@ namespace MoonSharp.Interpreter.Tree.Statements
 {
 	class RepeatStatement : Statement
 	{
-		Expression m_Condition;
-		Statement m_Block;
+		internal Expression m_Condition;
+		internal Statement m_Block;
 		RuntimeScopeBlock m_StackFrame;
-		SourceRef m_Repeat, m_Until;
+		internal SourceRef m_Repeat, m_Until;
 
 		public RepeatStatement(ScriptLoadingContext lcontext)
 			: base(lcontext)

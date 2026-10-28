@@ -178,7 +178,8 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void AllocationBudget_ClosureCreateCall()
 		{
-			AssertLuaBudget("closure_create_call", "return function(n) local s = 0 for i = 1, n do local f = function() return i end s = s + f() end return s end", 152);
+			// SPIKE (register VM): 160, was 152. Closure carries the register code (Closure.Register, 8 bytes).
+			AssertLuaBudget("closure_create_call", "return function(n) local s = 0 for i = 1, n do local f = function() return i end s = s + f() end return s end", 160);
 		}
 
 		[Test]

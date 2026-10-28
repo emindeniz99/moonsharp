@@ -8,7 +8,7 @@ namespace MoonSharp.Interpreter.Tree.Statements
 {
 	class IfStatement : Statement
 	{
-		private class IfBlock
+		internal class IfBlock
 		{
 			public Expression Exp;
 			public Statement Block;
@@ -16,9 +16,9 @@ namespace MoonSharp.Interpreter.Tree.Statements
 			public SourceRef Source;
 		}
 
-		List<IfBlock> m_Ifs = new List<IfBlock>();
-		IfBlock m_Else = null;
-		SourceRef m_End;
+		internal List<IfBlock> m_Ifs = new List<IfBlock>();
+		internal IfBlock m_Else = null;
+		internal SourceRef m_End;
 
 		public IfStatement(ScriptLoadingContext lcontext)
 			: base(lcontext)

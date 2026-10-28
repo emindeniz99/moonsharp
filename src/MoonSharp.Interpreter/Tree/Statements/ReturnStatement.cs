@@ -7,8 +7,8 @@ namespace MoonSharp.Interpreter.Tree.Statements
 {
 	class ReturnStatement: Statement
 	{
-		Expression m_Expression = null;
-		SourceRef m_Ref;
+		internal Expression m_Expression = null;
+		internal SourceRef m_Ref;
 
 		public ReturnStatement(ScriptLoadingContext lcontext, Expression e, SourceRef sref)
 			: base(lcontext)

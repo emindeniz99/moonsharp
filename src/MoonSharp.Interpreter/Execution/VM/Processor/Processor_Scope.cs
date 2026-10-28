@@ -37,7 +37,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				case SymbolRefType.Global:
 					return GetGlobalSymbol(GetGenericSymbol(symref.i_Env), symref.i_Name);
 				case SymbolRefType.Local:
-					return m_ValueStack[m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex)).BasePointer + symref.i_Index].ToDynValue();
+					return m_ValueStack[LocalSlot(ref m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex)), symref.i_Index)].ToDynValue();
 				case SymbolRefType.Upvalue:
 					return m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex)).Upvalues[symref.i_Index].Get().ToDynValue();
 				default:
@@ -72,7 +72,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				case SymbolRefType.Local:
 					{
 						ref CallStackItem stackframe = ref m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex));
-						m_ValueStack[stackframe.BasePointer + symref.i_Index] = value.ToLuaValue();
+						m_ValueStack[LocalSlot(ref stackframe, symref.i_Index)] = value.ToLuaValue();
 					}
 					break;
 				case SymbolRefType.Upvalue:
@@ -88,6 +88,18 @@ namespace MoonSharp.Interpreter.Execution.VM
 				default:
 					throw new InternalErrorException("Unexpected {0} LRef at resolution: {1}", symref.i_Type, symref.i_Name);
 			}
+		}
+
+		/// <summary>
+		/// The value stack slot of the local with symbol index <paramref name="index"/> in a frame. SPIKE: a
+		/// register frame keeps its locals in register order (parameters first).
+		/// </summary>
+		private int LocalSlot(ref CallStackItem frame, int index)
+		{
+			if ((frame.Flags & CallStackItemFlags.RegisterFrame) != 0)
+				return frame.BasePointer + frame.Function.Register.RegOf[index];
+
+			return frame.BasePointer + index;
 		}
 
 		/// <summary>
@@ -135,7 +147,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 						{
 							var l = stackframe.Debug_Symbols[i];
 
-							if (l.i_Name == name && !m_ValueStack[stackframe.BasePointer + i].IsUndeclared)
+							if (l.i_Name == name && !m_ValueStack[LocalSlot(ref stackframe, i)].IsUndeclared)
 								return l;
 						}
 					}

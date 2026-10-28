@@ -6,10 +6,10 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 {
 	class FunctionCallExpression : Expression
 	{
-		List<Expression> m_Arguments;
-		Expression m_Function;
-		string m_Name;
-		string m_DebugErr;
+		internal List<Expression> m_Arguments;
+		internal Expression m_Function;
+		internal string m_Name;
+		internal string m_DebugErr;
 
 		internal SourceRef SourceRef { get; private set; }
 

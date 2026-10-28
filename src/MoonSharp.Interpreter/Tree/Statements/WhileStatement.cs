@@ -7,10 +7,10 @@ namespace MoonSharp.Interpreter.Tree.Statements
 {
 	class WhileStatement : Statement
 	{
-		Expression m_Condition;
-		Statement m_Block;
+		internal Expression m_Condition;
+		internal Statement m_Block;
 		RuntimeScopeBlock m_StackFrame;
-		SourceRef m_Start, m_End;
+		internal SourceRef m_Start, m_End;
 
 		public WhileStatement(ScriptLoadingContext lcontext)
 			: base(lcontext)

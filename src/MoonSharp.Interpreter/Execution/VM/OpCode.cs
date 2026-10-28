@@ -89,6 +89,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 		// the replaced instruction and continues with the unfused sequence.
 		AddF, SubF, MulF, DivF, ModF, PowF,
 
+		// SPIKE (register VM): the resume trampoline of a register instruction's slow path (Processor_Registers.cs).
+		RegResume,
+
 		// Meta
 		Invalid,	// Crashes the executor with an unrecoverable NotImplementedException. This MUST always be the last opcode in enum
 	}

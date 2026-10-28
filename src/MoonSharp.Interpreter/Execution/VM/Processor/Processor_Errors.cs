@@ -26,6 +26,21 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			SourceRef sref = GetCurrentSourceRef(ip);
 
+			// SPIKE (register VM): when the innermost script frame runs register code, the error comes from
+			// the instruction before its saved pc (register code saves it before anything that can raise).
+			for (int k = 0; k < m_ExecutionStack.Count; k++)
+			{
+				ref CallStackItem f = ref m_ExecutionStack.Peek(k);
+
+				if (f.BasePointer < 0)
+					continue;
+
+				if ((f.Flags & CallStackItemFlags.RegisterFrame) != 0)
+					sref = f.Function.Register.Refs[System.Math.Max(f.SavedPc - 1, 0)];
+
+				break;
+			}
+
 			// A chunk starts with instructions that have no position (BeginFn, then _ENV set up). An error
 			// there, the value stack overflowing as a chunk starts (a cyclic require), is reported at the
 			// chunk's first statement instead of as "bytecode:<n>".

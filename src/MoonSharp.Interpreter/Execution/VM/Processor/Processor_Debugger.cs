@@ -366,7 +366,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 				for (int i = 0; i < len; i++)
 				{
-					LuaValue v = m_ValueStack[frame.BasePointer + i];
+					LuaValue v = m_ValueStack[LocalSlot(ref frame, i)];
 
 					locals.Add(new WatchItem()
 					{

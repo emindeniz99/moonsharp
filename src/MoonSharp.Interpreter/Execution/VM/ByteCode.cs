@@ -22,6 +22,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		internal LoopTracker LoopTracker = new LoopTracker();
 
+		// SPIKE (register VM): functions compiled since the last RegisterCompiler.CompileAll.
+		internal List<Tree.RegisterCandidate> RegisterCandidates = new List<Tree.RegisterCandidate>();
+
 		public ByteCode(Script script)
 		{
 			Script = script;

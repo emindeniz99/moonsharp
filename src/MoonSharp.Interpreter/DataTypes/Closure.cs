@@ -52,6 +52,9 @@ namespace MoonSharp.Interpreter
 		/// </summary>
 		internal readonly Upvalue[] Upvalues;
 
+		// SPIKE (register VM): the function's register code, once it was entered through the stack loop.
+		internal Execution.VM.RegisterProto Register;
+
 		// The upvalue symbols of the function prototype (a SymbolRef[]), shared by every closure made from it;
 		// only the debugger and the debug library read their names. Once ToDelegate has made a delegate, a
 		// DelegateCache that holds the symbols and the delegates: closures that never become delegates pay

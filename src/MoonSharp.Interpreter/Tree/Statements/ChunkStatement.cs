@@ -31,7 +31,16 @@ namespace MoonSharp.Interpreter.Tree.Statements
 			Instruction meta = bc.Emit_Meta("<chunk-root>", OpCodeMetadataType.ChunkEntrypoint);
 			int metaip = bc.GetJumpPointForLastInstruction();
 
-			bc.Emit_BeginFn(m_StackFrame);
+			Instruction beginFn = bc.Emit_BeginFn(m_StackFrame);
+
+			bc.RegisterCandidates.Add(new RegisterCandidate()
+			{
+				Body = m_Block,
+				Params = new SymbolRef[0],
+				NumLocals = m_StackFrame.Count,
+				EnvLocal = m_Env,
+				BeginFn = beginFn,
+			});
 			bc.Emit_Args(m_VarArgs);
 
 			bc.Emit_Load(SymbolRef.Upvalue(WellKnownSymbols.ENV, 0));

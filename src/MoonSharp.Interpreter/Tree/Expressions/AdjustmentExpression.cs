@@ -5,7 +5,7 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 {
 	class AdjustmentExpression : Expression
 	{
-		private Expression expression;
+		internal Expression expression;
 
 		public AdjustmentExpression(ScriptLoadingContext lcontext, Expression exp)
 			: base(lcontext)

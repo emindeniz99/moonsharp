@@ -10,7 +10,7 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 	class BinaryOperatorExpression : Expression
 	{
 		[Flags]
-		private enum Operator
+		internal enum Operator
 		{
 			NotAnOperator = 0,
 
@@ -244,8 +244,8 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 
 
 
-		Expression m_Exp1, m_Exp2;
-		Operator m_Operator;
+		internal Expression m_Exp1, m_Exp2;
+		internal Operator m_Operator;
 
 
 

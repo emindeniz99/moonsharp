@@ -19,6 +19,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 		internal SourceRef SourceCodeRef;
 		// Runtime only, never saved: the inline cache of a field or global access with a constant key.
 		internal FieldCache Cache;
+		// SPIKE (register VM): on a BeginFn, the function's register code, or null.
+		internal RegisterProto Register;
 
 		internal Instruction(SourceRef sourceref)
 		{

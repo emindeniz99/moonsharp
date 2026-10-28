@@ -5,9 +5,9 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 {
 	class IndexExpression : Expression, IVariable
 	{
-		Expression m_BaseExp;
-		Expression m_IndexExp;
-		string m_Name;
+		internal Expression m_BaseExp;
+		internal Expression m_IndexExp;
+		internal string m_Name;
 
 
 		public IndexExpression(Expression baseExp, Expression indexExp, ScriptLoadingContext lcontext)

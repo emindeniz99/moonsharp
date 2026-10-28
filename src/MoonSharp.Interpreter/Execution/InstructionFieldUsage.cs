@@ -85,6 +85,7 @@ namespace MoonSharp.Interpreter.Execution
 				case OpCode.Closure:
 					return InstructionFieldUsage.SymbolList | InstructionFieldUsage.NumValAsCodeAddress;
 				case OpCode.Nop:
+				case OpCode.RegResume:
 				case OpCode.Debug:
 				case OpCode.Invalid:
 					return InstructionFieldUsage.Name;

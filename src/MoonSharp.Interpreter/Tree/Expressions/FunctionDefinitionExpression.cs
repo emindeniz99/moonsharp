@@ -206,7 +206,18 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 			Instruction meta = bc.Emit_Meta(funcName, OpCodeMetadataType.FunctionEntrypoint);
 			int metaip = bc.GetJumpPointForLastInstruction();
 
-			bc.Emit_BeginFn(m_StackFrame);
+			Instruction beginFn = bc.Emit_BeginFn(m_StackFrame);
+
+			bc.RegisterCandidates.Add(new RegisterCandidate()
+			{
+				Body = m_Statement,
+				Params = m_ParamNames,
+				NumLocals = m_StackFrame.Count,
+				VarArgs = m_HasVarArgs,
+				EnvLocal = m_UsesGlobalEnv ? m_Env : null,
+				End = m_End ?? m_Begin,
+				BeginFn = beginFn,
+			});
 
 			bc.LoopTracker.Loops.Push(new LoopBoundary());
 

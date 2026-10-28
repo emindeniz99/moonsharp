@@ -52,7 +52,8 @@ namespace MoonSharp.Interpreter
 				DebugInput = s => { return Script.GlobalOptions.Platform.DefaultInput(s); },
 				CheckThreadAccess = true,
 				ScriptLoader = PlatformAutoDetector.GetDefaultScriptLoader(),
-				TailCallOptimizationThreshold = 65536
+				TailCallOptimizationThreshold = 65536,
+				RegisterVm = true
 			};
 		}
 

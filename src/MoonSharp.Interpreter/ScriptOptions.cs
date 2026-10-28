@@ -29,7 +29,14 @@ namespace MoonSharp.Interpreter
 			this.CheckThreadAccess = defaults.CheckThreadAccess;
 			this.ExactInt64Interop = defaults.ExactInt64Interop;
 			this.InterruptHandler = defaults.InterruptHandler;
+			this.RegisterVm = defaults.RegisterVm;
 		}
+
+		/// <summary>
+		/// SPIKE (branch spike/register-vm): compile the functions the register compiler supports to
+		/// register code as well. Read when a chunk is compiled. On by default on the spike branch.
+		/// </summary>
+		public bool RegisterVm { get; set; }
 
 		/// <summary>
 		/// Gets or sets the current script-loader.

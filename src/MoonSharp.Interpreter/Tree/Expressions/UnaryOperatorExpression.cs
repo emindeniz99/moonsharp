@@ -5,8 +5,8 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 {
 	class UnaryOperatorExpression : Expression
 	{
-		Expression m_Exp;
-		string m_OpText;
+		internal Expression m_Exp;
+		internal string m_OpText;
 
 		public UnaryOperatorExpression(ScriptLoadingContext lcontext, Expression subExpression, Token unaryOpToken)
 			: base(lcontext)

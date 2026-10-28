@@ -7,7 +7,7 @@ namespace MoonSharp.Interpreter.Tree.Statements
 {
 	class FunctionCallStatement : Statement
 	{
-		FunctionCallExpression m_FunctionCallExpression;
+		internal FunctionCallExpression m_FunctionCallExpression;
 
 		public FunctionCallStatement(ScriptLoadingContext lcontext, FunctionCallExpression functionCallExpression)
 			: base(lcontext)

@@ -5,7 +5,7 @@ namespace MoonSharp.Interpreter.Tree.Statements
 {
 	class ScopeBlockStatement : Statement
 	{
-		Statement m_Block;
+		internal Statement m_Block;
 		RuntimeScopeBlock m_StackFrame;
 		SourceRef m_Do, m_End;
 

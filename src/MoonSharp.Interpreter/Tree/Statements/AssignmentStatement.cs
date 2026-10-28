@@ -9,9 +9,9 @@ namespace MoonSharp.Interpreter.Tree.Statements
 {
 	class AssignmentStatement : Statement
 	{
-		List<IVariable> m_LValues = new List<IVariable>();
-		List<Expression> m_RValues;
-		SourceRef m_Ref;
+		internal List<IVariable> m_LValues = new List<IVariable>();
+		internal List<Expression> m_RValues;
+		internal SourceRef m_Ref;
 
 
 		public AssignmentStatement(ScriptLoadingContext lcontext, Token startToken)

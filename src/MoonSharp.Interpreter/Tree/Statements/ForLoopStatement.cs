@@ -10,10 +10,10 @@ namespace MoonSharp.Interpreter.Tree.Statements
 	{
 		//for' NAME '=' exp ',' exp (',' exp)? 'do' block 'end'
 		RuntimeScopeBlock m_StackFrame;
-		Statement m_InnerBlock;
-		SymbolRef m_VarName;
-		Expression m_Start, m_End, m_Step;
-		SourceRef m_RefFor, m_RefEnd;
+		internal Statement m_InnerBlock;
+		internal SymbolRef m_VarName;
+		internal Expression m_Start, m_End, m_Step;
+		internal SourceRef m_RefFor, m_RefEnd;
 
 		public ForLoopStatement(ScriptLoadingContext lcontext, Token nameToken, Token forToken)
 			: base(lcontext)

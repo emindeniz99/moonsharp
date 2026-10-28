@@ -268,8 +268,17 @@ namespace MoonSharp.Interpreter.Execution.VM
 							ExecClosure(i);
 							break;
 						case OpCode.BeginFn:
+							// SPIKE (register VM): only on the main processor (no yields) and without a debugger.
+							if (i.Register != null && fuse && m_Parent == null)
+							{
+								instructionPtr = RegisterEnter(i);
+								goto register_returned;
+							}
 							ExecBeginFn(i);
 							break;
+						case OpCode.RegResume:
+							instructionPtr = RegisterResume();
+							goto register_returned;
 						case OpCode.ToBool:
 							{
 								ref LuaValue top = ref m_ValueStack.Peek();
@@ -542,6 +551,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 						default:
 							throw new NotImplementedException(string.Format("Execution for {0} not implented yet!", i.OpCode));
 					}
+
+					continue;
+
+				register_returned:
+					if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
+					if (instructionPtr < 0)
+						goto return_to_native_code;
+					basePointer = CurrentBasePointer();
 				}
 
 			yield_to_calling_coroutine:

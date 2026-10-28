@@ -4,8 +4,8 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 {
 	class SymbolRefExpression : Expression, IVariable
 	{
-		SymbolRef m_Ref;
-		string m_VarName;
+		internal SymbolRef m_Ref;
+		internal string m_VarName;
 
 		public SymbolRefExpression(Token T, ScriptLoadingContext lcontext)
 			: base(lcontext)

@@ -100,9 +100,10 @@ namespace MoonSharp.Interpreter
 				accessMode = m_DefaultAccessMode;
 
 			// A delegate compiled at run time (an expression tree, a DynamicMethod) points to a method
-			// with no declaring type, which reflection cannot describe; call it through the
-			// delegate's own Invoke method instead.
-			if (del.Method.DeclaringType == null)
+			// reflection cannot call as the delegate does: on .NET it has no declaring type, on Mono
+			// it is a static method whose first parameter is bound to the delegate's target (the
+			// closure). Call such delegates through their own Invoke method instead.
+			if (del.Method.DeclaringType == null || (del.Method.IsStatic && del.Target != null))
 				return GetMethodDescriptor(del.GetType().GetMethod("Invoke"), accessMode).GetCallbackFunction(script, del);
 
 			MethodMemberDescriptor descr = GetMethodDescriptor(del.Method, accessMode);

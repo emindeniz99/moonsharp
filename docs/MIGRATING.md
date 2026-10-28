@@ -657,3 +657,23 @@ whose base classes declare public statics: the new members appear on the
 derived type too. For example, a registered Unity component now also exposes
 the public static methods of `UnityEngine.Object`, such as `Destroy` and
 `Instantiate`.
+
+## Lists and dictionaries become tables under automatic registration
+
+**Before:** with `UserData.RegistrationPolicy = InteropRegistrationPolicy.Automatic`,
+a `List<T>`, an array or a `Dictionary<K,V>` passed to a script was
+registered on the spot and became userdata, so `#list`, `ipairs` and
+`pairs` did not work on it and indexing started at 0. The default policy
+already gave tables.
+
+**After:** lists (`IList`, arrays included) and dictionaries (`IDictionary`)
+become tables under every policy, as documented: a copy with Lua indices
+from 1. A type the host registers explicitly, or that a registered base
+type or interface covers, is still userdata. Other enumerables and other
+types are registered automatically as before
+([upstream #274](https://github.com/moonsharp-devs/moonsharp/issues/274)).
+
+**Affected:** hosts using automatic registration whose scripts call list or
+dictionary methods (`list.Add`, `dict.ContainsKey`) or change the C#
+collection through it. Register the collection type with
+`UserData.RegisterType` to keep the userdata.

@@ -2,6 +2,7 @@
 using System.Reflection;
 using System.Text;
 using MoonSharp.Interpreter.Interop.RegistrationPolicies;
+using MoonSharp.Interpreter.Interop.UserDataRegistries;
 
 namespace MoonSharp.Interpreter.Interop.Converters
 {
@@ -115,8 +116,18 @@ namespace MoonSharp.Interpreter.Interop.Converters
 			if (obj is LuaUInt64)
 				return ((LuaUInt64)obj).ToDynValue();
 
-			v = UserData.Create(obj);
-			if (v != null) return v;
+			// Lists and dictionaries convert to tables below, also under automatic registration, unless
+			// a registered type covers them (upstream #274).
+			if (obj is System.Collections.IList || obj is System.Collections.IDictionary)
+			{
+				IUserDataDescriptor descriptor = TypeDescriptorRegistry.GetDescriptorForType(obj.GetType(), true, allowAutoRegistration: false);
+				if (descriptor != null) return UserData.Create(obj, descriptor);
+			}
+			else
+			{
+				v = UserData.Create(obj);
+				if (v != null) return v;
+			}
 
 			if (obj is Type)
 				v = UserData.CreateStatic(obj as Type);

@@ -633,5 +633,52 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.IsFalse(names.Contains("ReferenceEquals"));
 			Assert.IsTrue(names.Contains("Equals")); // the instance method object.Equals(object) stays
 		}
+
+		public class Roster : System.Collections.Generic.List<string>
+		{
+			public string Team = "blue";
+		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/274: with automatic registration, lists
+		// and dictionaries became userdata, so a script could not use # or ipairs on them, although
+		// the documented conversion (and the default policy) gives tables. A type the host
+		// registered explicitly stays userdata.
+		[Test]
+		public void Issue274_AutomaticRegistrationKeepsListsAndDictionariesAsTables()
+		{
+			var oldPolicy = UserData.RegistrationPolicy;
+
+			try
+			{
+				UserData.RegistrationPolicy = MoonSharp.Interpreter.Interop.InteropRegistrationPolicy.Automatic;
+				UserData.RegisterType<Roster>();
+
+				Script s = new Script();
+				s.Globals["list"] = new System.Collections.Generic.List<short> { 1, 2, 3 };
+				s.Globals["map"] = new System.Collections.Generic.Dictionary<string, short> { { "a", 4 } };
+				s.Globals["array"] = new short[] { 5, 6 };
+				s.Globals["roster"] = new Roster();
+
+				DynValue r = s.DoString("return type(list), #list, list[3], type(map), map.a, type(array), #array, type(roster), roster.Team");
+
+				Assert.AreEqual("table", r.Tuple[0].String);
+				Assert.AreEqual(3.0, r.Tuple[1].Number);
+				Assert.AreEqual(3.0, r.Tuple[2].Number);
+				Assert.AreEqual("table", r.Tuple[3].String);
+				Assert.AreEqual(4.0, r.Tuple[4].Number);
+				Assert.AreEqual("table", r.Tuple[5].String);
+				Assert.AreEqual(2.0, r.Tuple[6].Number);
+				Assert.AreEqual("userdata", r.Tuple[7].String);
+				Assert.AreEqual("blue", r.Tuple[8].String);
+			}
+			finally
+			{
+				UserData.RegistrationPolicy = oldPolicy;
+				UserData.UnregisterType<Roster>();
+				UserData.UnregisterType<System.Collections.Generic.List<short>>();
+				UserData.UnregisterType<System.Collections.Generic.Dictionary<string, short>>();
+				UserData.UnregisterType<short[]>();
+			}
+		}
 	}
 }

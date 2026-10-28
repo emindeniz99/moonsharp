@@ -47,7 +47,9 @@ dotnet DotNetCoreTestRunner.dll /unit
 commands in a shell where mise is activated, or prefix them with `mise exec --`.
 clang and zlib for the NativeAOT build, and Mono for the net45 test runner, come
 from the distribution. [docs/hosting.md](docs/hosting.md) covers the browser and
-Java hosts.
+Java hosts. [docs/luacats.md](docs/luacats.md) generates LuaCATS definitions of a
+host's C# API for lua-language-server, and [docs/registration.md](docs/registration.md)
+shows how a host exposes only the types it lists.
 
 ## Unity Package (UPM)
 

@@ -29,8 +29,13 @@ from the distribution (`sudo apt-get install clang zlib1g-dev`), as in CI.
 ```sh
 mise install
 dotnet build -c Release src/Hosting/MoonSharp.Hosting.Cli
-dotnet src/Hosting/MoonSharp.Hosting.Cli/bin/Release/net8.0/moonsharp-host.dll test src/Hosting/fixtures/logic.suite.json
+dotnet src/Hosting/MoonSharp.Hosting.Cli/bin/Release/net8.0/moonsharp-host.dll test src/Hosting/fixtures
 ```
+
+`test` runs the conformance corpus in `src/Hosting/fixtures` and checks the
+results against `known-failures/dotnet.json`; the browser smoke test and the
+Java conformance tests do the same for their hosts. The corpus format and the
+known-failures rules are in [its README](../src/Hosting/fixtures/README.md).
 
 Run the commands in a shell where mise is activated, or prefix them with
 `mise exec --`.
@@ -62,8 +67,13 @@ Every call takes and returns JSON text. A result is an envelope:
 | `invoke(moduleId, function, argsJson)` | Call a function of a loaded module. The compiled function is cached. |
 | `run(chunk, source, inputJson)` | Compile and run once. If the chunk returns a function, call it with the input. |
 | `unload(moduleId)`, `dispose(context)` | Free a module or a whole context. |
+| `create(context, int64)` | Create a context, replacing one of that name. Contexts are also created on first use; `create` is for options. With `int64` the context has the `int64` and `uint64` modules ([int64.md](int64.md)). |
 
 A context is one `Script` (one Lua state). Globals and modules are per context.
+Every transport creates it through `ScriptHost.Create(int64)`, with
+`ScriptHost.PortableModules` and, when asked, `CoreModules.Int64`. Returning an
+int64 value to the host is an `output` error for now; return
+`tostring(x)` or `json.serialize` it.
 A context is not thread-safe: the browser has one thread per runtime, and the
 Java pool gives each worker process its own contexts.
 
@@ -82,7 +92,13 @@ Java pool gives each worker process its own contexts.
 | `null` inside an array | `json.null()` | `null` |
 
 Lua tables with keys 1..n and nothing else become arrays. An empty table becomes
-`{}`. Return `json.emptyarray()` (built into MoonSharp) for `[]`.
+`{}`. Return `json.emptyarray()` (built into MoonSharp) for `[]`. Fields set to
+nil do not count, so a table emptied with `table.remove` is still an array.
+
+A string with an unpaired surrogate (half of a character outside the BMP, as
+`('👋'):sub(1, 1)` gives) is an `output` error. UTF-8 cannot encode it, and
+System.Text.Json cannot read its `\u` escape, so each transport would deliver
+something different.
 
 **Large integers.** MoonSharp follows Lua 5.2: every number is a double, which
 holds integers exactly only up to 2^53. The host refuses larger integer literals
@@ -108,7 +124,9 @@ reply per line on stdout, in order:
 {"id":2,"op":"invoke","context":"c1","module":"offers","function":"select_offers","args":[...]}
 ```
 
-`args` may also be sent as text in `argsJson`. Run several workers for parallel
+`args` may also be sent as text in `argsJson`, and `input` (for `run`) as
+`inputJson`. `{"id":3,"op":"create","context":"c2","int64":true}` creates a
+context with options. Run several workers for parallel
 calls: `MoonSharpPool` keeps a fixed set, loads every module into each of them,
 and replaces a worker that dies.
 
@@ -235,37 +253,63 @@ in the browser; rooting the whole assembly (`TrimmerRootAssembly`) fixed it.
 With the descriptor no root is needed: the 24 fixtures and the 10 behaviour
 tests pass, and the library shrinks from 6.6 MB (rooted) to 5.5 MB.
 
-The build still reports 24 trim and AOT warnings, all in CLR interop code that
-the JSON contract never reaches: `FrameworkClrBase` reflects over arbitrary
-types (IL2075, IL2026 for `Assembly.GetTypes`), `TableConversions` builds
+The build reports trim and AOT warnings, all in CLR interop code that the JSON
+contract never reaches: `FrameworkClrBase` reflects over arbitrary types
+(IL2075, IL2026 for `Assembly.GetTypes`), `TableConversions` builds
 `List<T>`/`Dictionary<K,V>` with `MakeGenericType` and `Activator` (IL2055,
 IL2067, IL3050), `ExtensionMethodsRegistry` calls `MakeGenericMethod` (IL2060,
-IL3050), `StandardEnumUserDataDescriptor` calls `Enum.GetValues(Type)` (IL3050),
-and `ValueTypeDefaultCtorMemberDescriptor` creates value types from a `Type`
-(IL2072).
+IL3050), and `ValueTypeDefaultCtorMemberDescriptor` and `PropertyTableAssigner`
+create values from a `Type` (IL2072).
 
-To see what those warnings cost, MoonSharp's own unit test runner
-(`src/TestRunners/DotNetCoreTestRunner`) was compiled with NativeAOT, with
-`MoonSharp.Interpreter`, `MoonSharp.Interpreter.Tests` and `nunit.framework` as
-roots. 680 of 732 tests pass (all 732 pass under JIT). Three failures are
-`TrimDescriptorTests`, which read the embedded `ILLink.Descriptors.xml`; the
-trimmer applies that resource and then removes it, so they cannot pass in any
-trimmed build. The other 49 are all CLR interop:
+### The unit suite under NativeAOT
 
-| Failures | Error | Cause |
+MoonSharp's unit suite also runs as a NativeAOT executable, as a stand-in for
+IL2CPP until Unity CI runs: neither can generate code at run time, both have
+only the generic instantiations the build saw, and both strip the class library.
+The `nativeaot-unit` job in `ci.yml` runs it:
+
+```sh
+# needs clang and zlib1g-dev; builds the suite for JIT and NativeAOT and runs both
+src/TestRunners/DotNetCoreTestRunner/nativeaot.sh
+```
+
+The script fails on a NativeAOT failure that
+`src/TestRunners/DotNetCoreTestRunner/nativeaot-known-failures.txt` does not
+list (the list is empty), on a listed test that passes, when MoonSharp does not
+detect AOT, and when the NativeAOT build finds fewer tests than the JIT build.
+The test assemblies are trimmer roots, because tests are found by reflection;
+the interpreter is not, so it is trimmed as an app gets it. The three
+`TrimDescriptorTests` are skipped there: they read the embedded
+`ILLink.Descriptors.xml`, which the trimmer applies and then removes.
+
+All 797 tests pass under NativeAOT (5 skipped), and all 800 under JIT. When the suite
+first ran this way, 58 of 761 failed. What they found, and the fixes:
+
+| Failures | Error | Fix |
 |---|---|---|
-| 19 | `NotSupportedException: 'MyEnum[]' is missing native code or metadata` | `Enum.GetValues(Type)` for a script-visible enum |
-| 18 | `MissingMethodException: No parameterless constructor defined for type 'List<string>'` (also `List<int[]>`) | converting a Lua table to a generic CLR collection |
-| 12 | `cannot access field GetEnumerator / Last / Sum / TryGetValue of userdata<List<int>>` (and `Dictionary`) | BCL members trimmed away, and LINQ extension methods instantiated with `MakeGenericMethod` |
+| 20 | `'MyEnum[]' is missing native code or metadata` | Enum values come from `Enum.Parse` per name, not `Enum.GetValues(Type)`, which builds an array of the enum type. |
+| 18 | `No parameterless constructor defined for type 'List<string>'` (also `List<int[]>`, `Dictionary<string, int>`) | `[DynamicDependency]` on the conversions keeps the constructors of `List<>` and `Dictionary<,>`. |
+| 10 | `cannot access field GetEnumerator / TryGetValue / (indexer) of userdata<List<int>>` | `[DynamicallyAccessedMembers]` on `UserData.RegisterType` and `RegisterExtensionType` keeps the members of every type a host registers. |
+| 2 | `Enumerable.Sum[Int32](..., Func`2[Int32,Int32]) is missing native code` | A generic extension overload that cannot be instantiated is skipped; `Sum(IEnumerable<int>)` and `Last<int>` still resolve. |
+| 1 | `obj.M == obj.M` was false again | `[DynamicallyAccessedMembers]` on `DispatchingUserDataDescriptor` keeps the methods its override check reflects over. |
+| 2 | `Assert.AreEqual` on an `IEquatable` value: NUnit calls `Type.GetInterfaceMap` | Test harness only; the tests call `Equals`. |
+| 3 | `TrimDescriptorTests` | Skipped, see above. |
+| 2 | Found once AOT was detected: a member's exception arrived wrapped in `TargetInvocationException` | Reflection access mode rethrows the member's own exception. |
+| 1 | `NewScript_AllocatesLittle`: 166 KB per `new Script()` (90 KB under JIT) | A repeated `RegisterType` of a registered type no longer builds a descriptor to discard; the io and dynamic modules do that for every `Script`. Now about 70 KB on both. |
 
-Making those work would need a `TrimmerRootDescriptor` (ILLink XML) or
-`[DynamicDependency]` for every CLR type exposed to scripts, an rd.xml-style
-directive for each generic instantiation (`List<string>`, `Enumerable.Sum<int>`,
-`MyEnum[]`), and `Enum.GetValues` replaced by reading the enum's static fields.
-MoonSharp also does not detect NativeAOT: `PlatformAutoDetector.IsRunningOnAOT`
-compiles an expression tree to find out, which succeeds on NativeAOT (it falls
-back to the interpreter), so MoonSharp reports `false` and uses its JIT-only
-code paths. Checking `RuntimeFeature.IsDynamicCodeSupported` would detect it.
+`PlatformAutoDetector.IsRunningOnAOT` also returned false on NativeAOT, because
+its probe compiles an expression tree and NativeAOT interprets one instead of
+throwing; it now reads `RuntimeFeature.IsDynamicCodeSupported` first.
+netstandard2.0 does not declare the trimming attributes, so the interpreter
+declares `DynamicallyAccessedMembersAttribute` and `DynamicDependencyAttribute`
+internally; the trimmer matches them by name.
+
+What NativeAOT does not prove about IL2CPP: IL2CPP keeps reflection data for
+every method it keeps and, from Unity 2022.1, shares generic code across value
+types, so the constructor and member failures above may never occur there,
+while UnityLinker's handling of the annotations at higher stripping levels is
+unmeasured. The enum, exception and allocation fixes do not depend on the
+runtime. Only a Unity player run can confirm either.
 
 ### Measurements
 
@@ -403,6 +447,23 @@ new code. The old compiled code stays in memory: a MoonSharp `Script` keeps
 every chunk it has compiled. To release it, dispose the context and load the
 new version into a fresh one. A context per published script bundle works well.
 
+## Precompiled scripts
+
+`moonsharp-host compile rules.lua -o rules.luac` compiles a chunk to MoonSharp's
+binary format (`Script.Dump`) with source locations, so runtime errors still
+name the line. Compiling at publish time moves syntax errors out of the clients
+and parsing off their start-up; the bytecode is still interpreted.
+`moonsharp-host run rules.luac` runs it. A .NET or Unity host loads the file
+with `Script.LoadFile` or `LoadStream`. Every `ScriptHost` operation that takes
+source (`validate`, `load`, `run`) also takes a dump as text:
+`MoonSharp_dump_b64::` followed by the file in base64, the form
+`Script.LoadString` accepts.
+
+`moonsharp-host test --bytecode` runs the whole corpus this way, so CI shows
+that compiled and source chunks give the same results, error lines included.
+Load only dumps you built: MoonSharp does not verify bytecode, and the format
+changes with the MoonSharp version.
+
 ## Browser notes
 
 - The build publishes untrimmed `MoonSharp.Interpreter`
@@ -412,7 +473,10 @@ new version into a fresh one. A context per published script bundle works well.
 - The worker script listens with `addEventListener("message")`. The .NET runtime
   replaces `self.onmessage` inside a Web Worker, so a handler assigned to
   `onmessage` never runs.
-- Pass 64-bit IDs as strings. For raw JSON text use `invoke(module, fn, { json })`.
+- Pass 64-bit IDs as strings. For raw JSON text use `invoke(module, fn, { json })`
+  and `runJson(chunk, source, inputJson)`.
+- `runtime.createContext({ int64: true })` creates a context with the int64 and
+  uint64 modules.
 
 ## Status
 
@@ -420,13 +484,15 @@ Measured on 2026-10-28 on a 4-core Intel Xeon 2.1 GHz cloud VM, Ubuntu 24.04.
 
 | Check | Result |
 |---|---|
+| Conformance corpus, 225 cases in 8 suites (2026-10-28, `mise.toml` tools): `dotnet`, `dotnet-bytecode`, .NET with invariant globalization, Chromium 153 main thread, Java 17 worker, CoreCLR 8.0.32 and NativeAOT in process | 225/225 on each; every known-failures file is empty |
+| Conformance corpus, .NET with `LANG=tr_TR.UTF-8` (also `de_DE`) | 223/225: `1.5 .. ''` and `string.format('%s', 1.5)` give `1,5` (listed in `known-failures/dotnet-tr-TR.json`) |
 | Shared fixtures, .NET 8 CLI | 24/24 under `C.UTF-8`, `tr_TR`, `de_DE` and invariant globalization |
 | Shared fixtures, headless Chromium 153 (Playwright 1.63), main thread | 24/24 |
 | Web Worker path, Chromium | pass (eligibility call, 2^53 + 1 rejected) |
 | Shared fixtures, Java 21 through the worker | 24/24, plus 6 worker behaviour tests |
 | Shared fixtures, Java 21, in process through CoreCLR 8.0.33 (hostfxr + JNI) | 24/24, plus 10 in-process behaviour tests |
 | Shared fixtures, Java 21, in process through NativeAOT (.NET 8) | 24/24, plus 10 in-process behaviour tests |
-| MoonSharp unit tests compiled with NativeAOT (experiment, not in CI) | 680/732; 49 failures are CLR interop, 3 are descriptor tests that cannot pass when trimmed (see "NativeAOT and trimming") |
+| MoonSharp unit tests compiled with NativeAOT (first run, before the fixes in "The unit suite under NativeAOT") | 680/732; 49 failures were CLR interop, 3 are descriptor tests that cannot pass when trimmed |
 | Spring Boot 4.1 sample over HTTP | 4/4 |
 | Fixtures on .NET (default culture and invariant globalization), Chromium, the Java worker, CoreCLR and NativeAOT in process, and the Spring Boot sample, rerun with the `mise.toml` tools (SDK 10.0.402, .NET 8.0.32, Temurin 17.0.20.1, Maven 3.10.0, Node 24.22.1, CMake 4.4.4) | all pass |
 | Firefox, Safari/WebKit, iOS Safari | not run (only Chromium is installed here) |

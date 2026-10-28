@@ -22,7 +22,10 @@ namespace MoonSharp.Benchmarks
 			public MethodInfo DoString, Call, CreateCoroutine;
 			public object Script;
 
+			public object SoftSandbox;
+
 			public object NewScript() => Activator.CreateInstance(ScriptType);
+			public object NewScript(object modules) => Activator.CreateInstance(ScriptType, modules);
 			public object Run(string code) => DoString.Invoke(Script, new object[] { code, null, null });
 			public object Invoke(object fn, object[] args) => Call.Invoke(Script, new object[] { fn, args });
 		}
@@ -67,6 +70,7 @@ namespace MoonSharp.Benchmarks
 			}).ToList() : new List<Workload>
 			{
 				new Workload { Name = "NewScript_Default", Iterations = 200, Prepare = b => () => b.NewScript() },
+				new Workload { Name = "NewScript_SoftSandbox", Iterations = 200, Prepare = b => () => b.NewScript(b.SoftSandbox) },
 				new Workload { Name = "CreateCoroutine", Iterations = 500, Prepare = b =>
 				{
 					object body = b.Run("return function() coroutine.yield(1) end");
@@ -83,6 +87,8 @@ namespace MoonSharp.Benchmarks
 				CallWorkload("SumLoop100K", Workloads.SumLoop, 100000, 10),
 				CallWorkload("TableInsertLookup1K", Workloads.TableWork, 1000, 200),
 				CallWorkload("Concat1K", Workloads.Concat, 1000, 40),
+				CallWorkload("StringFormat1K", Workloads.StringFormat, 1000, 100),
+				CallWorkload("StringFormatMix1K", Workloads.StringFormatMix, 1000, 50),
 			};
 
 			Console.WriteLine("A: {0}", Path.GetFullPath(args[0]));
@@ -156,6 +162,7 @@ namespace MoonSharp.Benchmarks
 				DoString = script.GetMethod("DoString", new[] { typeof(string), table, typeof(string) }),
 				Call = script.GetMethod("Call", new[] { dynValue, typeof(object[]) }),
 				CreateCoroutine = script.GetMethod("CreateCoroutine", new[] { dynValue }),
+				SoftSandbox = Enum.Parse(asm.GetType("MoonSharp.Interpreter.CoreModules", true), "Preset_SoftSandbox"),
 			};
 
 			b.Script = b.NewScript();

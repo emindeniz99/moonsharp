@@ -59,6 +59,14 @@ public final class InProcessMoonSharp implements MoonSharpHost {
     }
 
     @Override
+    public void create(String context, boolean int64) {
+        contexts.compute(context, (n, old) -> {
+            if (old != null) NativeBridge.contextDispose(old);
+            return newContext(int64 ? NativeBridge.CONTEXT_INT64 : 0);
+        });
+    }
+
+    @Override
     public HostResult load(String context, String moduleId, String source) {
         return call(context(context), NativeBridge.OP_LOAD, utf8(moduleId), utf8(source), null);
     }
@@ -108,11 +116,13 @@ public final class InProcessMoonSharp implements MoonSharpHost {
 
     /** The native id of a context, created on first use. Package-private for the benchmark. */
     long context(String name) {
-        return contexts.computeIfAbsent(name, n -> {
-            long id = NativeBridge.contextCreate();
-            if (id == 0) throw new IllegalStateException("MoonSharp could not create a script context");
-            return id;
-        });
+        return contexts.computeIfAbsent(name, n -> newContext(0));
+    }
+
+    private static long newContext(int options) {
+        long id = NativeBridge.contextCreate(options);
+        if (id == 0) throw new IllegalStateException("MoonSharp could not create a script context");
+        return id;
     }
 
     private static HostResult call(long context, int op, byte[] a, byte[] b, byte[] c) {

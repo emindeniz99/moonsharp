@@ -49,6 +49,11 @@ public final class MoonSharpWorker implements MoonSharpHost {
         return request(op("version", null)).value().asText();
     }
 
+    public void create(String context, boolean int64) {
+        HostResult r = request(op("create", context).put("int64", int64));
+        if (!r.ok()) throw new WorkerException("MoonSharp worker could not create context " + context + ": " + r.error(), null);
+    }
+
     public HostResult load(String context, String moduleId, String source) {
         return request(op("load", context).put("module", moduleId).put("source", source));
     }

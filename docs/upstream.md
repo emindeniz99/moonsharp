@@ -54,6 +54,9 @@ Bring upstream in with a merge commit; never rebase or force-push `master`.
 
 Planned work and open decisions: [ROADMAP.md](ROADMAP.md).
 
+Every open upstream issue and pull request, and what the fork does about it:
+[upstream-issues.md](upstream-issues.md).
+
 ## Upstream issues found here, not yet fixed
 
 - A `Script` keeps every chunk it compiles. Compiling repeatedly into one

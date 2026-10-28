@@ -27,7 +27,7 @@ stage_core_package() {
   "version": "$VERSION",
   "displayName": "MoonSharp",
   "description": "A Lua interpreter for Unity and .NET.",
-  "unity": "2020.3",
+  "unity": "2021.3",
   "author": {
     "name": "MoonSharp Contributors"
   },
@@ -82,7 +82,7 @@ stage_vscode_debugger_package() {
   "version": "$VERSION",
   "displayName": "MoonSharp VSCode Debugger",
   "description": "Optional VSCode debug server for MoonSharp.",
-  "unity": "2020.3",
+  "unity": "2021.3",
   "author": {
     "name": "MoonSharp Contributors"
   },

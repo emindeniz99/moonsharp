@@ -32,14 +32,20 @@ namespace MoonSharp.Hosting.Native
 		static readonly ConcurrentDictionary<long, ScriptHost> s_Contexts = new ConcurrentDictionary<long, ScriptHost>();
 		static long s_NextId;
 
-		/// <summary>Creates a script context and returns its id (never 0), or 0 if it could not be created.</summary>
+		/// <summary>Option bit for <see cref="ContextCreate"/>: the int64 and uint64 modules.</summary>
+		public const int ContextInt64 = 1;
+
+		/// <summary>
+		/// Creates a script context with the given options (<see cref="ContextInt64"/>, or 0) and returns its
+		/// id (never 0), or 0 if it could not be created.
+		/// </summary>
 		[UnmanagedCallersOnly(EntryPoint = "moonsharp_managed_context_create")]
-		public static long ContextCreate()
+		public static long ContextCreate(int options)
 		{
 			try
 			{
 				long id = Interlocked.Increment(ref s_NextId);
-				s_Contexts[id] = new ScriptHost();
+				s_Contexts[id] = ScriptHost.Create((options & ContextInt64) != 0);
 				return id;
 			}
 			catch

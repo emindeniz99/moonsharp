@@ -11,6 +11,22 @@
         <GenerateAssemblyProductAttribute>false</GenerateAssemblyProductAttribute>
     </PropertyGroup>
 
+    <!--
+        NativeAOT build of the unit suite, a cheap stand-in for IL2CPP (no run-time code generation,
+        only the generic instantiations the compiler saw, trimmed BCL):
+          dotnet publish -c Release -r linux-x64 -p:NativeAot=true src/TestRunners/DotNetCoreTestRunner
+        (NativeAot, not PublishAot: a global PublishAot also reaches the netstandard2.0 projects.)
+    -->
+    <PropertyGroup Condition="'$(NativeAot)' == 'true'">
+        <PublishAot>true</PublishAot>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(NativeAot)' == 'true'">
+        <!-- Tests are found by reflection. The interpreter is not rooted: it must survive trimming as an app gets it. -->
+        <TrimmerRootAssembly Include="MoonSharp.Interpreter.Tests" />
+        <TrimmerRootAssembly Include="nunit.framework" />
+    </ItemGroup>
+
     <ItemGroup>
         <ProjectReference Include="..\..\MoonSharp.Interpreter\MoonSharp.Interpreter.csproj" />
         <ProjectReference Include="..\..\MoonSharp.Interpreter.Tests\MoonSharp.Interpreter.Tests.csproj" />

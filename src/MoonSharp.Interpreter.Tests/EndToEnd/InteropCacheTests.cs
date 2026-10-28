@@ -54,6 +54,10 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void Interop_Cache_BaseRegisteredAfterDerivedPushIsSeen()
 		{
+			// Unregistering must take effect; test runners may install a policy that keeps old descriptors.
+			var oldPolicy = UserData.RegistrationPolicy;
+			UserData.RegistrationPolicy = InteropRegistrationPolicy.Default;
+
 			try
 			{
 				Assert.IsNull(UserData.GetDescriptorForType(typeof(CacheDerived), true));
@@ -74,6 +78,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			finally
 			{
 				UserData.UnregisterType<CacheBase>();
+				UserData.RegistrationPolicy = oldPolicy;
 			}
 		}
 

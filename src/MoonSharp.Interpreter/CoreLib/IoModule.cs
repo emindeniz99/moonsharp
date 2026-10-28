@@ -27,9 +27,9 @@ namespace MoonSharp.Interpreter.CoreLib
 			meta.Set("__index", __index);
 			ioTable.MetaTable = meta;
 
-			SetStandardFile(globalTable.OwnerScript, StandardFileType.StdIn, globalTable.OwnerScript.Options.Stdin);
-			SetStandardFile(globalTable.OwnerScript, StandardFileType.StdOut, globalTable.OwnerScript.Options.Stdout);
-			SetStandardFile(globalTable.OwnerScript, StandardFileType.StdErr, globalTable.OwnerScript.Options.Stderr);
+			SetStandardFile(globalTable.OwnerScript, StandardFileType.StdIn, GetOptionsStream(globalTable.OwnerScript, StandardFileType.StdIn));
+			SetStandardFile(globalTable.OwnerScript, StandardFileType.StdOut, GetOptionsStream(globalTable.OwnerScript, StandardFileType.StdOut));
+			SetStandardFile(globalTable.OwnerScript, StandardFileType.StdErr, GetOptionsStream(globalTable.OwnerScript, StandardFileType.StdErr));
 		}
 
 		private static DynValue __index_callback(ScriptExecutionContext executionContext, CallbackArguments args)
@@ -51,7 +51,27 @@ namespace MoonSharp.Interpreter.CoreLib
 			Table R = S.Registry;
 
 			DynValue ff = R.Get("853BEAAF298648839E2C99D005E1DF94_STD_" + file.ToString());
+
+			// The host may set Script.Options.Stdin/Stdout/Stderr after the script was created.
+			Stream optionsStream = GetOptionsStream(S, file);
+
+			if (optionsStream != null && !ff.CheckUserDataType<StandardIOFileUserDataBase>("getstandardfile").Wraps(optionsStream))
+			{
+				SetStandardFile(S, file, optionsStream);
+				ff = R.Get("853BEAAF298648839E2C99D005E1DF94_STD_" + file.ToString());
+			}
+
 			return ff;
+		}
+
+		private static Stream GetOptionsStream(Script S, StandardFileType file)
+		{
+			switch (file)
+			{
+				case StandardFileType.StdIn: return S.Options.Stdin;
+				case StandardFileType.StdOut: return S.Options.Stdout;
+				default: return S.Options.Stderr;
+			}
 		}
 
 		private static Stream GetPlatformStandardStream(StandardFileType file)

@@ -23,6 +23,9 @@ namespace MoonSharp.Benchmarks
 		public Script NewScript_Default() => new Script();
 
 		[Benchmark]
+		public Script NewScript_SoftSandbox() => new Script(CoreModules.Preset_SoftSandbox);
+
+		[Benchmark]
 		public Script NewScript_NoModules() => new Script(CoreModules.None);
 
 		[Benchmark]

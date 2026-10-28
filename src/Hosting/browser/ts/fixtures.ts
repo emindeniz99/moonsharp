@@ -1,5 +1,5 @@
 // Runs the shared fixture suites (src/Hosting/fixtures) with the same rules as the .NET and Java runners.
-import { MoonSharpRuntime, HostResult, ScriptContext } from "./moonsharp.js";
+import { MoonSharpRuntime, HostResult, ScriptContext, toJson } from "./moonsharp.js";
 
 export interface CaseReport { name: string; pass: boolean; detail: string | null }
 export interface SuiteReport { suite: string; cases: CaseReport[] }
@@ -8,17 +8,17 @@ interface Case {
   name: string; op?: string; module?: string; function?: string;
   args?: unknown[]; argsJson?: string; expect?: unknown;
   expectError?: { kind?: string; messageContains?: string; line?: number };
-  chunk?: string; source?: string; input?: unknown;
+  chunk?: string; source?: string; input?: unknown; inputJson?: string;
 }
 
 export async function runSuite(runtime: MoonSharpRuntime, suiteUrl: string): Promise<SuiteReport> {
   const suite = await (await fetch(suiteUrl)).json();
   const base = new URL(".", new URL(suiteUrl, location.href));
-  const context = runtime.createContext();
+  const context = runtime.createContext({ int64: suite.context?.int64 ?? false });
   const cases: CaseReport[] = [];
 
   try {
-    for (const [id, path] of Object.entries(suite.modules as Record<string, string>)) {
+    for (const [id, path] of Object.entries((suite.modules ?? {}) as Record<string, string>)) {
       const source = await (await fetch(new URL(path, base))).text();
       const loaded = context.load(id, source);
       if (!loaded.ok) cases.push({ name: `load ${id}`, pass: false, detail: JSON.stringify(loaded.error) });
@@ -42,7 +42,7 @@ function execute(context: ScriptContext, c: Case): HostResult {
     case "validate":
       return context.validate(c.chunk ?? c.name, c.source!);
     case "run":
-      return context.run(c.chunk ?? c.name, c.source!, c.input);
+      return context.runJson(c.chunk ?? c.name, c.source!, c.inputJson ?? (c.input === undefined ? null : toJson(c.input)));
     default:
       throw new Error(`unknown op ${c.op}`);
   }

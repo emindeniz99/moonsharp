@@ -6,4 +6,9 @@ class CoreClrFixtureConformanceTest extends FixtureConformanceTest {
     MoonSharpHost open() {
         return InProcessMoonSharp.coreClr(Fixtures.jniLibrary(), Fixtures.nativeAssembly(), null);
     }
+
+    @Override
+    String hostName() {
+        return "java-coreclr";
+    }
 }

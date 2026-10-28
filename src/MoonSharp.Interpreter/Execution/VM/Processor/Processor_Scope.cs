@@ -19,7 +19,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 					CloseUpvalues(basePointer + from);
 
 				for (int k = from; k <= to; k++)
-					m_ValueStack[basePointer + k] = null;
+					m_ValueStack[basePointer + k] = LuaValue.Undeclared;
 			}
 		}
 
@@ -38,9 +38,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 				case SymbolRefType.Global:
 					return GetGlobalSymbol(GetGenericSymbol(symref.i_Env), symref.i_Name);
 				case SymbolRefType.Local:
-					return m_ValueStack[m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex)).BasePointer + symref.i_Index];
+					return m_ValueStack[m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex)).BasePointer + symref.i_Index].ToDynValue();
 				case SymbolRefType.Upvalue:
-					return m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex)).Upvalues[symref.i_Index].Get();
+					return m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex)).Upvalues[symref.i_Index].Get().ToDynValue();
 				default:
 					throw new InternalErrorException("Unexpected {0} LRef at resolution: {1}", symref.i_Type, symref.i_Name);
 			}
@@ -73,13 +73,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 				case SymbolRefType.Local:
 					{
 						ref CallStackItem stackframe = ref m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex));
-						m_ValueStack[stackframe.BasePointer + symref.i_Index] = value.AsReadOnly();
+						m_ValueStack[stackframe.BasePointer + symref.i_Index] = value.ToLuaValue();
 					}
 					break;
 				case SymbolRefType.Upvalue:
 					{
 						ref CallStackItem stackframe = ref m_ExecutionStack.Peek(GetStackNonClrFunction(stackFrameIndex));
-						stackframe.Upvalues[symref.i_Index].Set(value.AsReadOnly());
+						stackframe.Upvalues[symref.i_Index].Set(value.ToLuaValue());
 					}
 					break;
 				case SymbolRefType.DefaultEnv:
@@ -136,7 +136,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 						{
 							var l = stackframe.Debug_Symbols[i];
 
-							if (l.i_Name == name && m_ValueStack[stackframe.BasePointer + i] != null)
+							if (l.i_Name == name && !m_ValueStack[stackframe.BasePointer + i].IsUndeclared)
 								return l;
 						}
 					}

@@ -1,5 +1,3 @@
-using MoonSharp.Interpreter.DataStructs;
-
 namespace MoonSharp.Interpreter.Execution.VM
 {
 	/// <summary>
@@ -16,9 +14,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 	{
 		static int s_IdCounter = 0;
 
-		FastStack<DynValue> m_Stack;
+		ValueStack m_Stack;
 		int m_Index;
-		DynValue m_Value;
+		LuaValue m_Value;
 		int m_Id;
 
 		/// <summary>
@@ -33,7 +31,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		/// <summary>
 		/// An open upvalue for the stack slot at <paramref name="index"/>.
 		/// </summary>
-		internal Upvalue(FastStack<DynValue> stack, int index)
+		internal Upvalue(ValueStack stack, int index)
 		{
 			m_Stack = stack;
 			m_Index = index;
@@ -42,7 +40,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		/// <summary>
 		/// A closed upvalue that holds <paramref name="value"/>.
 		/// </summary>
-		internal static Upvalue CreateClosed(DynValue value)
+		internal static Upvalue CreateClosed(LuaValue value)
 		{
 			return new Upvalue() { m_Value = value };
 		}
@@ -55,22 +53,22 @@ namespace MoonSharp.Interpreter.Execution.VM
 			get { return m_Index; }
 		}
 
-		internal DynValue Get()
+		internal LuaValue Get()
 		{
-			return m_Stack != null ? m_Stack[m_Index] : m_Value;
+			return m_Stack != null ? m_Stack.Items[m_Index] : m_Value;
 		}
 
-		internal void Set(DynValue value)
+		internal void Set(LuaValue value)
 		{
 			if (m_Stack != null)
-				m_Stack[m_Index] = value;
+				m_Stack.Items[m_Index] = value;
 			else
 				m_Value = value;
 		}
 
 		internal void Close()
 		{
-			m_Value = m_Stack[m_Index];
+			m_Value = m_Stack.Items[m_Index];
 			m_Stack = null;
 		}
 

@@ -70,9 +70,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 					int ip = Internal_ExecCall(a.Length, -1);
 
 					if (ip == YIELD_SPECIAL_TRAP)
-						retVal = m_ValueStack.Pop().ToScalar();
+						retVal = m_ValueStack.Pop().ToScalar().ToDynValue();
 					else if (ip < 0)
-						retVal = m_ValueStack.Pop();
+						retVal = m_ValueStack.Pop().ToDynValue();
 					else
 						retVal = Processing_Loop(ip);
 				}

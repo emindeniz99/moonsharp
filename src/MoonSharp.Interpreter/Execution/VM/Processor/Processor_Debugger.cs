@@ -339,7 +339,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				lwi.Add(new WatchItem()
 				{
 					Address = i,
-					Value = m_ValueStack.Peek(i)
+					Value = m_ValueStack.Peek(i).ToDynValue()
 				});
 			}
 
@@ -366,11 +366,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 				for (int i = 0; i < len; i++)
 				{
+					LuaValue v = m_ValueStack[frame.BasePointer + i];
+
 					locals.Add(new WatchItem()
 					{
 						IsError = false,
 						LValue = frame.Debug_Symbols[i],
-						Value = m_ValueStack[frame.BasePointer + i],
+						Value = v.IsUndeclared ? null : v.ToDynValue(),
 						Name = frame.Debug_Symbols[i].i_Name
 					});
 				}

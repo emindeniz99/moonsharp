@@ -113,6 +113,95 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
+		/// The VM's struct form of this value (see <see cref="Execution.VM.LuaValue"/>).
+		/// </summary>
+		internal Execution.VM.LuaValue ToLuaValue()
+		{
+			Execution.VM.LuaValue v;
+			v.Type = m_Type;
+			v.Number = m_Number;
+
+			if (m_Type == DataType.Tuple || m_Type == DataType.TailCallRequest || m_Type == DataType.YieldRequest)
+				v.Object = this;
+			else
+				v.Object = m_Object;
+
+			return v;
+		}
+
+		// Read-only instances for the integers -256..4095, the numbers scripts produce most (counters,
+		// indices, small arithmetic), so handing them out of the VM does not allocate. Jint caches its
+		// JsNumber values the same way:
+		// https://github.com/sebastienros/jint/blob/9ec2352c222dff6b7bff806d16b087cf0f1e6384/Jint/Native/JsNumber.cs#L21-L47
+		const int SMALL_INT_MIN = -256;
+		const int SMALL_INT_MAX = 4095;
+		static readonly DynValue[] s_SmallInts = CreateSmallInts();
+
+		static DynValue[] CreateSmallInts()
+		{
+			DynValue[] values = new DynValue[SMALL_INT_MAX - SMALL_INT_MIN + 1];
+
+			for (int i = 0; i < values.Length; i++)
+				values[i] = new DynValue() { m_Number = i + SMALL_INT_MIN, m_Type = DataType.Number, m_ReadOnly = true };
+
+			return values;
+		}
+
+		/// <summary>
+		/// A read-only number value, shared for small integers (not for -0, which must stay -0).
+		/// </summary>
+		internal static DynValue FromNumber(double num)
+		{
+			if (num >= SMALL_INT_MIN && num <= SMALL_INT_MAX)
+			{
+				int i = (int)num;
+
+				if (i == num && (i != 0 || BitConverter.DoubleToInt64Bits(num) == 0))
+					return s_SmallInts[i - SMALL_INT_MIN];
+			}
+
+			return new DynValue() { m_Number = num, m_Type = DataType.Number, m_ReadOnly = true };
+		}
+
+		/// <summary>
+		/// A read-only <see cref="DynValue"/> holding the VM value <paramref name="v"/>.
+		/// </summary>
+		internal static DynValue FromLuaValue(ref Execution.VM.LuaValue v)
+		{
+			switch (v.Type)
+			{
+				case DataType.Nil:
+					return Nil;
+				case DataType.Void:
+					return Void;
+				case DataType.Boolean:
+					return v.Number != 0 ? True : False;
+				case DataType.Number:
+					return FromNumber(v.Number);
+				case DataType.Tuple:
+				case DataType.TailCallRequest:
+				case DataType.YieldRequest:
+					{
+						DynValue d = v.Object as DynValue;
+
+						if (d != null)
+							return d;
+
+						// The generic for's iterator state.
+						Execution.VM.LuaValue[] values = (Execution.VM.LuaValue[])v.Object;
+						DynValue[] tuple = new DynValue[values.Length];
+
+						for (int i = 0; i < values.Length; i++)
+							tuple[i] = values[i].ToDynValue();
+
+						return new DynValue() { m_Object = tuple, m_Type = DataType.Tuple, m_ReadOnly = true };
+					}
+				default:
+					return new DynValue() { m_Object = v.Object, m_Type = v.Type, m_ReadOnly = true };
+			}
+		}
+
+		/// <summary>
 		/// Creates a new writable value initialized to the specified number.
 		/// </summary>
 		public static DynValue NewNumber(double num)

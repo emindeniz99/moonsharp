@@ -70,7 +70,7 @@ namespace MoonSharp.Interpreter
 			List<Upvalue> upvalues = new List<Upvalue>();
 
 			foreach (DynValue v in resolvedLocals)
-				upvalues.Add(Upvalue.CreateClosed(v.AsReadOnly()));
+				upvalues.Add(Upvalue.CreateClosed(v.ToLuaValue()));
 
 			Upvalues = upvalues.Count > 0 ? upvalues.ToArray() : s_NoUpvalues;
 			m_UpvalueSymbols = symbols.Length > 0 ? symbols : s_NoSymbols;
@@ -160,14 +160,14 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
-		/// Gets the value of an upvalue. The value is read-only; to change the variable, use
+		/// Gets the value of an upvalue, as a read-only copy; to change the variable, use
 		/// <see cref="SetUpvalue"/>.
 		/// </summary>
 		/// <param name="idx">The index of the upvalue.</param>
 		/// <returns>The value of an upvalue </returns>
 		public DynValue GetUpvalue(int idx)
 		{
-			return Upvalues[idx].Get();
+			return Upvalues[idx].Get().ToDynValue();
 		}
 
 		/// <summary>
@@ -178,7 +178,7 @@ namespace MoonSharp.Interpreter
 		/// <param name="value">The new value.</param>
 		public void SetUpvalue(int idx, DynValue value)
 		{
-			Upvalues[idx].Set(value.AsReadOnly());
+			Upvalues[idx].Set(value.ToLuaValue());
 		}
 
 		/// <summary>

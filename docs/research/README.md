@@ -16,4 +16,5 @@ note; they are not part of this repository.
 | [puerts-quickjs.md](puerts-quickjs.md) | Binding and interpreter techniques from PuerTS and QuickJS |
 | [moonsharp-profile.md](moonsharp-profile.md) | Where MoonSharp spends time and allocations |
 | [table-order.md](table-order.md) | Table array part and `pairs` order, measured |
+| [register-vm-spike.md](register-vm-spike.md) | Register VM prototype (branch `spike/register-vm`): gain over fusion and Lua-CSharp, coverage, what a rewrite needs |
 | [landscape/LANDSCAPE.md](landscape/LANDSCAPE.md) | Every way to run server-delivered logic on Unity, browsers and the JVM, compared |

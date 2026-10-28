@@ -133,5 +133,23 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual(true, r.Tuple[0].Boolean);
 			Assert.IsTrue(r.Tuple[1].IsNil());
 		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/173 (upstream PR): debug.getmetatable
+		// threw NullReferenceException for any value without a metatable, so a debugging or
+		// serialization helper could not even ask whether a value has one.
+		[Test]
+		public void Issue173_DebugGetmetatableReturnsNilWithoutMetatable()
+		{
+			Script s = new Script(CoreModules.Preset_Complete);
+
+			DynValue r = s.DoString(@"
+				local mt = {}
+				return debug.getmetatable({}) == nil, debug.getmetatable(1) == nil,
+					debug.getmetatable(setmetatable({}, mt)) == mt");
+
+			Assert.AreEqual(true, r.Tuple[0].Boolean);
+			Assert.AreEqual(true, r.Tuple[1].Boolean);
+			Assert.AreEqual(true, r.Tuple[2].Boolean);
+		}
 	}
 }

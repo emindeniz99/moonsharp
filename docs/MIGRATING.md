@@ -167,3 +167,12 @@ A `CallbackFunction` whose function returned `null` instead of a
 receive `nil`. Affected: hosts that relied on the exception to detect
 such callbacks
 ([upstream #307](https://github.com/moonsharp-devs/moonsharp/issues/307)).
+
+## `debug.getmetatable` returns nil for values without a metatable
+
+For a table without a metatable, or a type without a type metatable,
+`debug.getmetatable` returned a table value wrapping nothing: it was not
+`nil`, and using it threw `NullReferenceException`. It now returns `nil`,
+as `getmetatable` and Lua do. Affected: scripts that used the debug
+library to inspect metatables
+([upstream PR #173](https://github.com/moonsharp-devs/moonsharp/pull/173)).

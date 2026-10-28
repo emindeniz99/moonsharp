@@ -1,4 +1,5 @@
 using System;
+using System.Linq.Expressions;
 using NUnit.Framework;
 
 namespace MoonSharp.Interpreter.Tests.EndToEnd
@@ -101,6 +102,21 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			s.Globals["cmd"] = new LegacyCommand();
 
 			Assert.AreEqual(10.0, s.DoString("return cmd.Timeout").Number);
+		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/291: a delegate compiled from an
+		// expression tree has a method without a declaring type, and passing it to a script threw
+		// NullReferenceException. Hosts build such delegates for rules and generated accessors.
+		[Test]
+		public void Issue291_CompiledExpressionDelegateIsCallable()
+		{
+			ParameterExpression x = Expression.Parameter(typeof(int), "x");
+			Func<int, int> twice = Expression.Lambda<Func<int, int>>(Expression.Multiply(x, Expression.Constant(2)), x).Compile();
+
+			Script s = new Script();
+			s.Globals["twice"] = twice;
+
+			Assert.AreEqual(42.0, s.DoString("return twice(21)").Number);
 		}
 	}
 }

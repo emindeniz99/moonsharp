@@ -98,6 +98,12 @@ namespace MoonSharp.Interpreter
 			if (accessMode == InteropAccessMode.Default)
 				accessMode = m_DefaultAccessMode;
 
+			// A delegate compiled at run time (an expression tree, a DynamicMethod) points to a method
+			// with no declaring type, which reflection cannot describe; call it through the
+			// delegate's own Invoke method instead.
+			if (del.Method.DeclaringType == null)
+				return GetMethodDescriptor(del.GetType().GetMethod("Invoke"), accessMode).GetCallbackFunction(script, del);
+
 			MethodMemberDescriptor descr = GetMethodDescriptor(del.Method, accessMode);
 			return descr.GetCallbackFunction(script, del.Target);
 		}

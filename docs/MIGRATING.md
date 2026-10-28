@@ -150,3 +150,12 @@ added". The type now registers and scripts see the member that C# code
 sees through that type: the most derived visible one. Affected: hosts
 that worked around the exception with wrapper types
 ([upstream #286](https://github.com/moonsharp-devs/moonsharp/issues/286)).
+
+## Delegates compiled at run time can be passed to scripts
+
+A delegate built with `Expression.Compile()` or a `DynamicMethod` threw
+`NullReferenceException` when converted for a script, because its method
+has no declaring type. Such delegates are now called through their
+`Invoke` method. Affected: hosts that wrapped them in a lambda to work
+around the exception
+([upstream #291](https://github.com/moonsharp-devs/moonsharp/issues/291)).

@@ -266,3 +266,19 @@ it exited 1 on any failure and printed `pass` or `FAIL`.
 converter. `SetScriptToClrCustomConversion` throws `ArgumentException` for
 them instead of `IndexOutOfRangeException`. Affected: code that looped over
 every `DataType`.
+
+## Numbers print the same text on every runtime
+
+`tostring`, concatenation (`..`), `string.format('%s')`, JSON output and conversions to CLR strings now
+share one formatter: the fewest significant digits that read back as the same number, in the invariant
+culture.
+
+- On Mono and Unity (Mono and IL2CPP), numbers that need more than 15 digits used to lose digits:
+  `2^53` printed `9.00719925474099E+15`. It now prints `9007199254740992`, as on .NET.
+- Concatenation and `%s` used the process culture: `1.5 .. ''` gave `1,5` under a decimal-comma culture.
+  They now always give `1.5`.
+- Negative zero prints `-0` everywhere (Mono printed `0`).
+- On .NET, a few values of `1E+16` and above with 16 significant digits change layout:
+  `75987868744874290` now prints `7.598786874487429E+16`. The digits are the same.
+
+Who is affected: scripts and hosts that compare printed numbers as text, mostly on Unity.

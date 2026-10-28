@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Globalization;
 using MoonSharp.Interpreter.Compatibility;
 
 namespace MoonSharp.Interpreter.Interop.Converters
@@ -157,7 +156,7 @@ namespace MoonSharp.Interpreter.Interop.Converters
 						break;
 					}
 					if (stringSubType != StringConversions.StringSubtype.None)
-						str = value.Number.ToString(CultureInfo.InvariantCulture);
+						str = NumberFormatting.ToShortestString(value.Number);
 					break;
 				case DataType.String:
 					if (stringSubType != StringConversions.StringSubtype.None)

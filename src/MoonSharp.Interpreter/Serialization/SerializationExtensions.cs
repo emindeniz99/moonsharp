@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -88,7 +87,7 @@ namespace MoonSharp.Interpreter.Serialization
 			else if (dynValue.Type == DataType.Tuple)
 				return (dynValue.Tuple.Any() ? SerializeValue(dynValue.Tuple[0], tabs) : "nil");
 			else if (dynValue.Type == DataType.Number)
-				return dynValue.Number.ToString("r", CultureInfo.InvariantCulture);
+				return NumberFormatting.ToShortestString(dynValue.Number);
 			else if (dynValue.Type == DataType.Boolean)
 				return dynValue.Boolean ? "true" : "false";
 			else if (dynValue.Type == DataType.String)

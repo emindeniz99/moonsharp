@@ -205,6 +205,14 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
+		public void AllocationBudget_ReturnVarArgs()
+		{
+			// return ... with one value returns it as it is (184 bytes before: the '...' tuple, and a DynValue
+			// for the value once it lived on the stack).
+			AssertLuaBudget("return_varargs", "local function e(...) return ... end\nreturn function(n) local s = 0 for i = 1, n do s = s + e(i) end return s end", NoAllocation);
+		}
+
+		[Test]
 		public void AllocationBudget_CoroutineSwitch()
 		{
 			// Each coroutine reuses its yield request, a resume with no values pushes nil without a DynValue,

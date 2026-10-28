@@ -1434,9 +1434,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 			{
 				var retval = m_ValueStack.Pop();
 
-				// return ...: the values live in this frame.
+				// return ...: the values live in this frame. One value is returned as it is; none or several
+				// as the DynValue the '...' local used to hold.
 				if (retval.Type == DataType.Tuple && retval.Object is ValueStack)
-					retval = retval.ToDynValue().ToLuaValue();
+				{
+					retval = ValueStack.VarArgsCount(ref retval) == 1
+						? m_ValueStack.Items[ValueStack.VarArgsStart(ref retval)]
+						: retval.ToDynValue().ToLuaValue();
+				}
 
 				retpoint = PopScriptFrame(out handlers);
 				m_ValueStack.Push(retval);

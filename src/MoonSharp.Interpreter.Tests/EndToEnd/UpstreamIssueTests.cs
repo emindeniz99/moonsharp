@@ -394,7 +394,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		// https://github.com/moonsharp-devs/moonsharp/issues/308 (upstream PR #355): the error of a
 		// multi-key Table.Get showed the template "Key '{0}' ..." instead of the key.
 		[Test]
-		[Ignore("waits for table work (Table.cs): https://github.com/moonsharp-devs/moonsharp/issues/308")]
 		public void Issue308_MultiKeyGetNamesTheMissingKey()
 		{
 			Script s = new Script();

@@ -20,8 +20,8 @@ again; planned work goes in [ROADMAP.md](ROADMAP.md), and fork-only changes in
 
 | Status | Issues | Pull requests |
 |---|---|---|
-| fixed in the fork | 15 | 5 |
-| reproduces, waits for other work | 11 | 4 |
+| fixed in the fork | 16 | 6 |
+| reproduces, waits for other work | 10 | 3 |
 | needs the owner | 5 | 2 |
 | does not reproduce | 16 | 3 |
 | question, answered | 8 | 0 |
@@ -73,7 +73,7 @@ keys 1..n (`77c8662`).
 | [#313](https://github.com/moonsharp-devs/moonsharp/issues/313) | Watch Item Location | bug | does not reproduce | `ScriptRuntimeException.CallStack` has a location for every frame of the issue's script |
 | [#312](https://github.com/moonsharp-devs/moonsharp/issues/312) | Feature Request: Increased Error Data | feature | feature: planned | `InterpreterException.CallStack` already gives the frames and locations; naming the variable in runtime errors is on the roadmap |
 | [#310](https://github.com/moonsharp-devs/moonsharp/issues/310) | Can we make a C# method that "Yield requests" but also returns a value to lua? | question | answered | Works: a callback returns `DynValue.NewYieldReq(...)`, and the values passed to the next `Resume` become the call's results (checked on this branch). Not in our docs |
-| [#308](https://github.com/moonsharp-devs/moonsharp/issues/308) | ScriptRuntimeException thrown from Table.ResolveMultipleKeys has incorrectly formatted error message | bug | waits: table | Reproduces (`Key '{0}' did not point to anything`). Ignored test `UpstreamIssueTests.Issue308_MultiKeyGetNamesTheMissingKey`; upstream [PR #355](https://github.com/moonsharp-devs/moonsharp/pull/355) |
+| [#308](https://github.com/moonsharp-devs/moonsharp/issues/308) | ScriptRuntimeException thrown from Table.ResolveMultipleKeys has incorrectly formatted error message | bug | fixed | Branch `perf/table-array-part`: the message names the key; `Issue308_MultiKeyGetNamesTheMissingKey`; upstream [PR #355](https://github.com/moonsharp-devs/moonsharp/pull/355) |
 | [#307](https://github.com/moonsharp-devs/moonsharp/issues/307) | Returning null from callback invoked in CallbackFunction causes NullReferenceException | bug | fixed | `5cf4dfb`; `Issue307_CallbackReturningNullGivesNil` |
 | [#306](https://github.com/moonsharp-devs/moonsharp/issues/306) | Support table constructor/object initializer on created CLR objects | feature | feature: not planned | No roadmap item; `PropertyTableAssigner` already does this for host-side configuration |
 | [#305](https://github.com/moonsharp-devs/moonsharp/issues/305) | Cache issue Userdata.ExtensionType? | bug | fixed | `099a347` (same cause as #102) |
@@ -159,7 +159,7 @@ keys 1..n (`77c8662`).
 
 | Pull request | Title | Type | Status in the fork | Evidence |
 |---|---|---|---|---|
-| [#355](https://github.com/moonsharp-devs/moonsharp/pull/355) | Format the key in Table.ResolveMultipleKeys error messages | bug | waits: table | Same as #308 |
+| [#355](https://github.com/moonsharp-devs/moonsharp/pull/355) | Format the key in Table.ResolveMultipleKeys error messages | bug | fixed | Same as #308 |
 | [#354](https://github.com/moonsharp-devs/moonsharp/pull/354) | Treat a null return from a CLR callback as nil | bug | fixed | `5cf4dfb` (same change) |
 | [#347](https://github.com/moonsharp-devs/moonsharp/pull/347) | Fix debug server launch configuration | docs | out of scope | Same as #297 |
 | [#344](https://github.com/moonsharp-devs/moonsharp/pull/344) | Map generic c# functions of registered types to lua functions | feature | feature: not planned | See [upstream.md](upstream.md); maintainers prefer explicit wrappers |

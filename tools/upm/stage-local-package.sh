@@ -17,6 +17,10 @@ stage_core_package() {
 
   upm_rsync_filtered "$CORE_SRC_DIR" "$CORE_OUT_DIR/Runtime"
 
+  # The trimming descriptor embedded in the .NET assembly doubles as Unity's link.xml, so
+  # IL2CPP stripping keeps the reflection-registered standard library (one file, no drift).
+  cp "$CORE_SRC_DIR/ILLink.Descriptors.xml" "$CORE_OUT_DIR/Runtime/link.xml"
+
   cat > "$CORE_OUT_DIR/package.json" <<JSON
 {
   "name": "org.moonsharp.moonsharp",

@@ -162,6 +162,7 @@ public class TestRunnerBehaviour : MonoBehaviour
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.DynamicTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.ErrorHandlingTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.GotoTests),
+            typeof(MoonSharp.Interpreter.Tests.EndToEnd.IoTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.JsonSerializationTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.LuaTestSuiteExtract),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.MetatableTests),

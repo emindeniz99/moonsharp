@@ -194,6 +194,31 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.True(JsonEmptyArray.IsJsonEmptyArray(v));
 		}
 
+		// German and Turkish use a decimal comma. JSON must not.
+		[Test]
+		public void JsonSerialize_NumbersIgnoreCulture()
+		{
+			foreach (string culture in new[] { "de-DE", "tr-TR", "fr-FR" })
+			{
+				string json = Utils.WithCulture(culture, () =>
+					new Script(CoreModules.Json).DoString("return json.serialize({ x = 1.5 })").String);
 
+				Assert.AreEqual("{\"x\":1.5}", json, culture);
+			}
+		}
+
+		[Test]
+		public void TableSerialize_NumbersIgnoreCulture()
+		{
+			string lua = Utils.WithCulture("de-DE", () =>
+			{
+				var t = new Table(null);
+				t.Set("x", DynValue.NewNumber(2.25));
+				return MoonSharp.Interpreter.Serialization.SerializationExtensions.Serialize(t);
+			});
+
+			StringAssert.Contains("2.25", lua);
+			StringAssert.DoesNotContain("2,25", lua);
+		}
 	}
 }

@@ -214,10 +214,11 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual(1.0, S.Call(S.Globals.Get("require"), "counter").Table.Get("n").Number);
 		}
 
-		// Recorded from the Lua require before it became lazy.
+		// Recorded from the Lua require before it became lazy; the first one since then in Lua 5.2's form, listing
+		// what require tried (see RequireTests).
 		static readonly string[] RequireErrors =
 		{
-			"libfunc_require:(12,1-44): module 'missing' not found",
+			"module 'missing' not found:\n\tno field package.preload['missing']\n\tno file 'missing'",
 			"failing:(1,5-36): module failing failed",
 		};
 

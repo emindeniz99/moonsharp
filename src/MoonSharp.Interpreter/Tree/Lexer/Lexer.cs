@@ -13,6 +13,7 @@ namespace MoonSharp.Interpreter.Tree
 		int m_Col = 0;
 		int m_SourceId;
 		bool m_AutoSkipComments = false;
+		bool m_LongBrackets = true;
 
 		public Lexer(int sourceID, string scriptContent, bool autoSkipComments)
 		{
@@ -24,6 +25,14 @@ namespace MoonSharp.Interpreter.Tree
 				m_Code = m_Code.Substring(1);
 
 			m_AutoSkipComments = autoSkipComments;
+		}
+
+		/// <summary>
+		/// A lexer for JSON, where "[[" opens two arrays instead of a Lua long string.
+		/// </summary>
+		internal static Lexer ForJson(string json)
+		{
+			return new Lexer(0, json, false) { m_LongBrackets = false };
 		}
 
 		public Token Current
@@ -213,7 +222,7 @@ namespace MoonSharp.Interpreter.Tree
 				case '[':
 					{
 						char next = CursorCharNext();
-						if (next == '=' || next == '[')
+						if (m_LongBrackets && (next == '=' || next == '['))
 						{
 							string str = ReadLongString(fromLine, fromCol, null, "string");
 							return CreateToken(TokenType.String_Long, fromLine, fromCol, str);

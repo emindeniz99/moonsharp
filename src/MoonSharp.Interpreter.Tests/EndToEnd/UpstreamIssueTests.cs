@@ -151,5 +151,24 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual(true, r.Tuple[1].Boolean);
 			Assert.AreEqual(true, r.Tuple[2].Boolean);
 		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/219 (also #257): json.parse read "[["
+		// as the start of a Lua long string, so valid JSON with nested arrays (matrices, rows of
+		// a table) failed with "Unexpected token".
+		[Test]
+		public void Issue219_JsonParsesNestedArrays()
+		{
+			Script s = new Script();
+
+			DynValue r = s.DoString(@"
+				local m = json.parse('[[1,2],[3,4]]')
+				local o = json.parse('{""rows"":[[""a"",""b""],[""c"",""d""]]}')
+				local deep = json.parse('[[[5]]]')
+				return m[2][1] + m[1][2], o.rows[2][2], deep[1][1][1]");
+
+			Assert.AreEqual(5.0, r.Tuple[0].Number);
+			Assert.AreEqual("d", r.Tuple[1].String);
+			Assert.AreEqual(5.0, r.Tuple[2].Number);
+		}
 	}
 }

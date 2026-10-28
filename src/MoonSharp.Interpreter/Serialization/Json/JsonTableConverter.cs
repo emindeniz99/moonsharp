@@ -165,7 +165,7 @@ namespace MoonSharp.Interpreter.Serialization.Json
 		/// <returns>A table containing the representation of the given json.</returns>
 		public static DynValue ParseString(string json, Script script, bool emptyArrays, JsonBigIntegerMode bigIntegers)
 		{
-			Lexer L = new Lexer(0, json, false);
+			Lexer L = Lexer.ForJson(json);
 
 			if (L.Current.Type == TokenType.Brk_Open_Curly)
 				return ParseJsonObject(L, script, emptyArrays, bigIntegers);

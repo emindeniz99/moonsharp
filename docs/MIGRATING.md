@@ -176,3 +176,11 @@ For a table without a metatable, or a type without a type metatable,
 as `getmetatable` and Lua do. Affected: scripts that used the debug
 library to inspect metatables
 ([upstream PR #173](https://github.com/moonsharp-devs/moonsharp/pull/173)).
+
+## `json.parse` reads nested arrays
+
+`json.parse` used the Lua lexer, which reads `[[` as the start of a long
+string, so JSON such as `[[1,2],[3,4]]` failed with "Unexpected token".
+It now reads `[[` as two array openings. Affected: hosts that inserted
+spaces between brackets as a workaround
+([upstream #219](https://github.com/moonsharp-devs/moonsharp/issues/219)).

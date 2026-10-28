@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+      Roslyn source generator that writes MoonSharp userdata descriptors at compile time
+      (docs/source-generator.md). It references Microsoft.CodeAnalysis 3.8, the version the
+      Unity 2021.3 and 2022.3 manuals require; a generator built against a newer compiler does
+      not load in an older one, while this one loads in every newer compiler (Unity 6, the
+      .NET SDK). Hence ISourceGenerator: IIncrementalGenerator does not exist in 3.8.
+    -->
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <LangVersion>9.0</LangVersion>
+        <IsRoslynComponent>true</IsRoslynComponent>
+        <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+        <IsPackable>false</IsPackable>
+        <Deterministic>true</Deterministic>
+        <!-- The compiler that loads the generator provides Microsoft.CodeAnalysis. -->
+        <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+        <!-- RS2008: analyzer release tracking; the diagnostic ids are listed in docs/source-generator.md. -->
+        <NoWarn>$(NoWarn);RS2008</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="[3.8.0]" PrivateAssets="all" />
+    </ItemGroup>
+
+</Project>

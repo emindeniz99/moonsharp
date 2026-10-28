@@ -283,5 +283,20 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual("c", r.Tuple[3].String);
 			Assert.AreEqual("[1,2]", r.Tuple[4].String);
 		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/161: io.write to the standard output
+		// stayed in a StreamWriter buffer until io.flush. C flushes stdout when the process exits;
+		// a .NET writer is never flushed for the script, so output was lost or showed up late.
+		[Test]
+		public void Issue161_StandardOutputIsWrittenWithoutFlush()
+		{
+			Script s = new Script(CoreModules.Preset_Complete);
+			MemoryStream output = new MemoryStream();
+			s.Options.Stdout = output;
+
+			s.DoString("io.write('progress ', 50, '%')");
+
+			Assert.AreEqual("progress 50%", Encoding.UTF8.GetString(output.ToArray()));
+		}
 	}
 }

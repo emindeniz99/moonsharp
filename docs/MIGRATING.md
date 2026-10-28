@@ -368,3 +368,14 @@ whose keys are exactly 1..n is still an array, and a table with only
 integer keys that are not 1..n (`{ [3] = "c" }`) is now an object
 instead of `{}`. Affected: scripts that relied on the dropped keys being
 left out.
+
+## `io.write` to the standard streams is not buffered
+
+`io.write` and `io.stdout:write` kept text in a `StreamWriter` buffer
+until `io.flush()`. Nothing flushed it when a script finished, so output
+appeared late or never (each `Script` has its own writer). The standard
+output and error files now write through. A script that writes much
+small output can ask for buffering with `io.stdout:setvbuf("full")` and
+flush itself. Affected: hosts that read the output stream and saw
+partial text before
+([upstream #161](https://github.com/moonsharp-devs/moonsharp/issues/161)).

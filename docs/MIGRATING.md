@@ -1061,3 +1061,14 @@ A metamethod's result is one value: nil when it returns nothing.
 
 **Affected:** scripts with metamethod recursion deeper than 200 levels, which
 Lua 5.2 rejects too.
+
+## Stack overflow as a chunk starts has a position
+
+**Before:** an error in the instructions a chunk starts with, the value stack
+overflowing when a module's chunk starts during a cyclic `require`, was
+reported as `bytecode:<n>: stack overflow`.
+
+**After:** it is reported at the chunk's first statement
+(`mod:(1,0-19): stack overflow`).
+
+**Affected:** nobody, unless a host parsed the `bytecode:` text.

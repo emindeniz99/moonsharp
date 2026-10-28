@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using MoonSharp.Interpreter.Compatibility;
 using MoonSharp.Interpreter.Interop.BasicDescriptors;
@@ -23,10 +24,11 @@ namespace MoonSharp.Interpreter.Interop
 		/// </summary>
 		public bool IsFlags { get; private set; }
 
+		// Read-only values of the named members, by boxed value, filled once by the constructor.
+		readonly Dictionary<object, DynValue> m_NamedValues = new Dictionary<object, DynValue>();
+
 		Func<object, ulong> m_EnumToULong = null;
-		Func<ulong, object> m_ULongToEnum = null;
 		Func<object, long> m_EnumToLong = null;
-		Func<long, object> m_LongToEnum = null;
 
 		/// <summary>
 		/// Initializes a new instance of the <see cref="StandardEnumUserDataDescriptor"/> class.
@@ -63,6 +65,10 @@ namespace MoonSharp.Interpreter.Interop
 				DynValue cvalue = UserData.Create(value, this);
 
 				base.AddDynValue(name, cvalue);
+
+				// Several names can share a value; the first one wins.
+				if (value != null && !m_NamedValues.ContainsKey(value))
+					m_NamedValues.Add(value, cvalue.AsReadOnly());
 			}
 
 			var attrs = Framework.Do.GetCustomAttributes(this.Type, typeof(FlagsAttribute), true);
@@ -81,6 +87,16 @@ namespace MoonSharp.Interpreter.Interop
 		}
 
 
+
+		/// <summary>
+		/// The read-only value of a named member equal to obj, or null. It shares its UserData with
+		/// the member, as reading the member from a script does.
+		/// </summary>
+		internal DynValue FindNamedValue(object obj)
+		{
+			DynValue v;
+			return m_NamedValues.TryGetValue(obj, out v) ? v : null;
+		}
 
 		/// <summary>
 		/// Adds an enum method to the object
@@ -134,8 +150,7 @@ namespace MoonSharp.Interpreter.Interop
 		/// </summary>
 		private DynValue CreateValueSigned(long value)
 		{
-			CreateSignedConversionFunctions();
-			return UserData.Create(m_LongToEnum(value), this);
+			return CreateValue(Enum.ToObject(Type, value));
 		}
 
 		/// <summary>
@@ -143,8 +158,13 @@ namespace MoonSharp.Interpreter.Interop
 		/// </summary>
 		private DynValue CreateValueUnsigned(ulong value)
 		{
-			CreateUnsignedConversionFunctions();
-			return UserData.Create(m_ULongToEnum(value), this);
+			return CreateValue(Enum.ToObject(Type, value));
+		}
+
+		// Results are values of the enum type, so they print, compare and convert like the members.
+		private DynValue CreateValue(object enumValue)
+		{
+			return FindNamedValue(enumValue) ?? UserData.Create(enumValue, this);
 		}
 
 		/// <summary>
@@ -152,27 +172,23 @@ namespace MoonSharp.Interpreter.Interop
 		/// </summary>
 		private void CreateSignedConversionFunctions()
 		{
-			if (m_EnumToLong == null || m_LongToEnum == null)
+			if (m_EnumToLong == null)
 			{
 				if (UnderlyingType == typeof(sbyte))
 				{
 					m_EnumToLong = o => (long)((sbyte)o);
-					m_LongToEnum = o => (sbyte)(o);
 				}
 				else if (UnderlyingType == typeof(short))
 				{
 					m_EnumToLong = o => (long)((short)o);
-					m_LongToEnum = o => (short)(o);
 				}
 				else if (UnderlyingType == typeof(int))
 				{
 					m_EnumToLong = o => (long)((int)o);
-					m_LongToEnum = o => (int)(o);
 				}
 				else if (UnderlyingType == typeof(long))
 				{
 					m_EnumToLong = o => (long)(o);
-					m_LongToEnum = o => (long)(o);
 				}
 				else throw new ScriptRuntimeException("Unexpected enum underlying type : {0}", UnderlyingType.FullName);
 			}
@@ -183,27 +199,23 @@ namespace MoonSharp.Interpreter.Interop
 		/// </summary>
 		private void CreateUnsignedConversionFunctions()
 		{
-			if (m_EnumToULong == null || m_ULongToEnum == null)
+			if (m_EnumToULong == null)
 			{
 				if (UnderlyingType == typeof(byte))
 				{
 					m_EnumToULong = o => (ulong)((byte)o);
-					m_ULongToEnum = o => (byte)(o);
 				}
 				else if (UnderlyingType == typeof(ushort))
 				{
 					m_EnumToULong = o => (ulong)((ushort)o);
-					m_ULongToEnum = o => (ushort)(o);
 				}
 				else if (UnderlyingType == typeof(uint))
 				{
 					m_EnumToULong = o => (ulong)((uint)o);
-					m_ULongToEnum = o => (uint)(o);
 				}
 				else if (UnderlyingType == typeof(ulong))
 				{
 					m_EnumToULong = o => (ulong)(o);
-					m_ULongToEnum = o => (ulong)(o);
 				}
 				else throw new ScriptRuntimeException("Unexpected enum underlying type : {0}", UnderlyingType.FullName);
 			}

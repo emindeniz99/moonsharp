@@ -238,7 +238,11 @@ namespace MoonSharp.Interpreter.Interop
 			{
 				var ep = Expression.Parameter(typeof(object[]), "pars");
 				var objinst = Expression.Parameter(typeof(object), "instance");
-				var inst = Expression.Convert(objinst, MethodInfo.DeclaringType);
+				// A struct receiver is used in place inside its box (Unbox, not Convert, which would copy
+				// it), so a mutating method changes the userdata as it does under reflection.
+				var inst = Framework.Do.IsValueType(MethodInfo.DeclaringType)
+					? Expression.Unbox(objinst, MethodInfo.DeclaringType)
+					: Expression.Convert(objinst, MethodInfo.DeclaringType);
 
 				Expression[] args = new Expression[parameters.Length];
 

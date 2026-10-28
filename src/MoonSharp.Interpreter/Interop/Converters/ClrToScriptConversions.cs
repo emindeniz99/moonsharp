@@ -117,10 +117,13 @@ namespace MoonSharp.Interpreter.Interop.Converters
 				return ((LuaUInt64)obj).ToDynValue();
 
 			// Lists and dictionaries convert to tables below, also under automatic registration, unless
-			// a registered type covers them (upstream #274).
-			if (obj is System.Collections.IList || obj is System.Collections.IDictionary)
+			// a registered type covers them (upstream #274). The policy is asked first: the interface
+			// checks cost more than its answer, and only an auto-registering policy needs them.
+			Type objType = obj.GetType();
+			if (TypeDescriptorRegistry.RegistrationPolicy.AllowTypeAutoRegistration(objType)
+				&& (obj is System.Collections.IList || obj is System.Collections.IDictionary))
 			{
-				IUserDataDescriptor descriptor = TypeDescriptorRegistry.GetDescriptorForType(obj.GetType(), true, allowAutoRegistration: false);
+				IUserDataDescriptor descriptor = TypeDescriptorRegistry.GetDescriptorForType(objType, true, allowAutoRegistration: false);
 				if (descriptor != null) return UserData.Create(obj, descriptor);
 			}
 			else

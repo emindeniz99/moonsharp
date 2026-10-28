@@ -1044,3 +1044,20 @@ is the error "'tostring' must return a string".
 strings, numbers and nil. `Script.Call(pcall, ...)` from C# still hands
 the host the tail call request when the called function has a continuation
 (docs/ROADMAP.md).
+
+## Metamethods nest 200 levels deep and return one value
+
+**Before:** a metamethod written in Lua that triggers itself, such as
+`__index = function(t, k) return t[k] end`, ran forever: once 65,536 frames
+were on the stack, the tail call optimisation reused them. A metamethod's
+results were not adjusted, so `select('#', t.x)` was 0 when `__index`
+returned nothing and 2 when it returned two values.
+
+**After:** as in Lua 5.2, metamethod calls (`__index`, `__newindex`,
+arithmetic, comparison, `__concat`, `__len`, `__unm`) nested 200 deep raise
+"C stack overflow" at the expression that triggered the last one; `pcall`
+catches it and the `Script` stays usable. `__call` is not counted, as in Lua.
+A metamethod's result is one value: nil when it returns nothing.
+
+**Affected:** scripts with metamethod recursion deeper than 200 levels, which
+Lua 5.2 rejects too.

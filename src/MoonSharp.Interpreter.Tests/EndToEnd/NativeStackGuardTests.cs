@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using MoonSharp.Interpreter.Serialization.Json;
 using NUnit.Framework;
 
@@ -189,6 +189,84 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			// json 150 levels deep round-trips.
 			// (Spaces keep "[[" from reading as a Lua long string in the json lexer.)
 			Assert.AreEqual(Nest("[", "1", "]", 150), JsonTableConverter.ParseString(Nest("[ ", "1", " ]", 150)).Table.TableToJson());
+		}
+
+		// Lua 5.2 counts metamethod calls as C calls (luaD_call) and raises "C stack overflow" at 200 nested
+		// ones. MoonSharp runs a Lua metamethod in a frame of the same loop, and an __index function that
+		// indexes its own table ran forever: at 65,536 frames the tail call optimisation reused the frame.
+		// lua5.2 gives "C stack overflow" for each of these.
+		[Test]
+		public void NativeStack_MetamethodRecursionIsACStackOverflow()
+		{
+			Script s = new Script();
+			// Without the limit the first case never returns; stop it so the test fails instead of hanging.
+			s.Options.InterruptHandler = n => n > 50000000;
+
+			DynValue r = s.DoString(@"
+				local function try(f) local ok, e = pcall(f) return (ok and 'ok' or e:match('C stack overflow$') or e) end
+				local function mt(name, f) local m = {} m[name] = f return setmetatable({}, m) end
+				local out = {}
+				out[#out + 1] = try(function() local t = mt('__index', function(t, k) return t[k] end) return t.x end)
+				out[#out + 1] = try(function() local t = mt('__index', function(t, k) local v = t[k] return v end) return t.x end)
+				out[#out + 1] = try(function() local t = mt('__newindex', function(t, k, v) t[k] = v end) t.x = 1 end)
+				out[#out + 1] = try(function() local a = mt('__add', function(a, b) return a + b end) return a + 1 end)
+				out[#out + 1] = try(function() local a = mt('__concat', function(a, b) return a .. b end) return a .. 'x' end)
+				out[#out + 1] = try(function() local a = mt('__len', function(a) return #a end) return #a end)
+				out[#out + 1] = try(function() local a = mt('__unm', function(a) return -a end) return -a end)
+				local cmp = {}
+				cmp.__eq = function(a, b) return a == b end
+				cmp.__lt = function(a, b) return a < b end
+				cmp.__le = function(a, b) return a <= b end
+				local a, b = setmetatable({}, cmp), setmetatable({}, cmp)
+				out[#out + 1] = try(function() return a == b end)
+				out[#out + 1] = try(function() return a < b end)
+				out[#out + 1] = try(function() return a <= b end)
+				return table.concat(out, ',')");
+
+			Assert.AreEqual("C stack overflow,C stack overflow,C stack overflow,C stack overflow,C stack overflow,"
+				+ "C stack overflow,C stack overflow,C stack overflow,C stack overflow,C stack overflow", r.String);
+
+			// The error is at the indexing expression, and the Script keeps working.
+			ScriptRuntimeException ex = Assert.Throws<ScriptRuntimeException>(() =>
+				s.DoString("local t = setmetatable({}, { __index = function(t, k) return t[k] end })\nreturn t.x"));
+			Assert.AreEqual("C stack overflow", ex.Message);
+			StringAssert.Contains(":(1,", ex.DecoratedMessage);
+			Assert.AreEqual(3, s.DoString("return 1 + 2").Number);
+		}
+
+		// The limit counts nested metamethod calls only. 150 levels pass (Lua 5.2 too); calls made by a
+		// metamethod function, and __call, which Lua 5.2 does not count either, are not limited.
+		[Test]
+		public void NativeStack_MetamethodNestingBelowTheLimitWorks()
+		{
+			DynValue r = new Script().DoString(@"
+				local depth = 0
+				local t = setmetatable({}, { __index = function(t, k) depth = depth + 1 if depth < 150 then return t[k] end return depth end })
+				local function deep(n) if n == 0 then return t.x end return deep(n - 1) end
+				local d = setmetatable({}, { __index = function(_, k) return deep(1000) end })
+				local c = setmetatable({}, { __call = function(self, n) if n == 0 then return 'called' end return self(n - 1) end })
+				return t.x, d.y, c(5000)");
+
+			Assert.AreEqual(150, r.Tuple[0].Number);
+			Assert.AreEqual(151, r.Tuple[1].Number);
+			Assert.AreEqual("called", r.Tuple[2].String);
+		}
+
+		// A metamethod's results are adjusted to one value, as in Lua: t.x is nil, not nothing, when __index
+		// returns nothing, and one value when it returns two.
+		[Test]
+		public void Metamethod_ResultIsOneValue()
+		{
+			DynValue r = new Script().DoString(@"
+				local none = setmetatable({}, { __index = function() end, __add = function() end })
+				local two = setmetatable({}, { __index = function() return 1, 2 end, __concat = function() return 'a', 'b' end })
+				return select('#', none.x), select('#', none + 1), select('#', two.x), select('#', two .. 'x'), two.x");
+
+			Assert.AreEqual(1, r.Tuple[0].Number);
+			Assert.AreEqual(1, r.Tuple[1].Number);
+			Assert.AreEqual(1, r.Tuple[2].Number);
+			Assert.AreEqual(1, r.Tuple[3].Number);
+			Assert.AreEqual(1, r.Tuple[4].Number);
 		}
 	}
 }

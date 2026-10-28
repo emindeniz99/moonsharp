@@ -27,6 +27,10 @@ namespace MoonSharp.Interpreter.Execution.VM
 		public int ArgCount;
 		public CallStackItemFlags Flags;
 
+		// Metamethod calls nested below and in this frame since the host entered the VM: Lua's nCcalls,
+		// which Lua raises for each metamethod call. Normal calls keep the caller's count.
+		public int CCalls;
+
 		// The running closure and its upvalues (the same array; kept here to save a load per access).
 		public Closure Function;
 		public Upvalue[] Upvalues;
@@ -47,24 +51,31 @@ namespace MoonSharp.Interpreter.Execution.VM
 		public CallbackFunction ErrorHandler;
 		public DynValue ErrorHandlerBeforeUnwind;
 
+		// A metamethod call: its result is adjusted to one value, as Lua does (t.x is nil, not nothing,
+		// when __index returns nothing).
+		public bool Metamethod;
+
 		// The frame below is a pending C# frame (see CallStackItem.ArgCount): this call's result is its
 		// result, so it returns next.
 		public bool ReturnsToPending;
+
+		static readonly CallStackItemHandlers s_Metamethod = new CallStackItemHandlers() { Metamethod = true };
 
 		/// <summary>
 		/// Returns the handlers object for a frame, or null when none of them is set.
 		/// </summary>
 		public static CallStackItemHandlers Create(CallbackFunction continuation, CallbackFunction errorHandler, DynValue errorHandlerBeforeUnwind,
-			bool returnsToPending = false)
+			bool metamethod = false, bool returnsToPending = false)
 		{
 			if (continuation == null && errorHandler == null && errorHandlerBeforeUnwind == null && !returnsToPending)
-				return null;
+				return metamethod ? s_Metamethod : null;
 
 			return new CallStackItemHandlers()
 			{
 				Continuation = continuation,
 				ErrorHandler = errorHandler,
 				ErrorHandlerBeforeUnwind = errorHandlerBeforeUnwind,
+				Metamethod = metamethod,
 				ReturnsToPending = returnsToPending,
 			};
 		}

@@ -1216,16 +1216,25 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		/// <summary>
 		/// Calls the function below the top <paramref name="argsCount"/> values. A Lua function gets a frame
-		/// and the returned address is its entry point; a C# function runs here. <paramref name="returnsToPending"/>
-		/// says that the frame below is a pending C# frame that takes the result (see
-		/// <see cref="ClrCallWithHandlersReturned"/>).
+		/// and the returned address is its entry point; a C# function runs here. <paramref name="metamethod"/>
+		/// counts the call against the nesting limit and adjusts its result to one value;
+		/// <paramref name="returnsToPending"/> says that the frame below is a pending C# frame that takes the
+		/// result (see <see cref="ClrCallWithHandlersReturned"/>).
 		/// </summary>
 		private int Internal_ExecCall(int argsCount, int instructionPtr, CallbackFunction handler = null,
 			CallbackFunction continuation = null, bool thisCall = false, string debugText = null, DynValue unwindHandler = null,
-			bool returnsToPending = false)
+			bool metamethod = false, bool returnsToPending = false)
 		{
 			LuaValue fn = m_ValueStack.Peek(argsCount);
 			CallStackItemFlags flags = (thisCall ? CallStackItemFlags.MethodCall : CallStackItemFlags.None);
+
+			// Lua raises "C stack overflow" when metamethod calls nest LUAI_MAXCCALLS (200) deep: an __index
+			// function that indexes its own table recursed until then, here it ran without end, since the
+			// tail call optimisation below kept the stacks from growing.
+			int cCalls = m_ExecutionStack.Count > 0 ? m_ExecutionStack.Peek().CCalls : 0;
+
+			if (metamethod && ++cCalls >= MAX_NATIVE_NESTING)
+				throw new ScriptRuntimeException("C stack overflow");
 
 			// if TCO threshold reached
 			if ((m_ExecutionStack.Count > this.m_Script.Options.TailCallOptimizationThreshold && m_ExecutionStack.Count > 1)
@@ -1257,7 +1266,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			if (fn.Type == DataType.ClrFunction)
 			{
 				CallbackFunction callback = (CallbackFunction)fn.Object;
-				CallStackItemHandlers handlers = CallStackItemHandlers.Create(continuation, handler, unwindHandler, returnsToPending);
+				CallStackItemHandlers handlers = CallStackItemHandlers.Create(continuation, handler, unwindHandler, metamethod, returnsToPending);
 
 				if (callback.BuiltinId != 0 && handlers == null && TryFastCall(callback.BuiltinId, argsCount))
 					return instructionPtr;
@@ -1276,6 +1285,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				frame.ArgCount = argsCount;
 				frame.Handlers = handlers;
 				frame.Flags = flags;
+				frame.CCalls = cCalls;
 
 				var ctx = new ScriptExecutionContext(this, callback, sref);
 				var ret = args == null
@@ -1302,8 +1312,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 				frame.CallingSourceRef = GetCurrentSourceRef(instructionPtr - 1); // See right above in GetCurrentSourceRef(instructionPtr - 1)
 				frame.Function = closure;
 				frame.Upvalues = closure.Upvalues;
-				frame.Handlers = CallStackItemHandlers.Create(continuation, handler, unwindHandler, returnsToPending);
+				frame.Handlers = CallStackItemHandlers.Create(continuation, handler, unwindHandler, metamethod, returnsToPending);
 				frame.Flags = flags;
+				frame.CCalls = cCalls;
 				return closure.EntryPointByteCodeLocation;
 			}
 
@@ -1321,15 +1332,15 @@ namespace MoonSharp.Interpreter.Execution.VM
 				for (int i = argsCount; i >= 0; i--)
 					m_ValueStack.Push(tmp[i]);
 
-				return Internal_ExecCall(argsCount + 1, instructionPtr, handler, continuation, false, null, unwindHandler, returnsToPending);
+				return Internal_ExecCall(argsCount + 1, instructionPtr, handler, continuation, false, null, unwindHandler, metamethod, returnsToPending);
 			}
 
 			throw ScriptRuntimeException.AttemptToCallNonFunc(fn.Type, debugText);
 		}
 
 		/// <summary>
-		/// A C# function called with handlers (a continuation, pcall's error handlers, or a pending frame
-		/// below) returned; its frame is on top and its result on the value
+		/// A C# function called with handlers (a continuation, pcall's error handlers, a metamethod's
+		/// adjustment, or a pending frame below) returned; its frame is on top and its result on the value
 		/// stack. A plain result goes through the handlers now. A tail call or a yield leaves the frame on
 		/// the stack as a pending frame, without its function and arguments: the call its result asks for
 		/// returns into it (<see cref="ReturnToPendingFrames"/>), and the frame's error handler catches
@@ -1369,13 +1380,19 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		/// <summary>
 		/// Passes the result on top of the value stack through the handlers of the frame that returned it:
-		/// its continuation.
+		/// its continuation, and the one-value adjustment of a metamethod call.
 		/// </summary>
 		private void ApplyReturnHandlers(CallStackItemHandlers handlers, SourceRef sourceRef)
 		{
 			if (handlers.Continuation != null)
 				m_ValueStack.Push(handlers.Continuation.Invoke(new ScriptExecutionContext(this, handlers.Continuation, sourceRef),
 					new DynValue[1] { m_ValueStack.Pop().ToDynValue() }));
+
+			if (handlers.Metamethod)
+			{
+				ref LuaValue top = ref m_ValueStack.Peek();
+				top = ParameterValue(top);
+			}
 		}
 
 		private int PerformTCO(int instructionPtr, int argsCount)
@@ -1452,7 +1469,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 					m_ValueStack.Push(tcd.Args[ii]);
 
 				return Internal_ExecCall(tcd.Args.Length, instructionPtr, tcd.ErrorHandler, tcd.Continuation, false, null, tcd.ErrorHandlerBeforeUnwind,
-					returnsToPending);
+					false, returnsToPending);
 			}
 			else if (tail.Type == DataType.YieldRequest)
 			{
@@ -1966,7 +1983,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 					m_ValueStack.Push(obj);
 					m_ValueStack.Push(idx);
 					m_ValueStack.Push(value);
-					return Internal_ExecCall(3, instructionPtr);
+					return Internal_ExecCall(3, instructionPtr, metamethod: true);
 				}
 				else
 				{
@@ -2079,7 +2096,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 					m_ValueStack.Push(h);
 					m_ValueStack.Push(obj);
 					m_ValueStack.Push(idx);
-					return Internal_ExecCall(2, instructionPtr);
+					return Internal_ExecCall(2, instructionPtr, metamethod: true);
 				}
 				else
 				{

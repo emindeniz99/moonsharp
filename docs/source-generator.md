@@ -86,11 +86,45 @@ built without boxing; other values go through `DynValue.FromObject`.
 
 Members are added to the descriptor with `AddMember`, as
 `StandardUserDataDescriptor` adds them, so MoonSharp's own overload
-resolution chooses between overloads (its weights, with its cache of recent
-argument signatures). A statically generated choice would be wrong as soon as
-a host registers a custom converter, which changes the weights at run time.
+resolution chooses between overloads. A choice generated at compile time
+would copy MoonSharp's weights into the generator and go wrong as soon as a
+host registers a custom converter, which changes the weights at run time.
+Instead the overload set (generated or reflected) keeps a table from
+argument signature to overload: the kinds of the arguments (nil, boolean,
+whole or fractional number, string, Lua or C# function), filled from the
+weights on the first call with each signature. While a script-to-CLR
+converter is registered, or an extension method of the same name applies,
+and for table and userdata arguments, it resolves as before (scoring, with a
+cache of recent signatures that resets when converters change). The
+`overload_call` interop workload runs at 0.955 of `next` (`ab-interop`, 21
+rounds, interquartile range 0.887 to 0.987).
 Member names are looked up in the descriptor's dictionary, where the bound
 callback cache of `obj:Method()` calls also lives.
+
+### Lua functions as delegates
+
+A script can pass a Lua function where C# takes a delegate whose `Invoke` has
+up to four parameters, none by reference (`Closure.ToDelegate`, see
+[MIGRATING.md](MIGRATING.md)). Without help, the interpreter builds such a
+delegate by closing a generic method with `MakeGenericMethod`, which an AOT
+compiler has no code for when the delegate has value-type parameters or
+result: NativeAOT reports "missing native code" (IL2CPP before full generic
+sharing fails the same way). So `GeneratedUserData` also gets
+`RegisterDelegateTypes()`, called by `RegisterAll()`, with one typed factory
+per delegate type that a generated member takes as a parameter or sets as a
+value, and per delegate type listed with
+`[assembly: MoonSharpUserDataTypes]`:
+
+```csharp
+global::MoonSharp.Interpreter.UserData.RegisterDelegateType<global::System.Action<int>>(
+    f => new global::System.Action<int>((a0) => { f.Call<int, global::MoonSharp.Interpreter.DynValue>(a0); }));
+```
+
+The factory calls the function through the typed calls of `Closure`, which
+the AOT compiler sees with their concrete types. List the delegate types
+the host converts itself (`closure.ToDelegate<Func<int, int>>()`). A listed
+delegate type gets this factory instead of a userdata registration; one with
+more than four parameters, or one by reference, gets warning MSUD002.
 
 ### Structs
 
@@ -169,6 +203,12 @@ compiler packages). Generated code is C# 7.3.
     `DateTime`, `TimeSpan`, `Version`) gives the same results as reflection;
   - 20 interop fixtures run a second time with a registration policy that
     swaps in the generated descriptor for every type they register.
+- `ClosureDelegateTests` register the generated delegate factories
+  (`RegisterDelegateTypes`) and convert Lua functions to `Action<int>`,
+  `Func<double, double>`, `Func<int, bool, string>` and a custom delegate.
+  Without the factories, 4 of them failed under NativeAOT with "missing
+  native code"; with them, all pass. `tools/sourcegen/check-roslyn.sh`
+  compiles a sample with a delegate parameter.
 - All of this runs in the three test runners (.NET, Mono with its hardwire
   policy, and `EmbeddedTestRunner`, which compiles the tests as Unity does).
   The Unity matrix (`.github/workflows/unity.yml`) compiles the same tests
@@ -211,13 +251,26 @@ accessor and `object` methods reflection also exposes):
 That is about 1 KB of native code per member on x64 NativeAOT; IL2CPP will
 differ, and only a Unity player build can measure it.
 
+The same benchmark on branch `feat/typed-calls` (2026-10-28, after `next`
+gained the inline caches; load average 6 to 11 from other work, so only
+large differences count) also calls C# from Lua through an overloaded
+method and calls Lua from C#, two runs each:
+
+| Case | JIT ns | NativeAOT ns | bytes |
+|---|---:|---:|---:|
+| `obj:Pick(i)` (int or string overload), generated | 261, 277 | 339, 278 | 240 |
+| `obj:Add(i, 2)`, generated | 286, 295 | 310, 275 | 248 |
+| C# calls `function(a, b, c) return a * b + c end`, `Script.Call` with `DynValue`s | 346, 351 | 375, 317 | 224 |
+| the same, `Closure.Call<double, double, double, double>` | 205, 212 | 281, 238 | 0 |
+
 ## Follow-ups
 
 - Run the Unity matrix once the secrets exist: it is the first real proof
   that 2021.3, 2022.3 and 6000.0 load the generator from the package and that
   IL2CPP players run the generated code.
-- Dispatch between overloads with precomputed checks when no custom
-  converter is registered, keeping MoonSharp's weights as the fallback.
+- Delegate factories for `void` delegates discard the result through
+  `Call<..., DynValue>`, which creates a `DynValue` when the function returns
+  a string, table or large number; the interpreter's own bridge does not.
 - Calls without the bound callback: a generated colon call could skip
   `CallbackArguments` once the VM offers a typed call convention (roadmap
   B7).

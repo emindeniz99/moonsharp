@@ -139,7 +139,7 @@ After step 4: the checkpoint in the decisions table.
 - Run the bytecode leg of the corpus on the browser and Java hosts too (they accept the base64 dump text today; only the .NET runner compiles).
 - The JSON contract for int64 results (the decision above): today a context with int64 returns them as an `output` error.
 - Publish per-host corpus results over time, as JsonLogic's compat tables do.
-- In-process JVM hosting as the default: needs the native stack guard above and an execution budget for plain calls, then a new measurement against the worker.
+- In-process JVM hosting as the default: the native stack guard and the execution budget (`ScriptOptions.InterruptHandler`) now exist; the hosting layer needs an error kind for an interrupted script, then a new measurement against the worker.
 - Browser: AOT-compiled WebAssembly against the interpreter build; Firefox and WebKit tests.
 - From upstream feature requests ([upstream-issues.md](upstream-issues.md)):
   - convert Lua functions to `Action` and `Func<...>` parameters (upstream #186), with the typed calls from C# to Lua above;

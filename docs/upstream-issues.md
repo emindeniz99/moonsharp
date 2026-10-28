@@ -20,8 +20,8 @@ again; planned work goes in [ROADMAP.md](ROADMAP.md), and fork-only changes in
 
 | Status | Issues | Pull requests |
 |---|---|---|
-| fixed in the fork | 18 | 7 |
-| reproduces, waits for other work | 8 | 2 |
+| fixed in the fork | 20 | 7 |
+| reproduces, waits for other work | 6 | 2 |
 | needs the owner | 5 | 2 |
 | does not reproduce | 16 | 3 |
 | question, answered | 8 | 0 |
@@ -50,7 +50,7 @@ keys 1..n (`77c8662`).
 | Issue | Title | Type | Status in the fork | Evidence |
 |---|---|---|---|---|
 | [#348](https://github.com/moonsharp-devs/moonsharp/issues/348) | Preserve source locations in Script.Dump / LoadStream bytecode | feature | fixed | Fork [PR #6](https://github.com/emindeniz99/moonsharp/pull/6) (dump format 0x152, old dumps still load) |
-| [#332](https://github.com/moonsharp-devs/moonsharp/issues/332) | No module found | bug | waits: module registration | The report mixes invalid Lua (`let`) and Unity's Resources loader, but one part reproduces: `require` ignores `package.path` and reads only the `LUA_PATH` global and `ScriptLoader.ModulePaths`. Ignored test `UpstreamIssueTests.Issue332_RequireUsesPackagePath` |
+| [#332](https://github.com/moonsharp-devs/moonsharp/issues/332) | No module found | bug | fixed | Branch `fix/require-package`: the report mixes invalid Lua (`let`) and Unity's Resources loader; the part that reproduced, `require` ignoring `package.path`, is fixed (`ScriptLoaderBase` searches `package.path`, then `LUA_PATH` or `ModulePaths`); `Issue332_RequireUsesPackagePath`, `RequireTests` |
 | [#330](https://github.com/moonsharp-devs/moonsharp/issues/330) | API Reference link returns 404 | docs | out of scope | Upstream website |
 | [#328](https://github.com/moonsharp-devs/moonsharp/issues/328) | Chaining Extension Methods only works after running the script again | bug | fixed | `099a347` (same cause as #102); `Issue102_EveryRegisteredExtensionMethodIsFound` |
 | [#319](https://github.com/moonsharp-devs/moonsharp/issues/319) | json.parse fails on negative integers | bug | does not reproduce | `json.parse('{"foo": -1}')` and `'[-1, -2.5e3]'` parse (probe on this branch) |
@@ -75,7 +75,7 @@ keys 1..n (`77c8662`).
 | [#288](https://github.com/moonsharp-devs/moonsharp/issues/288) | CSharp.lua error | bug | does not reproduce | No reproduction given; `require('Core.Sys')` through `LUA_PATH` with a dotted directory resolves |
 | [#287](https://github.com/moonsharp-devs/moonsharp/issues/287) | Empty tuples are incorrectly treated as nil | bug | waits: VM core | Reproduces: `select('#', table.unpack({}, 1, 0))` is 1. Ignored test `UpstreamIssueTests.Issue287_EmptyUnpackReturnsNoValues` |
 | [#286](https://github.com/moonsharp-devs/moonsharp/issues/286) | Cannot register type SqlCommand | bug | fixed | `34c66d4`; `Issue286_MembersHiddenWithNewUseTheDerivedMember` |
-| [#285](https://github.com/moonsharp-devs/moonsharp/issues/285) | The package table is missing most of its fields | bug | waits: module registration | Reproduces: `package` has only `loaded` and `config`; `package.preload` is ignored. Ignored test `UpstreamIssueTests.Issue285_RequireUsesPackagePreload` |
+| [#285](https://github.com/moonsharp-devs/moonsharp/issues/285) | The package table is missing most of its fields | bug | fixed | Branch `fix/require-package`: `package` has `path`, `preload`, `searchers` and `loaders`, and `require` follows Lua 5.2; `Issue285_RequireUsesPackagePreload`, `RequireTests`. Still missing: `cpath`, `loadlib`, `searchpath` |
 | [#282](https://github.com/moonsharp-devs/moonsharp/issues/282) | JSON parse error for "\/" | duplicate | does not reproduce | Fixed upstream in 714c265, before the fork base |
 | [#279](https://github.com/moonsharp-devs/moonsharp/issues/279) | [Help] Doubt about using a moon function as a parameter | question | answered | Answered in the thread (store the `DynValue`/`Closure`, call it later). Not in our docs |
 | [#275](https://github.com/moonsharp-devs/moonsharp/issues/275) | string.format('%s', nil) throws an exception. | bug | waits: string library | Reproduces for nil and tables. Ignored test `UpstreamIssueTests.Issue275_FormatPercentSAcceptsAnyValue` |

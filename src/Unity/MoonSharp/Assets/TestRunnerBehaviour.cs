@@ -158,6 +158,7 @@ public class TestRunnerBehaviour : MonoBehaviour
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.CollectionsBaseGenRegisteredTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.CollectionsBaseInterfGenRegisteredTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.CollectionsRegisteredTests),
+            typeof(MoonSharp.Interpreter.Tests.EndToEnd.ComparisonOperatorTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.ConfigPropertyAssignerTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.CoroutineTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.DynamicTests),

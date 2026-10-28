@@ -149,13 +149,13 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void AllocationBudget_TableArrayRead()
 		{
-			AssertLuaBudget("table_array_read", "local t = {} for i = 1, 1024 do t[i] = i end\nreturn function(n) local s, j = 0, 1 for i = 1, n do s = s + t[j] j = j + 1 if j > 1024 then j = 1 end end return s end", 528);
+			AssertLuaBudget("table_array_read", "local t = {} for i = 1, 1024 do t[i] = i end\nreturn function(n) local s, j = 0, 1 for i = 1, n do s = s + t[j] j = j + 1 if j > 1024 then j = 1 end end return s end", 384);
 		}
 
 		[Test]
 		public void AllocationBudget_TableHashSetGet()
 		{
-			AssertLuaBudget("table_hash_set_get", "local keys = {} for i = 1, 64 do keys[i] = 'key' .. i end\nreturn function(n) local t, s, j = {}, 0, 1 for i = 1, n do local k = keys[j] t[k] = i s = s + t[k] j = j + 1 if j > 64 then j = 1 end end return s end", 912);
+			AssertLuaBudget("table_hash_set_get", "local keys = {} for i = 1, 64 do keys[i] = 'key' .. i end\nreturn function(n) local t, s, j = {}, 0, 1 for i = 1, n do local k = keys[j] t[k] = i s = s + t[k] j = j + 1 if j > 64 then j = 1 end end return s end", 768);
 		}
 
 		[Test]
@@ -180,7 +180,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		public void AllocationBudget_FibRecursive()
 		{
 			// One iteration is fib(12): 465 Lua calls.
-			AssertLuaBudget("fib_recursive", "local function fib(n) if n < 2 then return n end return fib(n - 1) + fib(n - 2) end\nreturn function(n) local s = 0 for i = 1, n do s = s + fib(12) end return s end", 301368, 40);
+			AssertLuaBudget("fib_recursive", "local function fib(n) if n < 2 then return n end return fib(n - 1) + fib(n - 2) end\nreturn function(n) local s = 0 for i = 1, n do s = s + fib(12) end return s end", 256728, 40);
 		}
 
 		[Test]

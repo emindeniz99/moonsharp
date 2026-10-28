@@ -259,9 +259,7 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 
 		private static bool ShouldInvertBoolean(Operator op)
 		{
-			return (op == Operator.NotEqual)
-				|| (op == Operator.GreaterOrEqual)
-				|| (op == Operator.Greater);
+			return (op == Operator.NotEqual);
 		}
 
 		private static OpCode OperatorToOpCode(Operator op)
@@ -269,10 +267,8 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 			switch (op)
 			{
 				case Operator.Less:
-				case Operator.GreaterOrEqual:
 					return OpCode.Less;
 				case Operator.LessOrEqual:
-				case Operator.Greater:
 					return OpCode.LessEq;
 				case Operator.Equal:
 				case Operator.NotEqual:
@@ -321,6 +317,15 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 			if (m_Exp2 != null)
 			{
 				m_Exp2.Compile(bc);
+			}
+
+			// Lua 5.2 3.4.3: a > b is b < a and a >= b is b <= a. "not (a <= b)" would differ for NaN and
+			// for metamethods (it calls __le(a, b) where Lua calls __lt(b, a)).
+			if (m_Operator == Operator.Greater || m_Operator == Operator.GreaterOrEqual)
+			{
+				bc.Emit_ComparisonSwap();
+				bc.Emit_Operator(m_Operator == Operator.Greater ? OpCode.Less : OpCode.LessEq);
+				return;
 			}
 
 			bc.Emit_Operator(OperatorToOpCode(m_Operator));
@@ -451,9 +456,9 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 						return r.Equals(l);
 					}
 				case Operator.Greater:
-					return !EvalComparison(l, r, Operator.LessOrEqual);
+					return EvalComparison(r, l, Operator.Less);
 				case Operator.GreaterOrEqual:
-					return !EvalComparison(l, r, Operator.Less);
+					return EvalComparison(r, l, Operator.LessOrEqual);
 				case Operator.NotEqual:
 					return !EvalComparison(l, r, Operator.Equal);
 				default:

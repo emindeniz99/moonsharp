@@ -105,6 +105,15 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
+		/// Returns the shared read-only <see cref="True"/> or <see cref="False"/> instance, without allocating.
+		/// For values the VM produces; <see cref="NewBoolean"/> stays writable for hosts.
+		/// </summary>
+		internal static DynValue FromBoolean(bool v)
+		{
+			return v ? True : False;
+		}
+
+		/// <summary>
 		/// Creates a new writable value initialized to the specified number.
 		/// </summary>
 		public static DynValue NewNumber(double num)

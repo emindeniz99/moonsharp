@@ -159,7 +159,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 							ExecBeginFn(i);
 							break;
 						case OpCode.ToBool:
-							m_ValueStack.Push(DynValue.NewBoolean(m_ValueStack.Pop().ToScalar().CastToBool()));
+							m_ValueStack.Push(DynValue.FromBoolean(m_ValueStack.Pop().ToScalar().CastToBool()));
 							break;
 						case OpCode.Args:
 							ExecArgs(i);
@@ -568,15 +568,15 @@ namespace MoonSharp.Interpreter.Execution.VM
 				throw new InternalErrorException("CNOT had non-bool arg");
 
 			if (not.CastToBool())
-				m_ValueStack.Push(DynValue.NewBoolean(!(v.CastToBool())));
+				m_ValueStack.Push(DynValue.FromBoolean(!(v.CastToBool())));
 			else
-				m_ValueStack.Push(DynValue.NewBoolean(v.CastToBool()));
+				m_ValueStack.Push(DynValue.FromBoolean(v.CastToBool()));
 		}
 
 		private void ExecNot(Instruction i)
 		{
 			DynValue v = m_ValueStack.Pop().ToScalar();
-			m_ValueStack.Push(DynValue.NewBoolean(!(v.CastToBool())));
+			m_ValueStack.Push(DynValue.FromBoolean(!(v.CastToBool())));
 		}
 
 		private void ExecBeginFn(Instruction i)
@@ -1080,7 +1080,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 
 			// else perform standard comparison
-			m_ValueStack.Push(DynValue.NewBoolean(r.Equals(l)));
+			m_ValueStack.Push(DynValue.FromBoolean(r.Equals(l)));
 			return instructionPtr;
 		}
 
@@ -1091,22 +1091,36 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			if (l.Type == DataType.Number && r.Type == DataType.Number)
 			{
-				m_ValueStack.Push(DynValue.NewBoolean(l.Number < r.Number));
+				m_ValueStack.Push(DynValue.FromBoolean(l.Number < r.Number));
 			}
 			else if (l.Type == DataType.String && r.Type == DataType.String)
 			{
-				m_ValueStack.Push(DynValue.NewBoolean(string.CompareOrdinal(l.String, r.String) < 0));
+				m_ValueStack.Push(DynValue.FromBoolean(string.CompareOrdinal(l.String, r.String) < 0));
 			}
 			else
 			{
 				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__lt", instructionPtr);
 				if (ip < 0)
-					throw ScriptRuntimeException.CompareInvalidType(l, r);
+					throw CompareInvalidType(l, r, instructionPtr);
 				else
 					return ip;
 			}
 
 			return instructionPtr;
+		}
+
+		// a > b and a >= b run as b < a and b <= a, after a Swap that ByteCode.Emit_ComparisonSwap marks
+		// (see BinaryOperatorExpression.Compile). The error names the operands in source order, as it did
+		// before the swap. Nothing jumps between the swap and the comparison, so the previous instruction
+		// is the one that ran before this one.
+		private ScriptRuntimeException CompareInvalidType(DynValue l, DynValue r, int instructionPtr)
+		{
+			int prev = instructionPtr - 2;
+
+			if (prev >= 0 && ByteCode.IsComparisonSwap(m_RootChunk.Code[prev]))
+				return ScriptRuntimeException.CompareInvalidType(r, l);
+
+			return ScriptRuntimeException.CompareInvalidType(l, r);
 		}
 
 
@@ -1118,12 +1132,12 @@ namespace MoonSharp.Interpreter.Execution.VM
 			if (l.Type == DataType.Number && r.Type == DataType.Number)
 			{
 				m_ValueStack.Push(DynValue.False);
-				m_ValueStack.Push(DynValue.NewBoolean(l.Number <= r.Number));
+				m_ValueStack.Push(DynValue.FromBoolean(l.Number <= r.Number));
 			}
 			else if (l.Type == DataType.String && r.Type == DataType.String)
 			{
 				m_ValueStack.Push(DynValue.False);
-				m_ValueStack.Push(DynValue.NewBoolean(string.CompareOrdinal(l.String, r.String) <= 0));
+				m_ValueStack.Push(DynValue.FromBoolean(string.CompareOrdinal(l.String, r.String) <= 0));
 			}
 			else
 			{
@@ -1133,7 +1147,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 					ip = Internal_InvokeBinaryMetaMethod(r, l, "__lt", instructionPtr, DynValue.True);
 
 					if (ip < 0)
-						throw ScriptRuntimeException.CompareInvalidType(l, r);
+						throw CompareInvalidType(l, r, instructionPtr);
 					else
 						return ip;
 				}

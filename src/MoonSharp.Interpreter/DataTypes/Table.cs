@@ -1,23 +1,93 @@
-﻿using System.Collections.Generic;
-using System.Linq;
-using MoonSharp.Interpreter.DataStructs;
+﻿using System;
+using System.Collections.Generic;
 
 namespace MoonSharp.Interpreter
 {
 	/// <summary>
+	/// SPIKE (spike/table-order): iteration order of <c>next</c>/<c>pairs</c> and <see cref="Table.Pairs"/>.
+	/// </summary>
+	internal enum TableOrder
+	{
+		/// <summary>(a) Full insertion order across array and hash keys (master's behaviour).</summary>
+		Insertion,
+		/// <summary>(b) Array part 1..n first, then the other keys in insertion order (compact dict).</summary>
+		ArrayFirst,
+		/// <summary>(c) Lua order: array part, then hash slot order (Lua-style node table, no order guarantee).</summary>
+		Unordered,
+	}
+
+	/// <summary>
 	/// A class representing a Lua table.
 	/// </summary>
+	/// <remarks>
+	/// SPIKE layout: an array part for keys 1..n (Lua-CSharp growth rule: a key goes to the array when it is
+	/// at most max(2 * capacity, 4) and at most 4096 past the capacity; on growth, hash keys in the new range
+	/// migrate into the array), and one hash part of struct entries for every other key. Assigning nil leaves a
+	/// tombstone so <c>next</c> keeps working while a loop clears fields; tombstones are purged when the hash
+	/// part is rebuilt, which only happens when a new key is inserted.
+	/// The hash part is a compact dict (dense entries in insertion order plus bucket heads) for
+	/// <see cref="TableOrder.Insertion"/> and <see cref="TableOrder.ArrayFirst"/>, and a Lua-style node table
+	/// (chained scatter table with Brent's variation) for <see cref="TableOrder.Unordered"/>.
+	/// </remarks>
 	public class Table : RefIdObject, IScriptPrivateResource
 	{
-		readonly LinkedList<TablePair> m_Values;
-		readonly LinkedListIndex<DynValue, TablePair> m_ValueMap;
-		readonly LinkedListIndex<string, TablePair> m_StringMap;
-		readonly LinkedListIndex<int, TablePair> m_ArrayMap;
+		/// <summary>
+		/// SPIKE: the ordering variant, read once from MOONSHARP_TABLE_ORDER ("a", "b" or "c"; default "a").
+		/// static readonly, so the tier-1 JIT folds the checks below into one variant.
+		/// </summary>
+		internal static readonly TableOrder Order = ReadOrder();
+
+		static TableOrder ReadOrder()
+		{
+			string s = null;
+
+			try { s = Environment.GetEnvironmentVariable("MOONSHARP_TABLE_ORDER"); }
+			catch { }
+
+			switch (s)
+			{
+				case "b": return TableOrder.ArrayFirst;
+				case "c": return TableOrder.Unordered;
+				default: return TableOrder.Insertion;
+			}
+		}
+
+		struct Entry
+		{
+			// null: a pointer entry (Insertion: the value lives in m_Array[Hash - 1]) or a free node (Unordered)
+			public DynValue Key;
+			// null: tombstone (or free node); s_ArraySlot: pointer entry
+			public DynValue Value;
+			public int Hash;
+			// next entry in the same chain, -1 at the end
+			public int Next;
+		}
+
+		// Marks a pointer entry: an array key logged in the insertion order (variant (a) only).
+		static readonly DynValue s_ArraySlot = DynValue.NewString("<array slot>");
+
+		const int MinCapacity = 4;
+		const int MaxArrayGap = 4096;
+
+		// m_Array[i] holds key i + 1. null: absent and (Insertion) not logged; a nil value: dead.
+		DynValue[] m_Array;
+		// Insertion only: keys 1..m_Prefix were appended in order while the hash part was empty, so they
+		// come first without pointer entries.
+		int m_Prefix;
+		Entry[] m_Entries;
+		// Insertion/ArrayFirst: 1-based index of the chain head per bucket, 0 = empty.
+		int[] m_Buckets;
+		// Insertion/ArrayFirst: entries used, tombstones included.
+		int m_Count;
+		// Unordered: free-position cursor (Lua's lastfree).
+		int m_LastFree;
+		int m_Shift;
+		// The first border: the smallest n >= 0 with t[n + 1] == nil (master's Length semantics).
+		int m_Length;
+
 		readonly Script m_Owner;
 
 		int m_InitArray = 0;
-		int m_CachedLength = -1;
-		bool m_ContainsNilEntries = false;
 
 		/// <summary>
 		/// Initializes a new instance of the <see cref="Table"/> class.
@@ -25,10 +95,6 @@ namespace MoonSharp.Interpreter
 		/// <param name="owner">The owner script.</param>
 		public Table(Script owner)
 		{
-			m_Values = new LinkedList<TablePair>();
-			m_StringMap = new LinkedListIndex<string, TablePair>(m_Values);
-			m_ArrayMap = new LinkedListIndex<int, TablePair>(m_Values);
-			m_ValueMap = new LinkedListIndex<DynValue, TablePair>(m_Values);
 			m_Owner = owner;
 		}
 
@@ -59,11 +125,13 @@ namespace MoonSharp.Interpreter
 		/// </summary>
 		public void Clear()
 		{
-			m_Values.Clear();
-			m_StringMap.Clear();
-			m_ArrayMap.Clear();
-			m_ValueMap.Clear();
-            m_CachedLength = -1;
+			m_Array = null;
+			m_Entries = null;
+			m_Buckets = null;
+			m_Count = 0;
+			m_LastFree = 0;
+			m_Prefix = 0;
+			m_Length = 0;
 		}
 
 		/// <summary>
@@ -80,7 +148,7 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
-		/// Gets or sets the 
+		/// Gets or sets the
 		/// <see cref="System.Object" /> with the specified key(s).
 		/// This will marshall CLR and MoonSharp objects in the best possible way.
 		/// Multiple keys can be used to access subtables.
@@ -124,9 +192,6 @@ namespace MoonSharp.Interpreter
 
 		private Table ResolveMultipleKeys(object[] keys, out object key)
 		{
-			//Contract.Ensures(Contract.Result<Table>() != null);
-			//Contract.Requires(keys != null);
-
 			Table t = this;
 			key = (keys.Length > 0) ? keys[0] : null;
 
@@ -154,52 +219,490 @@ namespace MoonSharp.Interpreter
 		public void Append(DynValue value)
 		{
 			this.CheckScriptOwnership(value);
-			PerformTableSet(m_ArrayMap, Length + 1, DynValue.NewNumber(Length + 1), value, true, Length + 1);
+			SetInt(m_Length + 1, value);
 		}
 
-		#region Set
+		#region Hashing
 
-		private void PerformTableSet<T>(LinkedListIndex<T, TablePair> listIndex, T key, DynValue keyDynValue, DynValue value, bool isNumber, int appendKey)
+		static int HashString(string s)
 		{
-			TablePair prev = listIndex.Set(key, new TablePair(keyDynValue, value));
+			// identical to DynValue.GetHashCode() for strings, which caches it
+			return (((int)DataType.String) << 27) ^ s.GetHashCode();
+		}
 
-			// If this is an insert, we can invalidate all iterators and collect dead keys
-			if (m_ContainsNilEntries && value.IsNotNil() && (prev.Value == null || prev.Value.IsNil()))
-			{
-				CollectDeadKeys();
-			}
-			// If this value is nil (and we didn't collect), set that there are nil entries, and invalidate array len cache
-			else if (value.IsNil())
-			{
-				m_ContainsNilEntries = true;
+		static int HashNumber(double d)
+		{
+			int i = (int)d;
+			return (i == d) ? i : d.GetHashCode();
+		}
 
-				if (isNumber)
-					m_CachedLength = -1;
-			}
-			else if (isNumber)
+		int Bucket(int hash)
+		{
+			// Fibonacci hashing: integral keys hash to themselves, so mix before taking the top bits
+			return (int)(((uint)hash * 2654435769u) >> m_Shift);
+		}
+
+		int ChainStart(int hash)
+		{
+			int b = Bucket(hash);
+			return Order == TableOrder.Unordered ? b : m_Buckets[b] - 1;
+		}
+
+		int FindString(string s, int hash)
+		{
+			Entry[] entries = m_Entries;
+
+			if (entries == null)
+				return -1;
+
+			for (int i = ChainStart(hash); i >= 0; i = entries[i].Next)
 			{
-				// If this is an array insert, we might have to invalidate the array length
-				if (prev.Value == null || prev.Value.IsNilOrNan())
+				DynValue k = entries[i].Key;
+
+				if (entries[i].Hash == hash && k != null && k.Type == DataType.String && string.Equals(k.String, s))
+					return i;
+			}
+
+			return -1;
+		}
+
+		int FindNumber(double d, int hash)
+		{
+			Entry[] entries = m_Entries;
+
+			if (entries == null)
+				return -1;
+
+			for (int i = ChainStart(hash); i >= 0; i = entries[i].Next)
+			{
+				DynValue k = entries[i].Key;
+
+				if (entries[i].Hash == hash && k != null && k.Type == DataType.Number && k.Number == d)
+					return i;
+			}
+
+			return -1;
+		}
+
+		int FindOther(DynValue key, int hash)
+		{
+			Entry[] entries = m_Entries;
+
+			if (entries == null)
+				return -1;
+
+			for (int i = ChainStart(hash); i >= 0; i = entries[i].Next)
+			{
+				DynValue k = entries[i].Key;
+
+				if (entries[i].Hash == hash && k != null && (object.ReferenceEquals(k, key) || k.Equals(key)))
+					return i;
+			}
+
+			return -1;
+		}
+
+		int FindPointer(int arrayKey)
+		{
+			Entry[] entries = m_Entries;
+
+			if (entries == null)
+				return -1;
+
+			for (int i = ChainStart(arrayKey); i >= 0; i = entries[i].Next)
+			{
+				if (entries[i].Hash == arrayKey && entries[i].Key == null && object.ReferenceEquals(entries[i].Value, s_ArraySlot))
+					return i;
+			}
+
+			return -1;
+		}
+
+		int FindKey(DynValue key)
+		{
+			switch (key.Type)
+			{
+				case DataType.String:
+					return FindString(key.String, key.GetHashCode());
+				case DataType.Number:
+					return FindNumber(key.Number, HashNumber(key.Number));
+				default:
+					return FindOther(key, key.GetHashCode());
+			}
+		}
+
+		#endregion
+
+		#region Hash part storage
+
+		void Allocate(int capacity)
+		{
+			int log2 = 0;
+			while ((1 << log2) < capacity) log2++;
+
+			m_Entries = new Entry[capacity];
+			m_Shift = 32 - log2;
+
+			if (Order == TableOrder.Unordered)
+			{
+				for (int i = 0; i < capacity; i++)
+					m_Entries[i].Next = -1;
+
+				m_LastFree = capacity;
+			}
+			else
+			{
+				m_Buckets = new int[capacity];
+				m_Count = 0;
+			}
+		}
+
+		bool IsLive(ref Entry e)
+		{
+			DynValue v = e.Value;
+
+			if (v == null)
+				return false;
+
+			if (object.ReferenceEquals(v, s_ArraySlot))
+			{
+				DynValue a = m_Array[e.Hash - 1];
+				return a != null && a.Type != DataType.Nil;
+			}
+
+			return e.Key != null;
+		}
+
+		void AddKey(DynValue key, int hash, DynValue value)
+		{
+			if (Order == TableOrder.Unordered)
+				AddNode(key, hash, value);
+			else
+				AddEntry(key, hash, value);
+		}
+
+		// Compact dict: append in insertion order.
+		void AddEntry(DynValue key, int hash, DynValue value)
+		{
+			if (m_Entries == null)
+				Allocate(MinCapacity);
+			else if (m_Count == m_Entries.Length)
+				Rebuild(1);
+
+			int i = m_Count++;
+			int b = Bucket(hash);
+			m_Entries[i].Key = key;
+			m_Entries[i].Value = value;
+			m_Entries[i].Hash = hash;
+			m_Entries[i].Next = m_Buckets[b] - 1;
+			m_Buckets[b] = i + 1;
+		}
+
+		// Compact dict: purge tombstones (and, for (a), dead pointer entries), keep the order; grow if
+		// more than half the capacity is live.
+		void Rebuild(int extra)
+		{
+			Entry[] old = m_Entries;
+			int oldCount = m_Count;
+			int live = 0;
+
+			for (int i = 0; i < oldCount; i++)
+				if (IsLive(ref old[i]))
+					live++;
+
+			int capacity = old.Length;
+
+			if (live + extra > capacity / 2)
+				capacity *= 2;
+
+			while (capacity < live + extra)
+				capacity *= 2;
+
+			Allocate(capacity);
+
+			for (int i = 0; i < oldCount; i++)
+			{
+				if (IsLive(ref old[i]))
 				{
-					// If this is an array append, let's check the next element before blindly invalidating
-					if (appendKey >= 0)
+					int j = m_Count++;
+					int b = Bucket(old[i].Hash);
+					m_Entries[j] = old[i];
+					m_Entries[j].Next = m_Buckets[b] - 1;
+					m_Buckets[b] = j + 1;
+				}
+				else if (object.ReferenceEquals(old[i].Value, s_ArraySlot))
+				{
+					// dead array key: forget its place in the order, a later insert logs it again at the end
+					m_Array[old[i].Hash - 1] = null;
+				}
+			}
+		}
+
+		// Lua node table (ltable.c luaH_newkey): put the key at its main position; on a collision move the
+		// colliding node away if it is not in its own main position, else chain the new key to a free node.
+		void AddNode(DynValue key, int hash, DynValue value)
+		{
+			if (m_Entries == null)
+				Allocate(MinCapacity);
+
+			while (true)
+			{
+				Entry[] n = m_Entries;
+				int mp = Bucket(hash);
+
+				if (n[mp].Value != null)
+				{
+					int f = GetFreePos();
+
+					if (f < 0)
 					{
-						LinkedListNode<TablePair> next = m_ArrayMap.Find(appendKey + 1);
-						if (next == null || next.Value.Value == null || next.Value.Value.IsNil())
-						{
-							m_CachedLength += 1;
-						}
-						else
-						{
-							m_CachedLength = -1;
-						}
+						Rehash(1);
+						continue;
+					}
+
+					int othern = Bucket(n[mp].Hash);
+
+					if (othern != mp)
+					{
+						while (n[othern].Next != mp)
+							othern = n[othern].Next;
+
+						n[othern].Next = f;
+						n[f] = n[mp];
+						n[mp].Next = -1;
+						n[mp].Value = null;
 					}
 					else
 					{
-						m_CachedLength = -1;
+						n[f].Next = n[mp].Next;
+						n[mp].Next = f;
+						mp = f;
+					}
+				}
+
+				// a free or dead node at the main position is reused in place, keeping its chain link
+				n[mp].Key = key;
+				n[mp].Hash = hash;
+				n[mp].Value = value;
+				return;
+			}
+		}
+
+		int GetFreePos()
+		{
+			while (m_LastFree > 0)
+			{
+				m_LastFree--;
+
+				if (m_Entries[m_LastFree].Key == null)
+					return m_LastFree;
+			}
+
+			return -1;
+		}
+
+		void Rehash(int extra)
+		{
+			Entry[] old = m_Entries;
+			int live = 0;
+
+			for (int i = 0; i < old.Length; i++)
+				if (old[i].Key != null && old[i].Value != null)
+					live++;
+
+			int capacity = MinCapacity;
+			while (capacity < live + extra)
+				capacity *= 2;
+
+			Allocate(capacity);
+
+			for (int i = 0; i < old.Length; i++)
+				if (old[i].Key != null && old[i].Value != null)
+					AddNode(old[i].Key, old[i].Hash, old[i].Value);
+		}
+
+		void UpdateEntry(int i, DynValue value, int intKey)
+		{
+			DynValue old = m_Entries[i].Value;
+
+			if (value.IsNil())
+			{
+				if (old != null)
+				{
+					m_Entries[i].Value = null;
+
+					if (intKey > 0 && intKey <= m_Length)
+						m_Length = intKey - 1;
+				}
+			}
+			else
+			{
+				m_Entries[i].Value = value;
+
+				if (old == null && intKey > 0 && intKey == m_Length + 1)
+					ExtendLength();
+			}
+		}
+
+		#endregion
+
+		#region Array part
+
+		bool TryGrowArrayFor(int key)
+		{
+			int len = (m_Array == null) ? 0 : m_Array.Length;
+			int newLen = Math.Max(len * 2, MinCapacity);
+
+			if (key > newLen || key - len > MaxArrayGap)
+				return false;
+
+			DynValue[] grown = new DynValue[newLen];
+
+			if (len > 0)
+				Array.Copy(m_Array, grown, len);
+
+			m_Array = grown;
+
+			// migrate hash keys in (len, newLen] into the array
+			if (m_Entries != null)
+			{
+				int limit = (Order == TableOrder.Unordered) ? m_Entries.Length : m_Count;
+
+				for (int i = 0; i < limit; i++)
+				{
+					DynValue k = m_Entries[i].Key;
+					int h = m_Entries[i].Hash;
+
+					if (k == null || k.Type != DataType.Number || h <= len || h > newLen || k.Number != h)
+						continue;
+
+					DynValue v = m_Entries[i].Value;
+
+					if (Order == TableOrder.Insertion)
+					{
+						// keep its place in the order: the entry becomes a pointer to the array slot
+						grown[h - 1] = v ?? DynValue.Nil;
+						m_Entries[i].Key = null;
+						m_Entries[i].Value = s_ArraySlot;
+					}
+					else
+					{
+						if (v != null)
+							grown[h - 1] = v;
+
+						m_Entries[i].Value = null;
 					}
 				}
 			}
+
+			return true;
+		}
+
+		void SetArraySlot(int key, DynValue value)
+		{
+			DynValue old = m_Array[key - 1];
+			bool wasLive = old != null && old.Type != DataType.Nil;
+
+			if (value.IsNil())
+			{
+				if (wasLive)
+				{
+					m_Array[key - 1] = DynValue.Nil;
+
+					if (key <= m_Length)
+						m_Length = key - 1;
+				}
+
+				return;
+			}
+
+			if (Order == TableOrder.Insertion && old == null)
+			{
+				// a new key: (a) must remember where it goes in the order
+				if (m_Count == 0 && key == m_Prefix + 1)
+					m_Prefix = key;
+				else
+					AddEntry(null, key, s_ArraySlot);
+			}
+
+			m_Array[key - 1] = value;
+
+			if (!wasLive && key == m_Length + 1)
+				ExtendLength();
+		}
+
+		void ExtendLength()
+		{
+			int n = m_Length;
+
+			while (true)
+			{
+				DynValue v = RawGet(n + 1);
+
+				if (v == null || v.IsNil())
+					break;
+
+				n++;
+			}
+
+			m_Length = n;
+		}
+
+		#endregion
+
+		#region Set
+
+		void SetInt(int key, DynValue value, DynValue keyValue = null)
+		{
+			if (key >= 1)
+			{
+				DynValue[] arr = m_Array;
+
+				if (arr != null && key <= arr.Length)
+				{
+					SetArraySlot(key, value);
+					return;
+				}
+
+				if (!value.IsNil() && TryGrowArrayFor(key))
+				{
+					SetArraySlot(key, value);
+					return;
+				}
+			}
+
+			int i = FindNumber(key, key);
+
+			if (i >= 0)
+			{
+				UpdateEntry(i, value, key >= 1 ? key : 0);
+				return;
+			}
+
+			if (value.IsNil())
+				return;
+
+			// keep the caller's key object when possible (it may be -0, which prints differently from 0)
+			AddKey(keyValue == null ? DynValue.NewNumber(key) : keyValue.ReadOnly ? keyValue : DynValue.NewNumber(keyValue.Number), key, value);
+
+			if (key >= 1 && key == m_Length + 1)
+				ExtendLength();
+		}
+
+		void SetString(string s, int hash, DynValue keyValue, DynValue value)
+		{
+			int i = FindString(s, hash);
+
+			if (i >= 0)
+			{
+				UpdateEntry(i, value, 0);
+				return;
+			}
+
+			if (value.IsNil())
+				return;
+
+			AddKey((keyValue != null && keyValue.ReadOnly) ? keyValue : DynValue.NewString(s), hash, value);
 		}
 
 		/// <summary>
@@ -213,7 +716,7 @@ namespace MoonSharp.Interpreter
 				throw ScriptRuntimeException.TableIndexIsNil();
 
 			this.CheckScriptOwnership(value);
-			PerformTableSet(m_StringMap, key, DynValue.NewString(key), value, false, -1);
+			SetString(key, HashString(key), null, value);
 		}
 
 		/// <summary>
@@ -224,7 +727,7 @@ namespace MoonSharp.Interpreter
 		public void Set(int key, DynValue value)
 		{
 			this.CheckScriptOwnership(value);
-			PerformTableSet(m_ArrayMap, key, DynValue.NewNumber(key), value, true, -1);
+			SetInt(key, value);
 		}
 
 		/// <summary>
@@ -244,25 +747,45 @@ namespace MoonSharp.Interpreter
 
 			if (key.Type == DataType.String)
 			{
-				Set(key.String, value);
+				this.CheckScriptOwnership(value);
+				SetString(key.String, key.GetHashCode(), key, value);
 				return;
 			}
 
 			if (key.Type == DataType.Number)
 			{
-				int idx = GetIntegralKey(key.Number);
+				double d = key.Number;
+				int k = (int)d;
 
-				if (idx > 0)
+				this.CheckScriptOwnership(value);
+
+				if (k == d)
 				{
-					Set(idx, value);
+					SetInt(k, value, key);
 					return;
 				}
+
+				int hash = HashNumber(d);
+				int i = FindNumber(d, hash);
+
+				if (i >= 0)
+					UpdateEntry(i, value, 0);
+				else if (!value.IsNil())
+					AddKey(key.ReadOnly ? key : DynValue.NewNumber(d), hash, value);
+
+				return;
 			}
 
 			this.CheckScriptOwnership(key);
 			this.CheckScriptOwnership(value);
 
-			PerformTableSet(m_ValueMap, key, key, value, false, -1);
+			int h = key.GetHashCode();
+			int j = FindOther(key, h);
+
+			if (j >= 0)
+				UpdateEntry(j, value, 0);
+			else if (!value.IsNil())
+				AddKey(key, h, value);
 		}
 
 		/// <summary>
@@ -308,7 +831,6 @@ namespace MoonSharp.Interpreter
 		/// <param name="key">The key.</param>
 		public DynValue Get(string key)
 		{
-			//Contract.Ensures(Contract.Result<DynValue>() != null);
 			return RawGet(key) ?? DynValue.Nil;
 		}
 
@@ -318,7 +840,6 @@ namespace MoonSharp.Interpreter
 		/// <param name="key">The key.</param>
 		public DynValue Get(int key)
 		{
-			//Contract.Ensures(Contract.Result<DynValue>() != null);
 			return RawGet(key) ?? DynValue.Nil;
 		}
 
@@ -328,7 +849,6 @@ namespace MoonSharp.Interpreter
 		/// <param name="key">The key.</param>
 		public DynValue Get(DynValue key)
 		{
-			//Contract.Ensures(Contract.Result<DynValue>() != null);
 			return RawGet(key) ?? DynValue.Nil;
 		}
 
@@ -339,12 +859,11 @@ namespace MoonSharp.Interpreter
 		/// <param name="key">The key.</param>
 		public DynValue Get(object key)
 		{
-			//Contract.Ensures(Contract.Result<DynValue>() != null);
 			return RawGet(key) ?? DynValue.Nil;
 		}
 
 		/// <summary>
-		/// Gets the value associated with the specified keys (expressed as an 
+		/// Gets the value associated with the specified keys (expressed as an
 		/// array of <see cref="System.Object"/>).
 		/// This will marshall CLR and MoonSharp objects in the best possible way.
 		/// Multiple keys can be used to access subtables.
@@ -352,18 +871,12 @@ namespace MoonSharp.Interpreter
 		/// <param name="keys">The keys to access the table and subtables</param>
 		public DynValue Get(params object[] keys)
 		{
-			//Contract.Ensures(Contract.Result<DynValue>() != null);
 			return RawGet(keys) ?? DynValue.Nil;
 		}
 
 		#endregion
 
 		#region RawGet
-
-		private static DynValue RawGetValue(LinkedListNode<TablePair> linkedListNode)
-		{
-			return (linkedListNode != null) ? linkedListNode.Value.Value : null;
-		}
 
 		/// <summary>
 		/// Gets the value associated with the specified key,
@@ -372,7 +885,8 @@ namespace MoonSharp.Interpreter
 		/// <param name="key">The key.</param>
 		public DynValue RawGet(string key)
 		{
-			return RawGetValue(m_StringMap.Find(key));
+			int i = FindString(key, HashString(key));
+			return (i >= 0) ? m_Entries[i].Value : null;
 		}
 
 		/// <summary>
@@ -382,7 +896,13 @@ namespace MoonSharp.Interpreter
 		/// <param name="key">The key.</param>
 		public DynValue RawGet(int key)
 		{
-			return RawGetValue(m_ArrayMap.Find(key));
+			DynValue[] arr = m_Array;
+
+			if (arr != null && (uint)(key - 1) < (uint)arr.Length)
+				return arr[key - 1];
+
+			int i = FindNumber(key, key);
+			return (i >= 0) ? m_Entries[i].Value : null;
 		}
 
 		/// <summary>
@@ -393,16 +913,25 @@ namespace MoonSharp.Interpreter
 		public DynValue RawGet(DynValue key)
 		{
 			if (key.Type == DataType.String)
-				return RawGet(key.String);
+			{
+				int i = FindString(key.String, key.GetHashCode());
+				return (i >= 0) ? m_Entries[i].Value : null;
+			}
 
 			if (key.Type == DataType.Number)
 			{
-				int idx = GetIntegralKey(key.Number);
-				if (idx > 0)
-					return RawGet(idx);
+				double d = key.Number;
+				int k = (int)d;
+
+				if (k == d)
+					return RawGet(k);
+
+				int i = FindNumber(d, HashNumber(d));
+				return (i >= 0) ? m_Entries[i].Value : null;
 			}
 
-			return RawGetValue(m_ValueMap.Find(key));
+			int j = FindOther(key, key.GetHashCode());
+			return (j >= 0) ? m_Entries[j].Value : null;
 		}
 
 		/// <summary>
@@ -444,16 +973,13 @@ namespace MoonSharp.Interpreter
 
 		#region Remove
 
-		private bool PerformTableRemove<T>(LinkedListIndex<T, TablePair> listIndex, T key, bool isNumber)
+		bool RemoveLive(DynValue current, Action clear)
 		{
-			var removed = listIndex.Remove(key);
+			if (current == null || current.IsNil())
+				return false;
 
-			if (removed && isNumber)
-			{
-				m_CachedLength = -1;
-			}
-
-			return removed;
+			clear();
+			return true;
 		}
 
 		/// <summary>
@@ -463,7 +989,7 @@ namespace MoonSharp.Interpreter
 		/// <returns><c>true</c> if values was successfully removed; otherwise, <c>false</c>.</returns>
 		public bool Remove(string key)
 		{
-			return PerformTableRemove(m_StringMap, key, false);
+			return RemoveLive(RawGet(key), () => SetString(key, HashString(key), null, DynValue.Nil));
 		}
 
 		/// <summary>
@@ -473,7 +999,7 @@ namespace MoonSharp.Interpreter
 		/// <returns><c>true</c> if values was successfully removed; otherwise, <c>false</c>.</returns>
 		public bool Remove(int key)
 		{
-			return PerformTableRemove(m_ArrayMap, key, true);
+			return RemoveLive(RawGet(key), () => SetInt(key, DynValue.Nil));
 		}
 
 		/// <summary>
@@ -483,17 +1009,10 @@ namespace MoonSharp.Interpreter
 		/// <returns><c>true</c> if values was successfully removed; otherwise, <c>false</c>.</returns>
 		public bool Remove(DynValue key)
 		{
-			if (key.Type == DataType.String)
-				return Remove(key.String);
+			if (key.IsNilOrNan())
+				return false;
 
-			if (key.Type == DataType.Number)
-			{
-				int idx = GetIntegralKey(key.Number);
-				if (idx > 0)
-					return Remove(idx);
-			}
-
-			return PerformTableRemove(m_ValueMap, key, false);
+			return RemoveLive(RawGet(key), () => Set(key, DynValue.Nil));
 		}
 
 		/// <summary>
@@ -536,92 +1055,145 @@ namespace MoonSharp.Interpreter
 		/// </summary>
 		public void CollectDeadKeys()
 		{
-			for (LinkedListNode<TablePair> node = m_Values.First; node != null; node = node.Next)
+			if (m_Entries == null)
+				return;
+
+			if (Order == TableOrder.Unordered)
+				Rehash(0);
+			else
+				Rebuild(0);
+		}
+
+		#region Iteration
+
+		int HeadLength
+		{
+			get
 			{
-				if (node.Value.Value.IsNil())
+				if (Order == TableOrder.Insertion)
+					return m_Prefix;
+
+				return (m_Array == null) ? 0 : m_Array.Length;
+			}
+		}
+
+		// Finds the first live position >= pos. Positions [0, head) are array slots, the rest hash entries.
+		bool Advance(ref int pos, out TablePair pair)
+		{
+			int head = HeadLength;
+			DynValue[] arr = m_Array;
+
+			for (; pos < head; pos++)
+			{
+				DynValue v = arr[pos];
+
+				if (v != null && v.Type != DataType.Nil)
 				{
-					Remove(node.Value.Key);
+					pair = new TablePair(DynValue.NewNumber(pos + 1), v);
+					pos++;
+					return true;
 				}
 			}
 
-			m_ContainsNilEntries = false;
-			m_CachedLength = -1;
+			Entry[] entries = m_Entries;
+
+			if (entries != null)
+			{
+				int limit = (Order == TableOrder.Unordered) ? entries.Length : m_Count;
+
+				for (int i = pos - head; i < limit; i++)
+				{
+					DynValue v = entries[i].Value;
+
+					if (v == null)
+						continue;
+
+					if (object.ReferenceEquals(v, s_ArraySlot))
+					{
+						int k = entries[i].Hash;
+						DynValue av = arr[k - 1];
+
+						if (av == null || av.Type == DataType.Nil)
+							continue;
+
+						pair = new TablePair(DynValue.NewNumber(k), av);
+						pos = head + i + 1;
+						return true;
+					}
+
+					pair = new TablePair(entries[i].Key, v);
+					pos = head + i + 1;
+					return true;
+				}
+			}
+
+			pair = TablePair.Nil;
+			pos = int.MaxValue;
+			return false;
 		}
 
+		// The position of a key for next(), or -1 when the key is not in the table.
+		int PositionOf(DynValue key)
+		{
+			int head = HeadLength;
+
+			if (key.Type == DataType.Number && m_Array != null)
+			{
+				int idx = GetIntegralKey(key.Number);
+
+				if (idx > 0 && idx <= m_Array.Length)
+				{
+					if (Order != TableOrder.Insertion || idx <= m_Prefix)
+						return idx - 1;
+
+					int p = FindPointer(idx);
+					return (p >= 0) ? head + p : -1;
+				}
+			}
+
+			int i = FindKey(key);
+			return (i >= 0) ? head + i : -1;
+		}
 
 		/// <summary>
 		/// Returns the next pair from a value
 		/// </summary>
 		public TablePair? NextKey(DynValue v)
 		{
-			if (v.IsNil())
+			int pos = 0;
+
+			if (!v.IsNil())
 			{
-				LinkedListNode<TablePair> node = m_Values.First;
+				pos = PositionOf(v);
 
-				if (node == null)
-					return TablePair.Nil;
-				else
-				{
-					if (node.Value.Value.IsNil())
-						return NextKey(node.Value.Key);
-					else
-						return node.Value;
-				}
-			}
-
-			if (v.Type == DataType.String)
-			{
-				return GetNextOf(m_StringMap.Find(v.String));
-			}
-
-			if (v.Type == DataType.Number)
-			{
-				int idx = GetIntegralKey(v.Number);
-
-				if (idx > 0)
-				{
-					return GetNextOf(m_ArrayMap.Find(idx));
-				}
-			}
-
-			return GetNextOf(m_ValueMap.Find(v));
-		}
-
-		private TablePair? GetNextOf(LinkedListNode<TablePair> linkedListNode)
-		{
-			while (true)
-			{
-				if (linkedListNode == null)
+				if (pos < 0)
 					return null;
 
-				if (linkedListNode.Next == null)
-					return TablePair.Nil;
-
-				linkedListNode = linkedListNode.Next;
-
-				if (!linkedListNode.Value.Value.IsNil())
-					return linkedListNode.Value;
+				pos++;
 			}
+
+			TablePair pair;
+			Advance(ref pos, out pair);
+			return pair;
 		}
 
+		IEnumerable<TablePair> EnumeratePairs()
+		{
+			int pos = 0;
+			TablePair pair;
+
+			while (Advance(ref pos, out pair))
+				yield return pair;
+		}
+
+		#endregion
 
 		/// <summary>
 		/// Gets the length of the "array part".
 		/// </summary>
 		public int Length
 		{
-			get
-			{
-				if (m_CachedLength < 0)
-				{
-					m_CachedLength = 0;
-
-					for (int i = 1; m_ArrayMap.ContainsKey(i) && !m_ArrayMap.Find(i).Value.Value.IsNil(); i++)
-						m_CachedLength = i;
-				}
-
-				return m_CachedLength;
-			}
+			get { return m_Length; }
 		}
 
 		internal void InitNextArrayKeys(DynValue val, bool lastpos)
@@ -647,8 +1219,6 @@ namespace MoonSharp.Interpreter
 		}
 		private Table m_MetaTable;
 
-
-
 		/// <summary>
 		/// Enumerates the key/value pairs.
 		/// </summary>
@@ -657,7 +1227,7 @@ namespace MoonSharp.Interpreter
 		{
 			get
 			{
-				return m_Values.Select(n => new TablePair(n.Key, n.Value));
+				return EnumeratePairs();
 			}
 		}
 
@@ -669,7 +1239,8 @@ namespace MoonSharp.Interpreter
 		{
 			get
 			{
-				return m_Values.Select(n => n.Key);
+				foreach (TablePair p in EnumeratePairs())
+					yield return p.Key;
 			}
 		}
 
@@ -681,7 +1252,8 @@ namespace MoonSharp.Interpreter
 		{
 			get
 			{
-				return m_Values.Select(n => n.Value);
+				foreach (TablePair p in EnumeratePairs())
+					yield return p.Value;
 			}
 		}
 	}

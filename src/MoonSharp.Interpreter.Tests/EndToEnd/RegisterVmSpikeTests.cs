@@ -96,10 +96,10 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 					mismatches.Add(src.Replace("\n", " | ") + "\n    stack:    " + a + "\n    register: " + b);
 			}
 
-			Assert.GreaterOrEqual(checkedCount, minimum);
+			Assert.IsTrue(checkedCount >= minimum, checkedCount + " sources checked, expected at least " + minimum);
 
 			if (mismatches.Count > 0)
-				Assert.Fail("{0} of {1} differ:\n{2}", mismatches.Count, checkedCount, string.Join("\n", mismatches.GetRange(0, Math.Min(40, mismatches.Count)).ToArray()));
+				Assert.Fail(string.Format("{0} of {1} differ:\n{2}", mismatches.Count, checkedCount, string.Join("\n", mismatches.GetRange(0, Math.Min(40, mismatches.Count)).ToArray())));
 		}
 
 		static readonly string[] Literals = { "1", "2.5", "-3", "0", "\"10\"", "\"0x10\"", "\" 5 \"", "\"a\"", "nil", "true" };
@@ -289,7 +289,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				iterations[k] = (int)s.Globals.Get("c").Number;
 			}
 
-			Assert.Greater(iterations[1], iterations[0] * 3 / 2, "register {0}, stack {1}", iterations[1], iterations[0]);
+			Assert.Greater(iterations[1], iterations[0] * 3 / 2, string.Format("register {0}, stack {1}", iterations[1], iterations[0]));
 		}
 	}
 }

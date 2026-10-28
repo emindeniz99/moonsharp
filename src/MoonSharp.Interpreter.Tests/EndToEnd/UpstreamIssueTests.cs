@@ -347,5 +347,18 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 			Assert.AreEqual("abc", r.Tuple[0].String);
 		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/275 (upstream PR #280): Lua 5.2 formats
+		// any value with %s through tostring; MoonSharp rejected nil and tables.
+		[Test]
+		[Ignore("waits for string library work: https://github.com/moonsharp-devs/moonsharp/issues/275")]
+		public void Issue275_FormatPercentSAcceptsAnyValue()
+		{
+			Script s = new Script();
+
+			DynValue r = s.DoString("return string.format('%s %s %s', nil, true, {}):match('^nil true table: ') ~= nil");
+
+			Assert.AreEqual(true, r.Boolean);
+		}
 	}
 }

@@ -236,9 +236,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 			return AppendInstruction(new Instruction(m_CurrentSourceRef) { OpCode = OpCode.ToNum, NumVal = stage });
 		}
 
-		public Instruction Emit_Incr(int i)
+		/// <summary>
+		/// The end of a numeric for's iteration: leaves the loop's block (as Emit_Leave), steps the counter
+		/// and, while it is in range, stores it in <paramref name="loopVar"/> and jumps to <paramref name="bodyStart"/>.
+		/// </summary>
+		public Instruction Emit_ForLoop(SymbolRef loopVar, RuntimeScopeBlock runtimeScopeBlock, int bodyStart)
 		{
-			return AppendInstruction(new Instruction(m_CurrentSourceRef) { OpCode = OpCode.Incr, NumVal = i });
+			return AppendInstruction(new Instruction(m_CurrentSourceRef) { OpCode = OpCode.ForLoop, Symbol = loopVar, NumVal = bodyStart, NumVal2 = runtimeScopeBlock.From, NumVal3 = runtimeScopeBlock.To });
 		}
 
 		public Instruction Emit_NewTable(bool shared)

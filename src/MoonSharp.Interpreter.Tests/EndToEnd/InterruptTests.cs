@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using NUnit.Framework;
 
 namespace MoonSharp.Interpreter.Tests.EndToEnd
@@ -86,7 +86,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			{
 				Script s = new Script();
 				s.Options.InterruptHandler = n => { seen.Add(n); return false; };
-				s.DoString("local function fib(n) if n < 2 then return n end return fib(n - 1) + fib(n - 2) end return fib(18)");
+				s.DoString("local function fib(n) if n < 2 then return n end return fib(n - 1) + fib(n - 2) end return fib(20)");
 			}
 
 			CollectionAssert.AreEqual(first, second);

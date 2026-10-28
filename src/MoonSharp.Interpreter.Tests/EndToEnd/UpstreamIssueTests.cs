@@ -643,17 +643,36 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void Issue274_AutomaticRegistrationKeepsListsAndDictionariesAsTables()
 		{
+			var list = new System.Collections.Generic.List<short> { 1, 2, 3 };
+			var map = new System.Collections.Generic.Dictionary<string, short> { { "a", 4 } };
+			var array = new short[] { 5, 6 };
+
+			// Earlier tests and the runners leave types registered (List<>, Array, ...); a registered type
+			// that covers a collection rightly keeps it userdata. Set them aside under the default policy,
+			// which unregisters (a runner's policy may refuse), and put them back afterwards.
 			var oldPolicy = UserData.RegistrationPolicy;
+			var setAside = new System.Collections.Generic.Dictionary<Type, MoonSharp.Interpreter.Interop.IUserDataDescriptor>();
 
 			try
 			{
+				UserData.RegistrationPolicy = MoonSharp.Interpreter.Interop.InteropRegistrationPolicy.Default;
+
+				foreach (Type t in CoveringTypes(list.GetType()).Concat(CoveringTypes(map.GetType())).Concat(CoveringTypes(array.GetType())))
+				{
+					if (!setAside.ContainsKey(t) && UserData.IsTypeRegistered(t))
+					{
+						setAside[t] = UserData.GetDescriptorForType(t, false);
+						UserData.UnregisterType(t);
+					}
+				}
+
 				UserData.RegistrationPolicy = MoonSharp.Interpreter.Interop.InteropRegistrationPolicy.Automatic;
 				UserData.RegisterType<Roster>();
 
 				Script s = new Script();
-				s.Globals["list"] = new System.Collections.Generic.List<short> { 1, 2, 3 };
-				s.Globals["map"] = new System.Collections.Generic.Dictionary<string, short> { { "a", 4 } };
-				s.Globals["array"] = new short[] { 5, 6 };
+				s.Globals["list"] = list;
+				s.Globals["map"] = map;
+				s.Globals["array"] = array;
 				s.Globals["roster"] = new Roster();
 
 				DynValue r = s.DoString("return type(list), #list, list[3], type(map), map.a, type(array), #array, type(roster), roster.Team");
@@ -670,12 +689,26 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			}
 			finally
 			{
-				UserData.RegistrationPolicy = oldPolicy;
+				UserData.RegistrationPolicy = MoonSharp.Interpreter.Interop.InteropRegistrationPolicy.Default;
 				UserData.UnregisterType<Roster>();
-				UserData.UnregisterType<System.Collections.Generic.List<short>>();
-				UserData.UnregisterType<System.Collections.Generic.Dictionary<string, short>>();
-				UserData.UnregisterType<short[]>();
+
+				foreach (var pair in setAside)
+					UserData.RegisterType(pair.Key, pair.Value);
+
+				UserData.RegistrationPolicy = oldPolicy;
 			}
+		}
+
+		// The types whose registration gives a value of type t a descriptor: t, its base types, its
+		// interfaces, and their generic definitions (TypeDescriptorRegistry.ResolveDescriptorForUnregisteredType).
+		static System.Collections.Generic.IEnumerable<Type> CoveringTypes(Type t)
+		{
+			var types = new System.Collections.Generic.List<Type>(t.GetInterfaces());
+
+			for (Type b = t; b != null; b = b.BaseType)
+				types.Add(b);
+
+			return types.Concat(types.Where(x => x.IsGenericType).Select(x => x.GetGenericTypeDefinition()));
 		}
 	}
 }

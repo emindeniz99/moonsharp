@@ -46,8 +46,6 @@ namespace MoonSharpTests
 			"VInterop_ListMethod_None",
 			"VInterop_ListMethod_Lazy",
 			"VInterop_ListMethod_Precomputed",
-			// HardwireAndLogPolicy keeps List<> and Array registered after the tests that register them
-			"Issue274_AutomaticRegistrationKeepsListsAndDictionariesAsTables",
 
 			// private members
 			"Interop_NestedTypes_Private_Ref",

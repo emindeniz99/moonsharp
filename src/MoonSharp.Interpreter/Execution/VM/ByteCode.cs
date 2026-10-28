@@ -367,21 +367,5 @@ namespace MoonSharp.Interpreter.Execution.VM
 			return AppendInstruction(new Instruction(m_CurrentSourceRef) { OpCode = OpCode.Swap, NumVal = p1, NumVal2 = p2 });
 		}
 
-		/// <summary>
-		/// Swaps the two operands of a comparison, so a &gt; b runs as b &lt; a (Lua 5.2 manual 3.4.3).
-		/// It is written as Swap 1 0, which no other construct emits (calls use Swap 0 1), so the processor
-		/// can tell it apart and report a failed comparison with the operands in source order. Both fields
-		/// survive string.dump.
-		/// </summary>
-		public Instruction Emit_ComparisonSwap()
-		{
-			return Emit_Swap(1, 0);
-		}
-
-		internal static bool IsComparisonSwap(Instruction i)
-		{
-			return i.OpCode == OpCode.Swap && i.NumVal == 1 && i.NumVal2 == 0;
-		}
-
 	}
 }

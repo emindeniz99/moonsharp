@@ -17,8 +17,9 @@ Changes in this fork that scripts or hosts can observe, compared with upstream M
 | `x >= y` with `__le` | `not __lt(x, y)` (an error without `__lt`) | `__le(y, x)` |
 | `x > y` with only `__le` | `not __le(x, y)` | error: attempt to compare two table values |
 
-`x >= y` with only `__lt` gives the same result as before (`not __lt(x, y)`). Error messages for
-comparisons of unrelated types still name the operands in source order.
+`x >= y` with only `__lt` gives the same result as before (`not __lt(x, y)`). Errors for comparisons
+of unrelated types name the operands of the comparison that runs, as Lua 5.2 does: `1 > 'x'` now
+reports "attempt to compare string with number" (it said "number with string").
 
 **Affected:** scripts that compare NaN with `>`/`>=`, and types whose `__le` is not the complement of
 `__lt` (for example partial orders). Code compiled by an older version and loaded with `load` from a

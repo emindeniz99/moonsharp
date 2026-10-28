@@ -150,12 +150,13 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
-		public void Comparison_ErrorNamesOperandsInSourceOrder()
+		public void Comparison_ErrorNamesOperandsAsLuaDoes()
 		{
-			// The message keeps the operand order of the source, as before.
-			Assert.AreEqual("attempt to compare number with string", CompareError("return 1 > 'x'"));
-			Assert.AreEqual("attempt to compare number with string", CompareError("return 1 >= 'x'"));
-			Assert.AreEqual("attempt to compare string with number", CompareError("return 'x' > 1"));
+			// Lua 5.2 reports a > b as the comparison b < a it performs (lvm.c luaG_ordererror).
+			Assert.AreEqual("attempt to compare string with number", CompareError("return 1 > 'x'"));
+			Assert.AreEqual("attempt to compare string with number", CompareError("return 1 >= 'x'"));
+			Assert.AreEqual("attempt to compare number with string", CompareError("return 'x' > 1"));
+			Assert.AreEqual("attempt to compare number with string", CompareError("return 1 < 'x'"));
 			Assert.AreEqual("attempt to compare number with nil", CompareError("return 1 < nil"));
 			Assert.AreEqual("attempt to compare number with nil", CompareError("return 1 <= nil"));
 			Assert.AreEqual("attempt to compare two table values", CompareError("return {} > {}"));

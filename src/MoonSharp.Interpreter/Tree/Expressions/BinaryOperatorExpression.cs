@@ -323,10 +323,11 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 			}
 
 			// Lua 5.2 3.4.3: a > b is b < a and a >= b is b <= a. "not (a <= b)" would differ for NaN and
-			// for metamethods (it calls __le(a, b) where Lua calls __lt(b, a)).
+			// for metamethods (it calls __le(a, b) where Lua calls __lt(b, a)). Errors then name the
+			// operands as Lua does: 1 > 'x' is "attempt to compare string with number".
 			if (m_Operator == Operator.Greater || m_Operator == Operator.GreaterOrEqual)
 			{
-				bc.Emit_ComparisonSwap();
+				bc.Emit_Swap(0, 1);
 				bc.Emit_Operator(m_Operator == Operator.Greater ? OpCode.Less : OpCode.LessEq);
 				return;
 			}

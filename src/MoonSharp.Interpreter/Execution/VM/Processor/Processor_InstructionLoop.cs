@@ -1109,28 +1109,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 			{
 				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__lt", instructionPtr);
 				if (ip < 0)
-					throw CompareInvalidType(l, r, instructionPtr);
+					throw ScriptRuntimeException.CompareInvalidType(l, r);
 				else
 					return ip;
 			}
 
 			return instructionPtr;
 		}
-
-		// a > b and a >= b run as b < a and b <= a, after a Swap that ByteCode.Emit_ComparisonSwap marks
-		// (see BinaryOperatorExpression.Compile). The error names the operands in source order, as it did
-		// before the swap. Nothing jumps between the swap and the comparison, so the previous instruction
-		// is the one that ran before this one.
-		private ScriptRuntimeException CompareInvalidType(DynValue l, DynValue r, int instructionPtr)
-		{
-			int prev = instructionPtr - 2;
-
-			if (prev >= 0 && ByteCode.IsComparisonSwap(m_RootChunk.Code[prev]))
-				return ScriptRuntimeException.CompareInvalidType(r, l);
-
-			return ScriptRuntimeException.CompareInvalidType(l, r);
-		}
-
 
 		private int ExecLessEq(Instruction i, int instructionPtr)
 		{
@@ -1155,7 +1140,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 					ip = Internal_InvokeBinaryMetaMethod(r, l, "__lt", instructionPtr, DynValue.True);
 
 					if (ip < 0)
-						throw CompareInvalidType(l, r, instructionPtr);
+						throw ScriptRuntimeException.CompareInvalidType(l, r);
 					else
 						return ip;
 				}

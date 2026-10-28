@@ -1288,9 +1288,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 				ScriptExecutionContext ctx = CallContext(depth, callback, sref);
 				var ret = args == null
 					? callback.InvokeOnStack(ctx, CallArguments(depth), m_ValueStack, m_ValueStack.Count - argsCount, argsCount, thisCall)
-					: callback.Invoke(ctx, args, isMethodCall: thisCall);
+					: callback.InvokeFromProcessor(ctx, args, thisCall);
 				m_ValueStack.RemoveLast(argsCount + 1);
-				m_ValueStack.Push(ret);
+
+				if (ReferenceEquals(ret, ScriptExecutionContext.ResultInContext))
+					m_ValueStack.Push(ctx.TakeResult());
+				else
+					m_ValueStack.Push(ret);
 
 				if (handlers != null)
 					return ClrCallWithHandlersReturned(instructionPtr);

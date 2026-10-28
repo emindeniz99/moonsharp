@@ -189,6 +189,76 @@ namespace MoonSharp.Interpreter
 			return v.Type == DataType.Void ? LuaValue.Nil : v;
 		}
 
+		// The argument at index as RawGet(index, false) ?? DynValue.Void gives it, without creating a DynValue.
+		LuaValue ValueAt(int index)
+		{
+			if (index >= m_Count)
+				return LuaValue.Void;
+
+			return m_Args == null ? ((StackArguments)this).Value(index) : RawGet(index, false).ToLuaValue();
+		}
+
+		/// <summary>
+		/// The type of the argument at <paramref name="index"/>, without creating a <see cref="DynValue"/>:
+		/// <see cref="DataType.Void"/> when it is missing or is a call that returned no value (the type of
+		/// <c>RawGet(index, false) ?? DynValue.Void</c>). With <see cref="NumberAt"/>, <see cref="StringAt"/> and
+		/// the other readers below, a callback reads its arguments without allocating.
+		/// </summary>
+		public DataType TypeAt(int index)
+		{
+			return ValueAt(index).Type;
+		}
+
+		/// <summary>
+		/// The <see cref="DynValue.Number"/> of the argument at <paramref name="index"/>, without creating a
+		/// <see cref="DynValue"/>: the number, 1 or 0 for a boolean, 0 for anything else.
+		/// </summary>
+		public double NumberAt(int index)
+		{
+			return ValueAt(index).Number;
+		}
+
+		/// <summary>
+		/// The <see cref="DynValue.Boolean"/> of the argument at <paramref name="index"/>, without creating a
+		/// <see cref="DynValue"/>.
+		/// </summary>
+		public bool BooleanAt(int index)
+		{
+			return ValueAt(index).Number != 0;
+		}
+
+		/// <summary>
+		/// The string at <paramref name="index"/>, or null when that argument is not a string.
+		/// </summary>
+		public string StringAt(int index)
+		{
+			return ValueAt(index).Object as string;
+		}
+
+		/// <summary>
+		/// The table at <paramref name="index"/>, or null when that argument is not a table.
+		/// </summary>
+		public Table TableAt(int index)
+		{
+			return ValueAt(index).Object as Table;
+		}
+
+		/// <summary>
+		/// The Lua function at <paramref name="index"/>, or null when that argument is not one.
+		/// </summary>
+		public Closure FunctionAt(int index)
+		{
+			return ValueAt(index).Object as Closure;
+		}
+
+		/// <summary>
+		/// The userdata at <paramref name="index"/>, or null when that argument is not a userdata.
+		/// </summary>
+		public UserData UserDataAt(int index)
+		{
+			return ValueAt(index).Object as UserData;
+		}
+
 		/// <summary>
 		/// Converts the arguments to an array
 		/// </summary>

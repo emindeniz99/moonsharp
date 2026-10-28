@@ -24,7 +24,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			ScriptExecutionContext ctx = m_CallContexts[depth];
 
 			if (ctx == null)
-				m_CallContexts[depth] = ctx = new ScriptExecutionContext(this, callback, sourceRef);
+				m_CallContexts[depth] = ctx = new ScriptExecutionContext(this, callback, sourceRef) { LentByProcessor = true };
 			else
 				ctx.Reuse(callback, sourceRef);
 

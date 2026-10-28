@@ -32,6 +32,66 @@ namespace MoonSharp.Interpreter
 			CallingLocation = sourceRef;
 		}
 
+		// A context the processor lends to the C# functions it calls keeps their result here when they return
+		// it with Return, and gives the processor ResultInContext instead of a new DynValue.
+		internal bool LentByProcessor;
+		LuaValue m_Result;
+
+		/// <summary>
+		/// What <see cref="Return(double)"/> and <see cref="Return(string)"/> give the processor: the result is
+		/// in the context.
+		/// </summary>
+		internal static readonly DynValue ResultInContext = DynValue.NewNil();
+
+		/// <summary>
+		/// The result of the running callback, as <c>return context.Return(number);</c>: when the VM called the
+		/// callback, the number goes onto the value stack without a new <see cref="DynValue"/>; otherwise (a call
+		/// from C#) it is <see cref="DynValue.NewNumber"/>. Use it only as the callback's return value, and
+		/// only from the callback this context was passed to: what it returns is a placeholder that is
+		/// valid until the next call of Return on this context.
+		/// </summary>
+		public DynValue Return(double number)
+		{
+			if (!LentByProcessor)
+				return DynValue.NewNumber(number);
+
+			m_Result = LuaValue.FromNumber(number);
+			return ResultInContext;
+		}
+
+		/// <summary>
+		/// As <see cref="Return(double)"/>, for a string; null is nil.
+		/// </summary>
+		public DynValue Return(string str)
+		{
+			if (str == null)
+				return DynValue.Nil;
+
+			if (!LentByProcessor)
+				return DynValue.NewString(str);
+
+			m_Result = LuaValue.FromString(str);
+			return ResultInContext;
+		}
+
+		/// <summary>
+		/// The result a callback left with Return, as a VM value; the context lets go of it.
+		/// </summary>
+		internal LuaValue TakeResult()
+		{
+			LuaValue v = m_Result;
+			m_Result = default(LuaValue);
+			return v;
+		}
+
+		/// <summary>
+		/// <paramref name="ret"/>, or the DynValue of the result a callback left with Return.
+		/// </summary>
+		internal DynValue Resolve(DynValue ret)
+		{
+			return ReferenceEquals(ret, ResultInContext) ? TakeResult().ToDynValue() : ret;
+		}
+
 		/// <summary>
 		/// Gets a value indicating whether this instance is running a dynamic execution.
 		/// Under a dynamic execution, most methods of ScriptExecutionContext are not reliable as the

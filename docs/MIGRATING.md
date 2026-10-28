@@ -1126,3 +1126,33 @@ through reflection 424 to 256, `coroutine.wrap` plus `coroutine.yield` 248 to
 returned and read its `CallingLocation` or `AdditionalData` later: they now
 see the latest call at the same depth. `GetScript`, `Call`,
 `GetCallingCoroutine` and the metatable helpers work as before.
+
+## C# functions can read arguments and return numbers without a DynValue
+
+New, opt-in API for callbacks that run often:
+
+- `CallbackArguments.TypeAt(i)`, `NumberAt(i)`, `BooleanAt(i)`, `StringAt(i)`,
+  `TableAt(i)`, `FunctionAt(i)` and `UserDataAt(i)` read an argument without
+  creating a `DynValue`. `TypeAt` is the type of
+  `RawGet(i, false) ?? DynValue.Void`: `Void` for a missing argument and for a
+  call that returned nothing.
+- `ScriptExecutionContext.Return(double)` and `Return(string)` give the
+  callback's result to the VM without a `DynValue` when Lua called the
+  callback. Use them only as the return value of the callback the context was
+  passed to (`return ctx.Return(x);`): the `DynValue` they return is a
+  placeholder for the value kept in the context. Called from C# (for example
+  through `Script.Call` or `CallbackFunction.Invoke`), the callback's result is
+  an ordinary `DynValue`.
+
+```csharp
+script.Globals["add"] = new CallbackFunction(
+    (ctx, args) => ctx.Return(args.NumberAt(0) + args.NumberAt(1)))
+    { UsesArgumentsOnlyDuringCall = true };
+```
+
+This callback allocates nothing per call; written with `args[0].Number` and
+`DynValue.NewNumber` it allocates 240 bytes per call with two large numbers on
+`next` before this change, 192 after the reuse of contexts (above) and 120 with
+`UsesArgumentsOnlyDuringCall`.
+
+**Affected:** nobody; existing callbacks behave as before.

@@ -271,6 +271,18 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
+		public void AllocationBudget_HostCallsWithoutDynValues()
+		{
+			// Lua-CSharp's host-calls case written against the allocation-free API: arguments read in place
+			// with NumberAt and the result returned with ScriptExecutionContext.Return (240 bytes with
+			// DynValue.NewCallback, args[i].Number and DynValue.NewNumber before this branch).
+			SkipUnlessMeasurable();
+			Script script = new Script();
+			script.Globals["add"] = new CallbackFunction((ctx, args) => ctx.Return(args.NumberAt(0) + args.NumberAt(1))) { UsesArgumentsOnlyDuringCall = true };
+			AssertBudget("host_calls_no_dynvalues", LuaLoop(script, "local add = add\nreturn function(n) local s = 0 for i = 1, n do s = add(s, i) end return s end"), N, NoAllocation);
+		}
+
+		[Test]
 		public void AllocationBudget_CsToLuaCall3()
 		{
 			// Left: the host's params array, the host's DynValue for i and the result's DynValue. The call's

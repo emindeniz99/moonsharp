@@ -54,6 +54,16 @@ namespace MoonSharp.Interpreter
 		/// <returns></returns>
 		public DynValue Invoke(ScriptExecutionContext executionContext, IList<DynValue> args, bool isMethodCall = false)
 		{
+			DynValue ret = InvokeFromProcessor(executionContext, args, isMethodCall);
+			return executionContext != null ? executionContext.Resolve(ret) : ret;
+		}
+
+		/// <summary>
+		/// <see cref="Invoke"/> for the processor, which takes a result left in the context
+		/// (<see cref="ScriptExecutionContext.Return(double)"/>) itself.
+		/// </summary>
+		internal DynValue InvokeFromProcessor(ScriptExecutionContext executionContext, IList<DynValue> args, bool isMethodCall)
+		{
 			if (isMethodCall)
 			{
 				var colon = executionContext.GetScript().Options.ColonOperatorClrCallbackBehaviour;

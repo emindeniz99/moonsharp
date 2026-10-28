@@ -514,5 +514,57 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			s.Options.TailCallOptimizationThreshold = 1;
 			Assert.AreEqual(VarArgsShapesExpected.TrimEnd('\n'), s.DoString(VarArgsShapes).String);
 		}
+			[Test]
+		public void CallPath_ArgumentReadersAndReturnWithoutDynValues()
+		{
+			// TypeAt, NumberAt and the other readers give what RawGet(i, false) ?? DynValue.Void would, in
+			// both argument forms; Return gives the result to the VM, to pcall, to a C# caller through
+			// ScriptExecutionContext.Call and to the host through Script.Call.
+			foreach (bool inPlace in new[] { false, true })
+			{
+				Script script = new Script();
+				var describe = new CallbackFunction((ctx, args) =>
+				{
+					var parts = new System.Collections.Generic.List<string>();
+
+					for (int i = 0; i <= args.Count; i++)
+					{
+						parts.Add(args.TypeAt(i) + ":" + args.NumberAt(i) + ":" + args.BooleanAt(i) + ":" + (args.StringAt(i) ?? "-")
+							+ ":" + (args.TableAt(i) != null) + ":" + (args.FunctionAt(i) != null) + ":" + (args.UserDataAt(i) != null)
+							+ ":" + (args.RawGet(i, false) ?? DynValue.Void).Type);
+					}
+
+					return ctx.Return(string.Join(" ", parts));
+				}, "describe") { UsesArgumentsOnlyDuringCall = inPlace };
+				var add = new CallbackFunction((ctx, args) => ctx.Return(args.NumberAt(0) + args.NumberAt(1)), "add") { UsesArgumentsOnlyDuringCall = inPlace };
+				var viaContext = new CallbackFunction((ctx, args) => DynValue.NewNumber(ctx.Call(DynValue.NewCallback(add), args[0], args[1]).Number * 10), "viaContext");
+
+				script.Globals["describe"] = describe;
+				script.Globals["add"] = add;
+				script.Globals["viaContext"] = viaContext;
+				UserData.RegisterType<ArgumentKeeper>();
+				script.Globals["ud"] = UserData.Create(new ArgumentKeeper());
+
+				DynValue r = script.DoString(@"
+					local function none() end
+					local function two() return 'x', 'y' end
+					local ok, sum = pcall(add, 2, 3)
+					return describe(5, true, 's', {}, print, function() end, ud, none(), nil, two()),
+						add(1e10, 0.5), ok, sum, viaContext(4, 5), { add(1, 2) }");
+
+				Assert.AreEqual("Number:5:True:-:False:False:False:Number Boolean:1:True:-:False:False:False:Boolean " +
+					"String:0:False:s:False:False:False:String Table:0:False:-:True:False:False:Table " +
+					"ClrFunction:0:False:-:False:False:False:ClrFunction Function:0:False:-:False:True:False:Function " +
+					"UserData:0:False:-:False:False:True:UserData Void:0:False:-:False:False:False:Void " +
+					"Nil:0:False:-:False:False:False:Nil String:0:False:x:False:False:False:String " +
+					"String:0:False:y:False:False:False:String Void:0:False:-:False:False:False:Void", r.Tuple[0].String, "in place: " + inPlace);
+				Assert.AreEqual(1e10 + 0.5, r.Tuple[1].Number);
+				Assert.AreEqual(true, r.Tuple[2].Boolean);
+				Assert.AreEqual(5, r.Tuple[3].Number);
+				Assert.AreEqual(90, r.Tuple[4].Number);
+				Assert.AreEqual(3, r.Tuple[5].Table.Get(1).Number);
+				Assert.AreEqual(7, script.Call(script.Globals.Get("add"), 3, 4).Number);
+			}
+		}
 	}
 }

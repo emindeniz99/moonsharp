@@ -74,6 +74,78 @@ namespace MoonSharp.Interpreter
 		// Cleared by every store or removal of a string key.
 		internal int MetaAbsent;
 
+		// For the VM's field caches (FieldCache). Shape changes whenever a key is added to the hash part or
+		// its entries move, so while it stays the same an entry index still names the same key (or a removed
+		// entry, whose value is null) and a string key with no entry still has none. Its high 32 bits are an
+		// id that StampedShape gives the table the first time a cache records it, so a shape a cache holds
+		// also names the table, without a reference that would keep the table alive.
+		internal long Shape;
+
+		static int s_NextShapeId;
+
+		internal long StampedShape
+		{
+			get
+			{
+				if ((Shape >> 32) == 0)
+				{
+					uint id;
+
+					do id = (uint)System.Threading.Interlocked.Increment(ref s_NextShapeId);
+					while (id == 0);
+
+					Shape |= (long)id << 32;
+				}
+
+				return Shape;
+			}
+		}
+
+		internal static int StringHash(string key)
+		{
+			return HashString(key);
+		}
+
+		/// <summary>
+		/// The entry of string key <paramref name="key"/>, dead or live, or -1.
+		/// </summary>
+		internal int FindStringEntry(string key, int hash)
+		{
+			return FindString(key, hash);
+		}
+
+		internal int FindStringEntry(string key)
+		{
+			return FindString(key, HashString(key));
+		}
+
+		/// <summary>
+		/// <see cref="Set(string, DynValue)"/> with the key's hash already computed.
+		/// </summary>
+		internal void SetString(string key, int hash, DynValue value)
+		{
+			this.CheckScriptOwnership(value);
+			SetString(key, hash, null, value);
+		}
+
+		/// <summary>
+		/// The value of entry <paramref name="entry"/>: null when its key is dead or was removed.
+		/// </summary>
+		internal DynValue EntryValue(int entry)
+		{
+			return m_Entries[entry].Value;
+		}
+
+		/// <summary>
+		/// Replaces the value of a live string-key entry with a value that is not nil. A live key is never
+		/// one of the metamethods MetaAbsent lists, so the bits stay.
+		/// </summary>
+		internal void SetEntryValue(int entry, DynValue value)
+		{
+			this.CheckScriptOwnership(value);
+			m_Entries[entry].Value = value;
+		}
+
 		/// <summary>
 		/// Initializes a new instance of the <see cref="Table"/> class.
 		/// </summary>
@@ -111,6 +183,7 @@ namespace MoonSharp.Interpreter
 		public void Clear()
 		{
 			MetaAbsent = 0;
+			Shape++;
 			m_Array = null;
 			m_Prefix = 0;
 			m_Entries = null;
@@ -321,6 +394,7 @@ namespace MoonSharp.Interpreter
 			int log2 = 0;
 			while ((1 << log2) < capacity) log2++;
 
+			Shape++;
 			m_Entries = new Entry[capacity];
 			m_Buckets = new int[capacity];
 			m_Shift = 32 - log2;
@@ -357,6 +431,8 @@ namespace MoonSharp.Interpreter
 		// Appends a key to the order. Callers run AfterInsert once the value is stored.
 		void AddEntry(DynValue key, int hash, DynValue value)
 		{
+			Shape++;
+
 			if (m_Entries == null)
 				Allocate(MinCapacity);
 			else if (m_Count == m_Entries.Length)

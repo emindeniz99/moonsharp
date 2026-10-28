@@ -1492,6 +1492,31 @@ namespace MoonSharp.Interpreter.Execution.VM
 			LuaValue value = GetStoreValue(i);
 			DynValue h = null;
 
+			// A constant string key stored into a table: write the cached entry in place, or find it and
+			// cache it. A new key goes straight in when there is no metatable, else the general path runs.
+			if (obj.Type == DataType.Table && idx.Type == DataType.String && i.Value != null && !isMultiIndex && value.IsNotNil())
+			{
+				Table table = (Table)obj.Object;
+				FieldCache cache = i.Cache ?? (i.Cache = new FieldCache((string)idx.Object));
+				DynValue v = value.ToDynValue();
+
+				if (cache.TrySet(table, v))
+					return instructionPtr;
+
+				int e = cache.FindLive(table);
+
+				if (e >= 0)
+				{
+					table.SetEntryValue(e, v);
+					return instructionPtr;
+				}
+
+				if (table.MetaTable == null)
+				{
+					cache.Add(table, v);
+					return instructionPtr;
+				}
+			}
 
 			while (nestedMetaOps > 0)
 			{
@@ -1575,6 +1600,33 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			DynValue h = null;
 
+			// A constant string key read from a table: the cached path, or a lookup through __index tables
+			// that caches it.
+			if (obj.Type == DataType.Table && idx.Type == DataType.String && i.Value != null && !isMultiIndex)
+			{
+				FieldCache cache = i.Cache ?? (i.Cache = new FieldCache((string)idx.Object));
+
+				if (!cache.Disabled)
+				{
+					Table table = (Table)obj.Object;
+					DynValue v = cache.Get(table);
+
+					if (v == null)
+					{
+						v = cache.Lookup(table, out table);
+
+						// an __index the cache does not follow: the general lookup goes on from there
+						if (v == null)
+							obj = LuaValue.FromObject(DataType.Table, table);
+					}
+
+					if (v != null)
+					{
+						m_ValueStack.Push(v);
+						return instructionPtr;
+					}
+				}
+			}
 
 			while (nestedMetaOps > 0)
 			{

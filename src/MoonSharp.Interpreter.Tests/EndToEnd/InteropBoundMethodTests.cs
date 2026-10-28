@@ -163,6 +163,9 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		public void Interop_Bound_FuzzyMatchingFlagsChangeIsSeen()
 		{
 			var oldFlags = Script.GlobalOptions.FuzzySymbolMatching;
+			// A fresh descriptor per registration; test runners may install a policy that keeps old ones.
+			var oldPolicy = UserData.RegistrationPolicy;
+			UserData.RegistrationPolicy = InteropRegistrationPolicy.Default;
 
 			try
 			{
@@ -184,6 +187,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			{
 				Script.GlobalOptions.FuzzySymbolMatching = oldFlags;
 				UserData.UnregisterType<BoundProbe>();
+				UserData.RegistrationPolicy = oldPolicy;
 			}
 		}
 

@@ -44,13 +44,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 
 
-		private int Internal_InvokeUnaryMetaMethod(DynValue op1, string eventName, int instructionPtr)
+		private int Internal_InvokeUnaryMetaMethod(LuaValue op1, string eventName, int instructionPtr)
 		{
 			DynValue m = null;
 
 			if (op1.Type == DataType.UserData)
 			{
-				m = op1.UserData.Descriptor.MetaIndex(m_Script, op1.UserData.Object, eventName);
+				UserData ud = (UserData)op1.Object;
+				m = ud.Descriptor.MetaIndex(m_Script, ud.Object, eventName);
 			}
 
 			if (m == null)
@@ -76,15 +77,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 				return -1;
 			}
 		}
-		private int Internal_InvokeBinaryMetaMethod(DynValue l, DynValue r, string eventName, int instructionPtr, DynValue extraPush = null)
+
+		private int Internal_InvokeBinaryMetaMethod(LuaValue l, LuaValue r, string eventName, int instructionPtr)
 		{
 			var m = GetBinaryMetamethod(l, r, eventName);
 
 			if (m != null)
 			{
-				if (extraPush != null)
-					m_ValueStack.Push(extraPush);
-
 				m_ValueStack.Push(m);
 				m_ValueStack.Push(l);
 				m_ValueStack.Push(r);
@@ -96,54 +95,22 @@ namespace MoonSharp.Interpreter.Execution.VM
 			}
 		}
 
-
-
-
-		private DynValue[] StackTopToArray(int items, bool pop)
+		private int Internal_InvokeBinaryMetaMethod(LuaValue l, LuaValue r, string eventName, int instructionPtr, LuaValue extraPush)
 		{
-			DynValue[] values = new DynValue[items];
+			var m = GetBinaryMetamethod(l, r, eventName);
 
-			if (pop)
+			if (m != null)
 			{
-				for (int i = 0; i < items; i++)
-				{
-					values[i] = m_ValueStack.Pop();
-				}
+				m_ValueStack.Push(extraPush);
+				m_ValueStack.Push(m);
+				m_ValueStack.Push(l);
+				m_ValueStack.Push(r);
+				return Internal_ExecCall(2, instructionPtr);
 			}
 			else
 			{
-				for (int i = 0; i < items; i++)
-				{
-					values[i] = m_ValueStack[m_ValueStack.Count - 1 - i];
-				}
+				return -1;
 			}
-
-			return values;
 		}
-
-		private DynValue[] StackTopToArrayReverse(int items, bool pop)
-		{
-			DynValue[] values = new DynValue[items];
-
-			if (pop)
-			{
-				for (int i = 0; i < items; i++)
-				{
-					values[items - 1 - i] = m_ValueStack.Pop();
-				}
-			}
-			else
-			{
-				for (int i = 0; i < items; i++)
-				{
-					values[items - 1 - i] = m_ValueStack[m_ValueStack.Count - 1 - i];
-				}
-			}
-
-			return values;
-		}
-
-
-
 	}
 }

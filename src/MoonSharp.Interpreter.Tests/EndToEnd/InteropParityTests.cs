@@ -1,14 +1,24 @@
 using System;
+using System.Collections.Generic;
+using MoonSharp.Generated;
+using MoonSharp.Interpreter.Interop;
 using NUnit.Framework;
+
+// A struct the tests treat as if it came from another assembly: not partial, so the generated
+// descriptor cannot reach inside its box and binds its mutating members by reflection.
+[assembly: MoonSharp.Interpreter.MoonSharpUserDataTypes(
+	typeof(MoonSharp.Interpreter.Tests.EndToEnd.InteropParityTests.ForeignVector),
+	typeof(MoonSharp.Interpreter.Tests.EndToEnd.InteropParityTests.ForeignPoint))]
 
 namespace MoonSharp.Interpreter.Tests.EndToEnd
 {
 	/// <summary>
-	/// The same interop probes under every InteropAccessMode. The access mode is a speed/memory choice,
-	/// so it must never change what a script sees; every mode must print the same line.
+	/// The same interop probes under every InteropAccessMode and under the descriptors written by
+	/// MoonSharp.SourceGenerator. The binding mode is a speed/memory choice, so it must never change what
+	/// a script sees; every mode must print the same line and raise the same errors.
 	/// </summary>
 	[TestFixture]
-	public class InteropParityTests
+	public partial class InteropParityTests
 	{
 		public class ParityBase
 		{
@@ -16,10 +26,12 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			public static int Base { get { return 4; } }
 		}
 
+		[MoonSharpUserData]
 		public class ParityClass : ParityBase
 		{
 			public int Field;
 			public int Prop { get; set; }
+			public string Name { get { return "parity"; } }
 
 			public int Add(int a, int b) { return a + b; }
 			public string Concat(string a, int b) { return a + b; }
@@ -29,9 +41,14 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			public int Sum(params int[] xs) { int s = 0; foreach (int x in xs) s += x; return s; }
 			public void OutPair(int x, out int y, ref int z) { y = x * 2; z = z + 1; }
 			public ParityStruct MakeStruct(int x) { return new ParityStruct { X = x }; }
+			public int TakesStruct(ParityStruct s) { return s.X; }
+			public string Optional(int a, string b = "d", int c = 3) { return a + b + c; }
+			public void Throw() { throw new InvalidOperationException("thrown by C#"); }
 		}
 
-		public struct ParityStruct
+		/// <summary>Partial: the generated descriptor changes it inside its box through a generated interface.</summary>
+		[MoonSharpUserData]
+		public partial struct ParityStruct
 		{
 			public int X;
 			public int Y { get; set; }
@@ -39,6 +56,28 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			public void Bump() { X++; }
 			public int Read() { return X; }
 			public int BumpAndGet() { X += 10; return X; }
+		}
+
+		public struct ForeignVector
+		{
+			public int X, Y;
+
+			public ForeignVector(int x, int y) { X = x; Y = y; }
+
+			public static ForeignVector Zero { get { return new ForeignVector(0, 0); } }
+			public int LengthSquared() { return X * X + Y * Y; }
+			public void Scale(int k) { X *= k; Y *= k; }
+			public override string ToString() { return X + ";" + Y; }
+			public static ForeignVector operator +(ForeignVector a, ForeignVector b) { return new ForeignVector(a.X + b.X, a.Y + b.Y); }
+		}
+
+		public readonly struct ForeignPoint
+		{
+			public readonly int X, Y;
+
+			public ForeignPoint(int x, int y) { X = x; Y = y; }
+
+			public int Sum() { return X + Y; }
 		}
 
 		// Field and property set, a mutating method and a read back on a struct receiver: the userdata
@@ -61,23 +100,79 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			add(vt:BumpAndGet()) add(vt.X)
 			vt.Y = 7 add(vt.Y)
 			local made = obj:MakeStruct(9) made:Bump() add(made.X)
+			add(obj:TakesStruct(made))
+			add(obj:Optional(1) .. obj:Optional(1, 'x') .. obj:Optional(1, nil, 9))
+			local v = FV.__new(3, 4)
+			add(v.X) add(v:LengthSquared())
+			v:Scale(2) add(v.X .. ',' .. v.Y)
+			v.Y = 1 add(v.Y)
+			add(v:ToString()) add(tostring(v))
+			add((v + v).X)
+			add(FV.Zero.Y)
+			local p = FP.__new(1, 2) add(p:Sum() .. p.X)
 			return table.concat(r, ',')";
 
-		const string Expected = "5,a1,5,6,8,6,4,i1sx,6,nil,2,6,1,2,2,12,12,7,10";
+		const string Expected = "5,a1,5,6,8,6,4,i1sx,6,nil,2,6,1,2,2,12,12,7,10,10,1d31x319,3,25,6,8,1,6;1,6;1,12,0,31";
 
-		static string RunProbe(InteropAccessMode mode)
+		// Each runs alone; what it raises (exception type and message) must not depend on the mode.
+		static readonly string[] ErrorProbes =
 		{
-			try
-			{
-				UserData.UnregisterType<ParityClass>();
-				UserData.UnregisterType<ParityStruct>();
-				UserData.RegisterType<ParityClass>(mode);
-				UserData.RegisterType<ParityStruct>(mode);
+			"obj:Add('x', 1)",
+			"obj:Add()",
+			"obj:Add(1e300, 1)",
+			"obj:Over(true)",
+			"obj.Prop = 'x'",
+			"obj.Name = 'x'",
+			"obj.Nope = 1",
+			"Cls.Add(1, 2)",
+			"Cls.Twice()",
+			"obj:TakesStruct(nil)",
+			"obj:TakesStruct(obj)",
+			"obj:Sum(1, 'x')",
+			"vt.X = 'a'",
+			"vt:Bump(1, 2)",
+			"FV.__new(1, 2):Scale('a')",
+			"local v = FV.__new(1, 2) v.X = {}",
+			"FP.__new(1, 2).X = 3",
+			// An exception thrown by the C# member reaches the host as itself, not wrapped.
+			"obj:Throw()",
+			"pcall(obj.Throw, obj)",
+		};
 
-				Script s = new Script();
-				s.Globals["obj"] = new ParityClass();
-				s.Globals["vt"] = new ParityStruct();
-				s.Globals["Cls"] = typeof(ParityClass);
+		static readonly Type[] ProbeTypes = { typeof(ParityClass), typeof(ParityStruct), typeof(ForeignVector), typeof(ForeignPoint) };
+
+		/// <summary>Registers the probe types under a mode, or with their generated descriptors when mode is null.</summary>
+		static RegistrySnapshot Register(InteropAccessMode? mode)
+		{
+			var snapshot = new RegistrySnapshot(ProbeTypes);
+
+			foreach (Type t in ProbeTypes)
+			{
+				if (mode.HasValue)
+					UserData.RegisterType(t, mode.Value);
+				else
+					UserData.RegisterType(GeneratedUserData.CreateDescriptor(t));
+			}
+
+			return snapshot;
+		}
+
+		static Script NewScript()
+		{
+			Script s = new Script();
+			s.Globals["obj"] = new ParityClass();
+			s.Globals["vt"] = new ParityStruct();
+			s.Globals["Cls"] = typeof(ParityClass);
+			s.Globals["FV"] = typeof(ForeignVector);
+			s.Globals["FP"] = typeof(ForeignPoint);
+			return s;
+		}
+
+		static string RunProbe(InteropAccessMode? mode)
+		{
+			using (Register(mode))
+			{
+				Script s = NewScript();
 
 				// Twice: the lazy modes compile adapters on first use, so the second pass runs them.
 				string first = s.DoString(Probe).String;
@@ -86,11 +181,33 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				Assert.AreEqual(first, second, mode + ": first and second pass differ");
 				return second;
 			}
-			finally
+		}
+
+		static string RunErrorProbes(InteropAccessMode? mode, string[] probes)
+		{
+			var lines = new List<string>();
+
+			using (Register(mode))
 			{
-				UserData.UnregisterType<ParityClass>();
-				UserData.UnregisterType<ParityStruct>();
+				foreach (string code in probes)
+				{
+					string outcome;
+
+					try
+					{
+						NewScript().DoString(code);
+						outcome = "no error";
+					}
+					catch (Exception ex)
+					{
+						outcome = ex.GetType().Name + ": " + ex.Message;
+					}
+
+					lines.Add(code + " => " + outcome);
+				}
 			}
+
+			return string.Join("\n", lines.ToArray());
 		}
 
 		[Test]
@@ -121,6 +238,30 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		public void Interop_Parity_Hardwired()
 		{
 			Assert.AreEqual(Expected, RunProbe(InteropAccessMode.Hardwired));
+		}
+
+		[Test]
+		public void Interop_Parity_Generated()
+		{
+			Assert.AreEqual(Expected, RunProbe(null));
+		}
+
+		[Test]
+		public void Interop_Parity_Errors_Generated()
+		{
+			Assert.AreEqual(RunErrorProbes(InteropAccessMode.Reflection, ErrorProbes), RunErrorProbes(null, ErrorProbes));
+		}
+
+		[Test]
+		public void Interop_Parity_Errors_LazyOptimized()
+		{
+			Assert.AreEqual(RunErrorProbes(InteropAccessMode.Reflection, ErrorProbes), RunErrorProbes(InteropAccessMode.LazyOptimized, ErrorProbes));
+		}
+
+		[Test]
+		public void Interop_Parity_Errors_Reflection()
+		{
+			StringAssert.Contains("obj:Throw() => InvalidOperationException: thrown by C#", RunErrorProbes(InteropAccessMode.Reflection, ErrorProbes));
 		}
 
 		/// <summary>

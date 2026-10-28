@@ -21,6 +21,8 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\MoonSharp.Interpreter\MoonSharp.Interpreter.csproj" />
+        <!-- The parity tests use descriptors written by the source generator, as the Unity package does. -->
+        <ProjectReference Include="..\..\MoonSharp.SourceGenerator\MoonSharp.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     </ItemGroup>
 
 </Project>

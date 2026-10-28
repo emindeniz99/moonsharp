@@ -42,9 +42,11 @@ namespace MoonSharp.Interpreter.Tree.Statements
 
 			bc.LoopTracker.Loops.Push(L);
 
+			// Cleared once; each iteration ends with Emit_Leave (see ForLoopStatement).
+			bc.Emit_Enter(m_StackFrame);
+
 			int start = bc.GetJumpPointForNextInstruction();
 
-			bc.Emit_Enter(m_StackFrame);
 			m_Block.Compile(bc);
 
 			bc.PopSourceRef();

@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        Lua -> C# calls and property reads through reflection and through descriptors written by
+        MoonSharp.SourceGenerator, under the JIT and under NativeAOT (the closest stand-in for
+        IL2CPP that runs here). See README.md.
+    -->
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <Optimize>true</Optimize>
+        <IsPackable>false</IsPackable>
+        <InvariantGlobalization>true</InvariantGlobalization>
+        <!-- -p:Aot=true with dotnet publish: a global PublishAot would also reach the netstandard2.0 references. -->
+        <PublishAot Condition="'$(Aot)' == 'true'">true</PublishAot>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\MoonSharp.Interpreter\MoonSharp.Interpreter.csproj" />
+    </ItemGroup>
+
+    <!-- -p:NoGenerator=true builds the reflection-only variant, to measure what the generated code costs in size. -->
+    <PropertyGroup Condition="'$(NoGenerator)' == 'true'">
+        <DefineConstants>$(DefineConstants);NO_GENERATOR</DefineConstants>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(NoGenerator)' != 'true'">
+        <ProjectReference Include="..\..\MoonSharp.SourceGenerator\MoonSharp.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    </ItemGroup>
+
+    <!-- Reflection mode needs the members of the sample type after trimming. -->
+    <ItemGroup>
+        <TrimmerRootAssembly Include="GeneratedInteropBench" />
+    </ItemGroup>
+
+</Project>

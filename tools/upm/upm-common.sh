@@ -179,3 +179,62 @@ upm_link_top_level_entries() {
 
   echo "Linked $linked_count entries from $src_dir -> $runtime_dir"
 }
+
+# Builds MoonSharp.SourceGenerator and puts it in <runtime_dir>/Analyzers with the RoslynAnalyzer
+# label, so Unity runs it for the MoonSharp.Interpreter assembly and every assembly that references
+# it (docs/source-generator.md). Call it after the .meta files are generated: it writes its own.
+upm_add_source_generator() {
+  local runtime_dir="$1"
+  local scope="$2"
+  local project="$REPO_ROOT/src/MoonSharp.SourceGenerator/MoonSharp.SourceGenerator.csproj"
+  local out_dir="$REPO_ROOT/src/MoonSharp.SourceGenerator/bin/Release/netstandard2.0"
+
+  dotnet build "$project" -c Release -v quiet -nologo >/dev/null
+  mkdir -p "$runtime_dir/Analyzers"
+  cp "$out_dir/MoonSharp.SourceGenerator.dll" "$runtime_dir/Analyzers/"
+
+  write_meta_for_dir "$runtime_dir/Analyzers" "Runtime/Analyzers" "$scope"
+
+  # A plugin for no platform, labelled RoslynAnalyzer: Unity loads it into the compiler only.
+  cat > "$runtime_dir/Analyzers/MoonSharp.SourceGenerator.dll.meta" <<META
+fileFormatVersion: 2
+guid: $(make_guid "file:${scope}:Runtime/Analyzers/MoonSharp.SourceGenerator.dll")
+labels:
+- RoslynAnalyzer
+PluginImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  iconMap: {}
+  executionOrder: {}
+  defineConstraints: []
+  isPreloaded: 0
+  isOverridable: 0
+  isExplicitlyReferenced: 0
+  validateReferences: 1
+  platformData:
+  - first:
+      : Any
+    second:
+      enabled: 0
+      settings:
+        Exclude Editor: 1
+        Exclude Linux64: 1
+        Exclude OSXUniversal: 1
+        Exclude Win: 1
+        Exclude Win64: 1
+  - first:
+      Any:
+    second:
+      enabled: 0
+      settings: {}
+  - first:
+      Editor: Editor
+    second:
+      enabled: 0
+      settings:
+        DefaultValueInitialized: true
+  userData:
+  assetBundleName:
+  assetBundleVariant:
+META
+}

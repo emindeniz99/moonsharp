@@ -38,7 +38,13 @@ namespace MoonSharp.Interpreter.Tree
 	{
 		sealed class Unsupported : Exception
 		{
+			public Unsupported(string reason) : base(reason) { }
 		}
+
+		// SPIKE instrumentation: functions compiled, and why the others stayed on the stack VM (read by
+		// reflection from the coverage probe in the write-up).
+		internal static int s_Compiled;
+		internal static readonly Dictionary<string, int> s_Fallbacks = new Dictionary<string, int>();
 
 		readonly ByteCode m_Bc;
 		readonly List<RInstr> m_Code = new List<RInstr>();
@@ -92,15 +98,22 @@ namespace MoonSharp.Interpreter.Tree
 
 			foreach (RegisterCandidate c in candidates)
 			{
-				if (c.VarArgs)
-					continue;
-
 				try
 				{
+					if (c.VarArgs)
+						throw new Unsupported("function with ...");
+
 					c.BeginFn.Register = new RegisterCompiler(bc, c).Compile(c);
+					System.Threading.Interlocked.Increment(ref s_Compiled);
 				}
-				catch (Unsupported)
+				catch (Unsupported e)
 				{
+					lock (s_Fallbacks)
+					{
+						int count;
+						s_Fallbacks.TryGetValue(e.Message, out count);
+						s_Fallbacks[e.Message] = count + 1;
+					}
 				}
 			}
 		}
@@ -217,7 +230,7 @@ namespace MoonSharp.Interpreter.Tree
 					m_K.Add(v.ToLuaValue());
 					return m_K.Count - 1;
 				default:
-					throw new Unsupported();
+					throw new Unsupported("constant type");
 			}
 		}
 
@@ -237,7 +250,7 @@ namespace MoonSharp.Interpreter.Tree
 		void Block(Statement s)
 		{
 			if (++m_Depth > MaxDepth)
-				throw new Unsupported();
+				throw new Unsupported("nesting depth");
 
 			BlockCore(s);
 			m_Depth--;
@@ -294,13 +307,13 @@ namespace MoonSharp.Interpreter.Tree
 				m_Ref = ((BreakStatement)s).m_Ref;
 
 				if (m_Breaks.Count == 0)
-					throw new Unsupported();
+					throw new Unsupported("break outside a loop");
 
 				m_Breaks.Peek().Add(Emit(ROp.Jmp, -1, 0, 0));
 			}
 			else
 			{
-				throw new Unsupported();
+				throw new Unsupported("statement: " + s.GetType().Name);
 			}
 		}
 
@@ -313,7 +326,7 @@ namespace MoonSharp.Interpreter.Tree
 
 			// A call or '...' that would supply several values.
 			if (rvalues.Count < lvalues.Count && (lastR is FunctionCallExpression || IsVarArgs(lastR)))
-				throw new Unsupported();
+				throw new Unsupported("multiple values from a call or ...");
 
 			int save = m_Next;
 
@@ -375,7 +388,7 @@ namespace MoonSharp.Interpreter.Tree
 				SymbolRef r = sym.m_Ref;
 
 				if (r == null)
-					throw new Unsupported();
+					throw new Unsupported("unresolved symbol");
 
 				switch (r.i_Type)
 				{
@@ -396,18 +409,18 @@ namespace MoonSharp.Interpreter.Tree
 							else if (env != null && env.i_Type == SymbolRefType.Local)
 								EmitSlow(ROp.SetField, Reg(env), aux, src);
 							else
-								throw new Unsupported();
+								throw new Unsupported("global without _ENV");
 						}
 						return;
 					default:
-						throw new Unsupported();
+						throw new Unsupported("symbol type");
 				}
 			}
 
 			IndexExpression ie = lvalue as IndexExpression;
 
 			if (ie == null)
-				throw new Unsupported();
+				throw new Unsupported("assignment target");
 
 			int save = m_Next;
 			int obj = Expr(ie.m_BaseExp, -1);
@@ -548,13 +561,13 @@ namespace MoonSharp.Interpreter.Tree
 				Expression[] es = list.GetExpressions();
 
 				if (es.Length != 1)
-					throw new Unsupported();
+					throw new Unsupported("return of several values");
 
 				e = es[0];
 			}
 
 			if (IsVarArgs(e))
-				throw new Unsupported();
+				throw new Unsupported("return ...");
 
 			if (e is FunctionCallExpression)
 			{
@@ -577,7 +590,7 @@ namespace MoonSharp.Interpreter.Tree
 		void Condition(Expression e, bool jumpIf, List<int> jumps)
 		{
 			if (++m_Depth > MaxDepth)
-				throw new Unsupported();
+				throw new Unsupported("nesting depth");
 
 			ConditionCore(e, jumpIf, jumps);
 			m_Depth--;
@@ -710,7 +723,7 @@ namespace MoonSharp.Interpreter.Tree
 		int Expr(Expression e, int dst)
 		{
 			if (++m_Depth > MaxDepth)
-				throw new Unsupported();
+				throw new Unsupported("nesting depth");
 
 			int r = ExprCore(e, dst);
 			m_Depth--;
@@ -732,7 +745,7 @@ namespace MoonSharp.Interpreter.Tree
 				SymbolRef sym = s.m_Ref;
 
 				if (sym == null || IsVarArgs(e))
-					throw new Unsupported();
+					throw new Unsupported("... or unresolved symbol");
 
 				switch (sym.i_Type)
 				{
@@ -763,12 +776,12 @@ namespace MoonSharp.Interpreter.Tree
 							else if (env != null && env.i_Type == SymbolRefType.Local)
 								EmitSlow(ROp.GetField, r, Reg(env), aux);
 							else
-								throw new Unsupported();
+								throw new Unsupported("global without _ENV");
 
 							return r;
 						}
 					default:
-						throw new Unsupported();
+						throw new Unsupported("symbol type");
 				}
 			}
 
@@ -777,7 +790,7 @@ namespace MoonSharp.Interpreter.Tree
 				IndexExpression ie = (IndexExpression)e;
 
 				if (ie.m_IndexExp is ExprListExpression)
-					throw new Unsupported();
+					throw new Unsupported("multi-index");
 
 				int save = m_Next;
 				int obj = Expr(ie.m_BaseExp, -1);
@@ -825,7 +838,7 @@ namespace MoonSharp.Interpreter.Tree
 					case BinaryOperatorExpression.Operator.Div: op = 3; break;
 					case BinaryOperatorExpression.Operator.Mod: op = 4; break;
 					case BinaryOperatorExpression.Operator.Power: op = 5; break;
-					default: throw new Unsupported(); // and, or, ..
+					default: throw new Unsupported("operator: " + b.m_Operator); // and, or, ..
 				}
 
 				int save = m_Next;
@@ -858,7 +871,7 @@ namespace MoonSharp.Interpreter.Tree
 				UnaryOperatorExpression u = (UnaryOperatorExpression)e;
 
 				if (u.m_OpText != "-" && u.m_OpText != "not")
-					throw new Unsupported();
+					throw new Unsupported("operator: " + u.m_OpText);
 
 				int save = m_Next;
 				int v = Expr(u.m_Exp, -1);
@@ -889,7 +902,7 @@ namespace MoonSharp.Interpreter.Tree
 				return r;
 			}
 
-			throw new Unsupported();
+			throw new Unsupported("expression: " + e.GetType().Name);
 		}
 
 		/// <summary>
@@ -905,12 +918,12 @@ namespace MoonSharp.Interpreter.Tree
 		{
 			// Method calls (o:m()) are not in the subset.
 			if (fc.m_Name != null)
-				throw new Unsupported();
+				throw new Unsupported("method call");
 
 			List<Expression> args = fc.m_Arguments;
 
 			if (args.Count > 0 && (args[args.Count - 1] is FunctionCallExpression || IsVarArgs(args[args.Count - 1])))
-				throw new Unsupported();
+				throw new Unsupported("call with several values as last argument");
 
 			// The result can go straight into dst when dst is the newest temporary.
 			int fn = (dst >= m_NumLocals && dst == m_Next - 1) ? dst : AllocTemp();

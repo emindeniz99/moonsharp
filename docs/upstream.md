@@ -50,6 +50,7 @@ Bring upstream in with a merge commit; never rebase or force-push `master`.
 | Keep source locations in binary dumps | [#6](https://github.com/emindeniz99/moonsharp/pull/6) | merged | yes | [#348](https://github.com/moonsharp-devs/moonsharp/issues/348) |
 | Baseline, upstream tracking, comparison with native Lua | [#7](https://github.com/emindeniz99/moonsharp/pull/7) | merged | no (fork docs) | |
 | `io` on browser WebAssembly, trim descriptor, `io.read("*n")` culture, remove unused `ExecutionState` | [#8](https://github.com/emindeniz99/moonsharp/pull/8) | merged | yes | none yet |
+| Exact 64-bit integers (`int64`/`uint64`, CLR `long`/`ulong`, JSON) | branch `feat/exact-int64` | merged | needs an upstream design discussion first | [#300](https://github.com/moonsharp-devs/moonsharp/issues/300) |
 
 Planned work and open decisions: [ROADMAP.md](ROADMAP.md).
 

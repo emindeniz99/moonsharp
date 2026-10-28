@@ -200,6 +200,29 @@ return a()
 			AssertOriginalExceptionFrame(exception, typeof(ClassWithReflectedMember));
 		}
 
+		private class ClassWithReflectedProperty
+		{
+			public int Value
+			{
+				get { throw new InvalidOperationException("getter"); }
+				set { throw new InvalidOperationException("setter"); }
+			}
+		}
+
+		// Property accessors go through reflection the same way.
+		[Test]
+		public void Errors_Get_OriginalException_WhenUsingPropertyThroughReflection()
+		{
+			Script script = new Script(CoreModules.None);
+
+			UserData.RegisterType<ClassWithReflectedProperty>(InteropAccessMode.Reflection);
+
+			script.Globals["obj"] = new ClassWithReflectedProperty();
+
+			Assert.AreEqual("getter", Assert.Throws<InvalidOperationException>(() => script.DoString("return obj.Value")).Message);
+			Assert.AreEqual("setter", Assert.Throws<InvalidOperationException>(() => script.DoString("obj.Value = 1")).Message);
+		}
+
 		// A long-lived Script (a game session, a server worker) must survive any number of failed calls.
 		// Each failed call used to leave the function, its arguments and the argument count on the value
 		// stack, so the Script broke for good after 131072 / (args + 2) errors.

@@ -89,16 +89,12 @@ namespace MoonSharp.Interpreter.Interop.Converters
 			if (obj is CallbackFunction)
 				return DynValue.NewCallback((CallbackFunction)obj);
 
-			if (obj is Delegate)
-			{
-				Delegate d = (Delegate)obj;
-
-
-				MethodInfo mi = d.Method;
-
-				if (CallbackFunction.CheckCallbackSignature(mi, false))
-					return DynValue.NewCallback((Func<ScriptExecutionContext, CallbackArguments, DynValue>)d);
-			}
+			// A type check, not d.Method: reading Method throws on NativeAOT and IL2CPP for a delegate
+			// compiled from an expression tree, and the old signature check cast any other delegate
+			// type with the same signature, which threw InvalidCastException.
+			var callback = obj as Func<ScriptExecutionContext, CallbackArguments, DynValue>;
+			if (callback != null)
+				return DynValue.NewCallback(callback);
 
 			return null;
 		}

@@ -80,6 +80,12 @@ namespace DotNetCoreTestRunner
 		// Tests skipped on AOT platforms - known not workings :(
 		static List<string> AOT_SKIPLIST = new List<string>()
 		{
+			// They read the embedded ILLink.Descriptors.xml, which the trimmer applies and then removes,
+			// so they cannot pass in any trimmed build. The trimmed builds themselves prove the file.
+			"Descriptor_PreservesEveryModuleType",
+			"Descriptor_PreservesSelfRegisteredUserData",
+			"Descriptor_NamesOnlyTypesThatExist",
+
 			//"RegCollGen_List_ExtMeth_Last",
 			//"VInterop_NIntPropertySetter_None",
 			//"VInterop_NIntPropertySetter_Lazy",

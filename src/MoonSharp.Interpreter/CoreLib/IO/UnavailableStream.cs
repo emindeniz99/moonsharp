@@ -51,10 +51,8 @@ namespace MoonSharp.Interpreter.CoreLib.IO
 
 		public override void Flush()
 		{
-			// A reader has nothing to flush; a writer reaches Flush only with buffered data
-			// that could never be delivered, which has to be reported.
-			if (!m_CanRead)
-				throw new ScriptRuntimeException(m_Message);
+			// Nothing to do: a StreamWriter hands buffered data to Write, which reports the
+			// error, before it calls Flush. Setting AutoFlush flushes an empty writer.
 		}
 
 		public override long Length { get { throw new NotSupportedException(); } }

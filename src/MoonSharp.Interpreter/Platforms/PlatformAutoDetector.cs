@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Reflection;
 using MoonSharp.Interpreter.Interop;
 using MoonSharp.Interpreter.Loaders;
 
@@ -51,6 +52,16 @@ namespace MoonSharp.Interpreter.Platforms
 
 				if (!m_IsRunningOnAOT.HasValue)
 				{
+					// .NET Core 3.0+ and NativeAOT say it directly (read by name: netstandard2.0 lacks it). The
+					// probe below cannot tell NativeAOT apart, where expression trees run interpreted.
+					PropertyInfo dynamicCode = Type.GetType("System.Runtime.CompilerServices.RuntimeFeature")?.GetProperty("IsDynamicCodeSupported");
+
+					if (dynamicCode != null)
+					{
+						m_IsRunningOnAOT = !(bool)dynamicCode.GetValue(null, null);
+						return m_IsRunningOnAOT.Value;
+					}
+
 					try
 					{
 						System.Linq.Expressions.Expression e = System.Linq.Expressions.Expression.Constant(5, typeof(int));

@@ -46,6 +46,7 @@ chat or a pull request.
 | Browser (.NET 10 WebAssembly) | Chromium tested in CI with Playwright. Firefox and WebKit not tested. |
 | Java 17+ (worker process) | Tested in CI, with a Spring Boot 4 sample. |
 | Java in-process (hostfxr or NativeAOT) | Experimental, Linux x64: fixtures pass with CoreCLR and NativeAOT on branch `feat/jvm-in-process`. The worker stays the default ([hosting.md](hosting.md)). |
+| NativeAOT (.NET 8), as a stand-in for IL2CPP | The unit suite runs in CI (`nativeaot-unit` in `ci.yml`): all tests pass, none on the known-failures list. How well it predicts IL2CPP is unmeasured ([hosting.md](hosting.md), "The unit suite under NativeAOT"). |
 | Unity 2021.3 / 2022.3 / 6 LTS, Mono and IL2CPP | **Not run yet.** `.github/workflows/unity.yml` runs the suite in the editor and in a Linux IL2CPP player on 2021.3.45f2, 2022.3.62f3 and 6000.0.85f1 once the licence secrets exist. Without Unity: the test bed compiles with each line's own compiler and references, and its assemblies pass the suite on .NET. |
 
 What Unity 2021.3 support means for the code:
@@ -69,6 +70,7 @@ What Unity 2021.3 support means for the code:
 | [#7](https://github.com/emindeniz99/moonsharp/pull/7) | Baseline measurements, upstream tracking, comparison with native Lua. |
 | [#8](https://github.com/emindeniz99/moonsharp/pull/8) | The `io` module works on browser WebAssembly; trimmed apps keep the standard library. |
 | [#9](https://github.com/emindeniz99/moonsharp/pull/9) | This roadmap. |
+| branch `fix/aot-interop` | The unit suite runs as a NativeAOT executable in CI, against a known-failures file in both directions. Its first run failed 58 of 761 tests; fixed: NativeAOT detected as AOT, enum values without `Enum.GetValues`, `List`/`Dictionary` constructors and registered types' members kept for trimmed apps (`[DynamicDependency]`, `[DynamicallyAccessedMembers]`), generic extension overloads that cannot be instantiated skipped, property accessors rethrow their own exception in reflection mode, a repeated `RegisterType` builds no descriptor (`new Script()` 166 to 69 KB on NativeAOT, 92 to 70 KB under JIT). |
 | branch `ci/unity-matrix` | Unity CI matrix (`.github/workflows/unity.yml`): 2021.3, 2022.3 and 6000.0, editor (Mono) and Linux IL2CPP player, each compared test by test with the .NET run. The test sources compile without NUnit (`src/TestRunners/EmbeddedTestRunner`, run on every push) and the fixtures are found by reflection, so no list can miss one. Exceptions from reflection calls keep their type. The UPM package requires 2021.3. |
 | branch `feat/conformance-corpus` | Cross-host conformance corpus: 225 cases in 8 suites (numbers, strings, patterns, tables, errors, JSON, int64, logic) run by the .NET CLI (also from precompiled bytecode and under a decimal-comma culture), Chromium and the three Java transports, each checked against its own known-failures file in both directions. `moonsharp-host compile` writes bytecode with source locations; every transport can create int64 contexts. See [src/Hosting/fixtures/README.md](../src/Hosting/fixtures/README.md). |
 | branch `feat/exact-int64` | Exact 64-bit integers: opt-in `int64`/`uint64` values (`CoreModules.Int64`), CLR `long`/`ulong` in both directions (`ScriptOptions.ExactInt64Interop` for CLR to Lua), exact JSON on request. See [int64.md](int64.md). |
@@ -107,6 +109,12 @@ After step 4: the checkpoint in the decisions table.
 - Call Lua from C# with typed arguments and no boxing.
 - A Roslyn source generator that emits the descriptors Hardwire produces today, at compile time. IL2CPP needs no run-time code generation, and members are found with a `switch`.
 
+- Found with the NativeAOT suite, not fixed:
+  - `CallbackFunction.FromDelegate` caches descriptors in a `ConditionalWeakTable` keyed by `Delegate.Method`. NativeAOT returns a new `MethodInfo` on every read (measured: `ReferenceEquals(d.Method, d.Method)` is false), so the cache never hits there and each conversion builds a descriptor. Key it by equality. IL2CPP not measured.
+  - A table converted to `List<T>` or `Dictionary<K,V>` of a value type the app never instantiates, and a generic extension method over one, have no native code on NativeAOT, nor on IL2CPP without full generic sharing (before Unity 2022.1). The source generator in this list removes both.
+  - 23 trim and AOT analysis warnings remain in the interpreter, listed in [hosting.md](hosting.md). Most are inherent to reflection over host types.
+  - The trimming attributes are declared inside the interpreter for netstandard2.0. If a Unity class library declares them publicly, Unity's compiler warns CS0436; check in the Unity matrix, and whether UnityLinker reads the annotations at higher stripping levels.
+
 ## Next: correctness and diagnostics
 
 - Run the official Lua 5.2 test suite and track failures.
@@ -115,12 +123,12 @@ After step 4: the checkpoint in the decisions table.
 - `ScriptOptions(defaults)` does not copy `ColonOperatorClrCallbackBehaviour`.
 - Property getters and setters called through reflection (AOT platforms, `InteropAccessMode.Reflection`) still wrap a thrown exception in `TargetInvocationException`; methods no longer do. A setter's own `ArgumentException` is also reported as a type mismatch on the compiled path.
 - `PlatformAutoDetector` and `UnityAssetsScriptLoader` test `UNITY_5`, which Unity 2017 and later no longer define, so the package always takes the reflection path (`IsUnityNative` is false). The Unity test bed checks the default loader; replace the checks with `UNITY_5_3_OR_NEWER` if it fails or once the matrix is green.
+- Upstream bugs that reproduce in the string library, the table code, the VM core and the compiler, and `require` ignoring `package.path` and `package.preload`: each has an ignored test in `UpstreamIssueTests.cs` that fails without the `Ignore` (list in [upstream-issues.md](upstream-issues.md)). Remove the `Ignore` with the fix.
 - Found by the conformance corpus; each is a case with a `note`, so a fix updates its expectation. The owner decides which are bugs to fix (in `legacy` too) and which stay as documented differences:
   - `math.huge` is `Double.MaxValue`, so `math.huge == 1/0` is false.
   - `error(t)` with a table, and `error()`, raise "bad argument #1 to 'error'"; `pcall` never sees the error object.
-  - The `json` module parses with the Lua lexer: `json.parse('[[1]]')` fails (a long string) and `\u00e9` escapes fail. `json.serialize` drops the string keys of a table that also has keys 1..n.
   - The lexer reads `1e15+0.5` as one malformed number.
-  - `tonumber` and arithmetic do not read hexadecimal strings; `tonumber('nan')` is NaN.
+  - Arithmetic does not coerce hexadecimal strings (`'0x10' + 1`) and accepts .NET forms such as `'1,000'`: `DynValue.CastToNumber` should call `BasicModule.TryParseLuaNumber`, which `tonumber` uses (ignored test `Issue229_ArithmeticCoercesLuaNumerals`).
   - `string.format`: `%e` writes three exponent digits, `%d` of 2^63 wraps instead of failing, `%s` rejects nil.
   - `string.find(s, '', init)` with `init` past the end still matches.
   - `tostring` writes shortest round-trip digits, `NaN` and `Infinity`, where Lua 5.2 writes `%.14g`, `nan` and `inf`.
@@ -134,6 +142,10 @@ After step 4: the checkpoint in the decisions table.
 - Publish per-host corpus results over time, as JsonLogic's compat tables do.
 - In-process JVM hosting as the default: needs the native stack guard above and an execution budget for plain calls, then a new measurement against the worker.
 - Browser: AOT-compiled WebAssembly against the interpreter build; Firefox and WebKit tests.
+- From upstream feature requests ([upstream-issues.md](upstream-issues.md)):
+  - convert Lua functions to `Action` and `Func<...>` parameters (upstream #186), with the typed calls from C# to Lua above;
+  - a `ScriptedImporter` for `.lua` files in the Unity package (upstream #235), with the Unity CI matrix;
+  - send bytecode and source to an attached debugger only when its `GetDebuggerCaps()` asks for them (upstream #261), a two-line check in `Script.cs`.
 - LuaCATS follow-ups:
   - a Unity Editor menu item that runs the generator. The UPM packages have no Editor part yet (`tools/upm` stages `Runtime` only), so it needs an Editor folder, an asmdef and the generator sources in the package;
   - typed host global functions: a global set from a delegate is declared `fun(...): any`, because a `CallbackFunction` keeps no signature;
@@ -156,3 +168,4 @@ After step 4: the checkpoint in the decisions table.
 - Android and iOS devices for IL2CPP player runs.
 - The `pairs` order decision, once the table measurements are in.
 - Approval before any upstream pull request.
+- Upstream bugs that change interop behaviour (details in [upstream-issues.md](upstream-issues.md#decisions-for-the-owner)): overload scores for fractional numbers and custom converters (#293, #294); static members of base classes (#175); tables instead of userdata for lists under automatic registration (#274); per-script type registries (#181).

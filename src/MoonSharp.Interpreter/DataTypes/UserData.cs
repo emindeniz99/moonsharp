@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -138,7 +139,7 @@ namespace MoonSharp.Interpreter
 		/// <typeparam name="T">The type to be registered</typeparam>
 		/// <param name="accessMode">The access mode (optional).</param>
 		/// <param name="friendlyName">Friendly name for the type (optional)</param>
-		public static IUserDataDescriptor RegisterType<T>(InteropAccessMode accessMode = InteropAccessMode.Default, string friendlyName = null)
+		public static IUserDataDescriptor RegisterType<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>(InteropAccessMode accessMode = InteropAccessMode.Default, string friendlyName = null)
 		{
 			return TypeDescriptorRegistry.RegisterType_Impl(typeof(T), accessMode, friendlyName, null);
 		}
@@ -149,7 +150,7 @@ namespace MoonSharp.Interpreter
 		/// <param name="type">The type to be registered</param>
 		/// <param name="accessMode">The access mode (optional).</param>
 		/// <param name="friendlyName">Friendly name for the type (optional)</param>
-		public static IUserDataDescriptor RegisterType(Type type, InteropAccessMode accessMode = InteropAccessMode.Default, string friendlyName = null)
+		public static IUserDataDescriptor RegisterType([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] Type type, InteropAccessMode accessMode = InteropAccessMode.Default, string friendlyName = null)
 		{
 			return TypeDescriptorRegistry.RegisterType_Impl(type, accessMode, friendlyName, null);
 		}
@@ -384,7 +385,7 @@ namespace MoonSharp.Interpreter
 		/// </summary>
 		/// <param name="type">The type.</param>
 		/// <param name="mode">The InteropAccessMode.</param>
-		public static void RegisterExtensionType(Type type, InteropAccessMode mode = InteropAccessMode.Default)
+		public static void RegisterExtensionType([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type type, InteropAccessMode mode = InteropAccessMode.Default)
 		{
 			ExtensionMethodsRegistry.RegisterExtensionType(type, mode);
 		}

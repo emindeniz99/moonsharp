@@ -1,4 +1,4 @@
-using MoonSharp.Interpreter.Serialization.Json;
+﻿using MoonSharp.Interpreter.Serialization.Json;
 using NUnit.Framework;
 
 namespace MoonSharp.Interpreter.Tests.EndToEnd
@@ -142,7 +142,8 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		public void Json_HostApi()
 		{
 			DynValue v = JsonTableConverter.ParseString("{\"id\": 9223372036854775807, \"n\": 1}", null, false, JsonBigIntegerMode.Int64);
-			Assert.AreEqual(new LuaInt64(long.MaxValue), v.Table.Get("id").UserData.Object);
+			// Equals, not Assert.AreEqual, which needs Type.GetInterfaceMap (missing on NativeAOT) for IEquatable.
+			Assert.IsTrue(new LuaInt64(long.MaxValue).Equals(v.Table.Get("id").UserData.Object));
 			Assert.AreEqual(1.0, v.Table.Get("n").Number);
 			Assert.AreEqual("{\"id\":9223372036854775807,\"n\":1}", v.Table.TableToJson());
 

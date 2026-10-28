@@ -64,7 +64,8 @@ namespace MoonSharp.Interpreter
 					isMethodCall = (args.Count > 0 && args[0].Type == DataType.UserData);
 			}
 
-			return ClrCallback(executionContext, new CallbackArguments(args, isMethodCall));
+			// A callback that returns null means "no value"; the VM would dereference it.
+			return ClrCallback(executionContext, new CallbackArguments(args, isMethodCall)) ?? DynValue.Nil;
 		}
 
 		/// <summary>
@@ -98,8 +99,30 @@ namespace MoonSharp.Interpreter
 			if (accessMode == InteropAccessMode.Default)
 				accessMode = m_DefaultAccessMode;
 
-			MethodMemberDescriptor descr = GetMethodDescriptor(del.Method, accessMode);
+			// A delegate compiled at run time (an expression tree, a DynamicMethod) points to a method
+			// reflection cannot call as the delegate does: on .NET it has no declaring type, on Mono
+			// it is a static method whose first parameter is bound to the delegate's target (the
+			// closure); on NativeAOT and IL2CPP the expression is interpreted and reading Method throws.
+			// Call such delegates through their own Invoke method instead.
+			MethodInfo method = TryGetMethod(del);
+
+			if (method == null || method.DeclaringType == null || (method.IsStatic && del.Target != null))
+				return GetMethodDescriptor(del.GetType().GetMethod("Invoke"), accessMode).GetCallbackFunction(script, del);
+
+			MethodMemberDescriptor descr = GetMethodDescriptor(method, accessMode);
 			return descr.GetCallbackFunction(script, del.Target);
+		}
+
+		private static MethodInfo TryGetMethod(Delegate del)
+		{
+			try
+			{
+				return del.Method;
+			}
+			catch (NotSupportedException)
+			{
+				return null;
+			}
 		}
 
 		private static MethodMemberDescriptor GetMethodDescriptor(MethodInfo mi, InteropAccessMode accessMode)

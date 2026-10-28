@@ -64,6 +64,8 @@ namespace MoonSharp.Benchmarks
 				CallWorkload("SumLoop100K", Workloads.SumLoop, 100000, 10),
 				CallWorkload("TableInsertLookup1K", Workloads.TableWork, 1000, 200),
 				CallWorkload("Concat1K", Workloads.Concat, 1000, 40),
+				CallWorkload("StringFormat1K", Workloads.StringFormat, 1000, 100),
+				CallWorkload("StringFormatMix1K", Workloads.StringFormatMix, 1000, 50),
 			};
 
 			Console.WriteLine("A: {0}", Path.GetFullPath(args[0]));

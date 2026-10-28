@@ -39,5 +39,19 @@ return function(n)
 	for i = 1, n do parts[#parts + 1] = tostring(i) end
 	return table.concat(parts, ',')
 end";
+
+		// The string_format case of LuaWorkloads (n iterations, so bytes per call = alloc / n).
+		public const string StringFormat = @"
+local format = string.format
+return function(n) local buf, j = {}, 1 for i = 1, n do buf[j] = format('%d:%s', i, 'x') j = j + 1 if j > 64 then j = 1 end end return buf[64] end";
+
+		// A mix of the common string.format specifiers.
+		public const string StringFormatMix = @"
+local format = string.format
+return function(n)
+	local s
+	for i = 1, n do s = format('%d:%s %5.2f %x %-6s|%g', i, 'x', i / 7, i, 'ab', i * 0.5) end
+	return s
+end";
 	}
 }

@@ -33,6 +33,20 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			public BoundFlags Get(int i) { return (BoundFlags)i; }
 		}
 
+		// Unregisters under the default policy: test runners may install one that refuses (the console and
+		// Unity runners' HardwireAndLogPolicy), and a later test would then get this test's descriptor, with
+		// the members it added or removed and the callbacks it kept.
+		static void Unregister(params Type[] types)
+		{
+			var oldPolicy = UserData.RegistrationPolicy;
+			UserData.RegistrationPolicy = InteropRegistrationPolicy.Default;
+
+			foreach (Type t in types)
+				UserData.UnregisterType(t);
+
+			UserData.RegistrationPolicy = oldPolicy;
+		}
+
 		// Each call form, twice, so the second run uses whatever the first one kept.
 		const string CallForms = @"
 			local r = {}
@@ -61,7 +75,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			}
 			finally
 			{
-				UserData.UnregisterType<BoundProbe>();
+				Unregister(typeof(BoundProbe));
 			}
 		}
 
@@ -102,7 +116,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			}
 			finally
 			{
-				UserData.UnregisterType<BoundProbe>();
+				Unregister(typeof(BoundProbe));
 			}
 		}
 
@@ -127,7 +141,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			}
 			finally
 			{
-				UserData.UnregisterType<BoundProbe>();
+				Unregister(typeof(BoundProbe));
 			}
 		}
 
@@ -155,7 +169,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			}
 			finally
 			{
-				UserData.UnregisterType<BoundProbe>();
+				Unregister(typeof(BoundProbe));
 			}
 		}
 
@@ -186,7 +200,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			finally
 			{
 				Script.GlobalOptions.FuzzySymbolMatching = oldFlags;
-				UserData.UnregisterType<BoundProbe>();
+				Unregister(typeof(BoundProbe));
 				UserData.RegistrationPolicy = oldPolicy;
 			}
 		}
@@ -212,8 +226,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			}
 			finally
 			{
-				UserData.UnregisterType<BoundFlags>();
-				UserData.UnregisterType<EnumSource>();
+				Unregister(typeof(BoundFlags), typeof(EnumSource));
 			}
 		}
 	}

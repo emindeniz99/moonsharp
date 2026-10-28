@@ -1,4 +1,4 @@
-// The matcher is a port of the pattern-matching part of lstrlib.c from Lua 5.2.4, working on string
+﻿// The matcher is a port of the pattern-matching part of lstrlib.c from Lua 5.2.4, working on string
 // indices instead of char pointers.
 //
 // Lua License
@@ -41,6 +41,8 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 		const int CapUnfinished = -1;
 		const int CapPosition = -2;
 		const char Esc = '%';
+		// Calls of Match between two reports to the interrupt handler (ScriptExecutionContext.LibraryWork).
+		const int StepBatch = 1024;
 
 		const byte Alpha = 1, Cntrl = 2, Digit = 4, Lower = 8, Punct = 16, Space = 32, Upper = 64, XDigit = 128;
 
@@ -56,6 +58,8 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 		int m_PatEnd;
 		int m_Level;
 		int m_Depth;
+		int m_Steps = StepBatch;
+		ScriptExecutionContext m_Context;
 		readonly int[] m_CapInit = new int[MaxCaptures];
 		readonly int[] m_CapLen = new int[MaxCaptures];
 		readonly StringBuilder m_Buffer = new StringBuilder();
@@ -84,10 +88,11 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 
 		// The state is taken from the per-thread slot while in use, so a callback of gsub that calls
 		// the string library again gets a state of its own. A state lost to an error is not returned.
-		static LuaPatterns Rent(string src, string pat)
+		static LuaPatterns Rent(ScriptExecutionContext executionContext, string src, string pat)
 		{
 			LuaPatterns ms = t_Free ?? new LuaPatterns();
 			t_Free = null;
+			ms.m_Context = executionContext;
 			ms.m_Src = src;
 			ms.m_SrcEnd = src.Length;
 			ms.m_Pat = pat;
@@ -97,6 +102,7 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 
 		void Release()
 		{
+			m_Context = null;
 			m_Src = null;
 			m_Pat = null;
 			t_Free = this;
@@ -106,7 +112,7 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 		// Library functions
 		// ---------------------------------------------------------------------------------------
 
-		internal static DynValue Find(CallbackArguments args, bool find)
+		internal static DynValue Find(ScriptExecutionContext executionContext, CallbackArguments args, bool find)
 		{
 			string name = find ? "find" : "match";
 			string s = CheckString(args, 0, name);
@@ -129,7 +135,7 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 				return DynValue.NewTuple(DynValue.NewNumber(at + 1), DynValue.NewNumber(at + p.Length));
 			}
 
-			LuaPatterns ms = Rent(s, p);
+			LuaPatterns ms = Rent(executionContext, s, p);
 			bool anchor = p.Length > 0 && p[0] == '^';
 			int pstart = anchor ? 1 : 0;
 			int s1 = init - 1;
@@ -178,7 +184,7 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 
 			public DynValue Step(ScriptExecutionContext executionContext, CallbackArguments args)
 			{
-				LuaPatterns ms = Rent(Src, Pat);
+				LuaPatterns ms = Rent(executionContext, Src, Pat);
 
 				for (int src = Pos; src <= ms.m_SrcEnd; src++)
 				{
@@ -237,7 +243,7 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 					throw ScriptRuntimeException.BadArgument(2, "gsub", "string/function/table expected");
 			}
 
-			LuaPatterns ms = Rent(src, p);
+			LuaPatterns ms = Rent(executionContext, src, p);
 			StringBuilder b = ms.m_Buffer;
 			bool anchor = p.Length > 0 && p[0] == '^';
 			int pstart = anchor ? 1 : 0;
@@ -431,6 +437,14 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 		{
 			if (m_Depth-- == 0)
 				throw new ScriptRuntimeException("pattern too complex");
+
+			// Every match attempt and every backtracking step comes through here: count them, so a long
+			// gsub or a pattern that backtracks for minutes can be interrupted.
+			if (--m_Steps == 0)
+			{
+				m_Steps = StepBatch;
+				m_Context.LibraryWork(StepBatch);
+			}
 
 			while (p != m_PatEnd)
 			{

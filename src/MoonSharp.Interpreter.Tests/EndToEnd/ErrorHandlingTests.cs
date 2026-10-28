@@ -335,6 +335,25 @@ return a()
 			StringAssert.StartsWith("handled: ", res.Tuple[4].String);
 		}
 
+		// A chunk starts with instructions that have no source position. When the value stack overflowed
+		// there, the message read "bytecode:<n>: stack overflow"; a cyclic require showed it (a module that
+		// requires a module that requires the first). The chunk below reserves 100 locals, so the overflow
+		// happens as one of its copies starts.
+		[Test]
+		public void Errors_StackOverflowAsAChunkStartsHasAPosition()
+		{
+			Script S = new Script();
+			DynValue res = S.DoString(@"
+				local names = {}
+				for i = 1, 100 do names[i] = 'v' .. i end
+				local src = 'local ' .. table.concat(names, ', ') .. ' = 1\nlocal r = f() return r'
+				function f() local r = load(src, 'mod')() return r end
+				return pcall(f)");
+
+			Assert.IsFalse(res.Tuple[0].Boolean);
+			Assert.AreEqual("mod:(1,0-500): stack overflow", res.Tuple[1].String);
+		}
+
 		private static void AssertOriginalExceptionFrame(Exception exception, Type declaringType)
 		{
 			var frames = new StackTrace(exception).GetFrames();

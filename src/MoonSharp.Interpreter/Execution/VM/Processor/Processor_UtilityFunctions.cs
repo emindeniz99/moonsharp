@@ -66,7 +66,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			{
 				m_ValueStack.Push(m);
 				m_ValueStack.Push(op1);
-				return Internal_ExecCall(1, instructionPtr);
+				return Internal_ExecCall(1, instructionPtr, metamethod: true);
 			}
 			else
 			{
@@ -83,7 +83,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				m_ValueStack.Push(m);
 				m_ValueStack.Push(l);
 				m_ValueStack.Push(r);
-				return Internal_ExecCall(2, instructionPtr);
+				return Internal_ExecCall(2, instructionPtr, metamethod: true);
 			}
 			else
 			{
@@ -101,7 +101,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				m_ValueStack.Push(m);
 				m_ValueStack.Push(l);
 				m_ValueStack.Push(r);
-				return Internal_ExecCall(2, instructionPtr);
+				return Internal_ExecCall(2, instructionPtr, metamethod: true);
 			}
 			else
 			{

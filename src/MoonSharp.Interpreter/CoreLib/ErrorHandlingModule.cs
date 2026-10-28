@@ -47,11 +47,8 @@ namespace MoonSharp.Interpreter.CoreLib
 				try
 				{
 					DynValue ret = v.Callback.Invoke(executionContext, a);
-					if (ret.Type == DataType.TailCallRequest)
+					if (ret.Type == DataType.TailCallRequest && ret.TailCallData.Continuation == null && ret.TailCallData.ErrorHandler == null)
 					{
-						if (ret.TailCallData.Continuation != null || ret.TailCallData.ErrorHandler != null)
-							throw new ScriptRuntimeException("the function passed to {0} cannot be called directly by {0}. wrap in a script function instead.", funcName);
-
 						return DynValue.NewTailCallReq(new TailCallData()
 						{
 							Args = ret.TailCallData.Args,
@@ -61,9 +58,19 @@ namespace MoonSharp.Interpreter.CoreLib
 							ErrorHandlerBeforeUnwind = handlerBeforeUnwind
 						});
 					}
-					else if (ret.Type == DataType.YieldRequest)
+					else if (ret.Type == DataType.TailCallRequest || ret.Type == DataType.YieldRequest)
 					{
-						throw new ScriptRuntimeException("the function passed to {0} cannot be called directly by {0}. wrap in a script function instead.", funcName);
+						// The function goes on with handlers of its own (tostring's check of __tostring) or
+						// yields (pcall(coroutine.yield)). Hand its request to the VM from a function that
+						// carries pcall's handlers: the VM keeps that frame until the request completes.
+						return DynValue.NewTailCallReq(new TailCallData()
+						{
+							Args = new DynValue[0],
+							Function = DynValue.NewCallback((c, x) => ret, funcName),
+							Continuation = new CallbackFunction(pcall_continuation, funcName),
+							ErrorHandler = new CallbackFunction(pcall_onerror, funcName),
+							ErrorHandlerBeforeUnwind = handlerBeforeUnwind
+						});
 					}
 					else
 					{

@@ -406,9 +406,10 @@ checkresume(6, false, 'cannot resume dead coroutine');
 				out[#out + 1] = w(1) .. ',' .. w(2, 3)
 				return table.concat(log, ' | '), table.concat(out, ' | ')");
 
-			// No values arrive as one nil, as before (upstream #287, an ignored test in UpstreamIssueTests).
-			Assert.AreEqual("1:a | 1:nil | 2:x,nil | 2:nil,y", r.Tuple[0].String);
-			Assert.AreEqual("1:nil | 1:1 | 3:1,nil,3 | 2:done,nil | 2,5", r.Tuple[1].String);
+			// The output of lua5.2 for the same script: no values arrive as no values, not as one nil
+			// (upstream #287), in both directions.
+			Assert.AreEqual("1:a | 0: | 2:x,nil | 2:nil,y", r.Tuple[0].String);
+			Assert.AreEqual("0: | 1:1 | 3:1,nil,3 | 2:done,nil | 2,5", r.Tuple[1].String);
 		}
 
 		[Test]

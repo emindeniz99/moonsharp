@@ -146,6 +146,10 @@ namespace MoonSharp.Interpreter.CoreLib
 			if (b.IsNil())
 				return b;
 
+			// Lua 5.2 takes a number too (lua_isstring), as the string tostring gives for it.
+			if (b.Type == DataType.Number)
+				return DynValue.NewString(b.ToPrintString());
+
 			if (b.Type != DataType.String)
 				throw new ScriptRuntimeException("'tostring' must return a string");
 

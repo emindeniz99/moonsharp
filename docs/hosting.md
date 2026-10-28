@@ -104,10 +104,12 @@ next call. A call is one entry into Lua: `load` runs the module body, `invoke`
 the function, and `run` the chunk and then, with its own budget, the function
 the chunk returns. The time limit covers the whole operation.
 
-What the limits do not stop: a single long library call is not interrupted,
-because the check runs between VM instructions. `string.rep('a', 2e7):gsub('a',
-'b')` runs for 2.5 s in one call, and a 100 ms limit stops the script only
-after it returns. Memory is not limited either.
+Long library calls are checked too: the pattern functions, `string.rep`,
+`table.concat` and `table.sort` ask the same handler every 10,000 steps, so
+`string.rep('a', 2e7):gsub('a', 'b')`, which runs for 0.6–2.6 s in one call,
+stops after 103 ms under a 100 ms time limit (.NET 8, measured with the
+interpreter alone). These steps do not add to the instruction count, so an
+instruction limit alone does not stop such a call. Memory is not limited.
 
 Which limit to choose: an instruction limit is deterministic, so a script
 that passes in tests passes in production on any machine, but the count per
@@ -281,7 +283,7 @@ default 1 MB stack unless the case says otherwise.
 | Script that never returns, no limits, then `Thread.interrupt()` | the thread stays blocked; `close()` kills the worker and frees it | the thread keeps running; only ending the JVM stops it | same as CoreCLR |
 | The same script with a 100 ms time limit | `interrupted` error after 115 ms; the context keeps working | after 121 ms | after 126 ms |
 | The same script with a 1,000,000 instruction limit | `interrupted` error after 26 ms | after 33 ms | after 22 ms |
-| One long library call under a 100 ms time limit (`gsub` over 20 million characters) | returns normally after 2.6 s: the limit is checked only between VM instructions | after 2.9 s | after 3.4 s |
+| One long library call under a 100 ms time limit (`gsub` over 20 million characters), before `fix/vm-correctness` made library loops check the limit | returns normally after 2.6 s: the limit was checked only between VM instructions | after 2.9 s | after 3.4 s |
 | Allocation without bound, no limits, .NET heap capped at 256 MB (`DOTNET_GCHeapHardLimit=10000000`) | `host` error `System.OutOfMemoryException` after 1.2 s; the context keeps working | same, after 1.5 s | same, after 1.4 s |
 | The same without a heap cap | not run (the worker process grows, not the JVM) | not run | the JVM process grew to 2.6 GB in 12 s before the probe stopped it |
 | SIGTERM / SIGINT to the JVM | shutdown hooks run (exit 143 / 130) | shutdown hooks run, because the shim restores the JVM's SIGTERM handler (see below) | shutdown hooks run |
@@ -487,9 +489,10 @@ option on Linux x64, no longer an experiment, under these conditions:
    allocates without bound grows the JVM process until the OS ends it; with
    one, it gets a `host` error and the JVM lives on. The cap covers every
    context in the process.
-3. Accept what the limits do not stop: a single long library call holds its
-   thread until it returns (2.6–3.4 s for one `gsub` over 20 million
-   characters above, with a 100 ms limit).
+3. Use a time limit for library-heavy scripts: an instruction limit does not
+   count the steps inside one library call (one `gsub` over 20 million
+   characters ran 2.6–3.4 s above, before library loops checked the time
+   limit; the JVM transports have not been measured again since).
 
 Prefer the NativeAOT backend there: no .NET install, 38 ms start, full speed
 from the first call and the smallest memory. Prefer CoreCLR when scripts call

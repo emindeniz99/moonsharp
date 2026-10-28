@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -72,7 +72,8 @@ namespace MoonSharp.Hosting
 
 		/// <summary>
 		/// Milliseconds one operation may run Lua, or 0 for no limit. Checked with the instruction limit, every
-		/// 10,000 instructions; a single long library call (one string.rep or gsub) is not interrupted.
+		/// 10,000 instructions, and every 10,000 steps of a long library call (pattern matching, string.rep,
+		/// table.concat, table.sort).
 		/// </summary>
 		public int TimeLimitMs { get; set; }
 

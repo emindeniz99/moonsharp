@@ -97,6 +97,58 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				Assert.AreEqual(10000L * (i + 1) + 1, first[i]);
 		}
 
+		// One library call can run for seconds inside a single instruction: a host's time limit could not
+		// stop string.rep('a', 2e7):gsub('a', 'b') (2.6 s under a 100 ms limit). Library loops now ask the
+		// handler too. The handler here stops the script on its third call; before, these chunks run 2 to 4
+		// instructions and the handler was never called.
+		[Test]
+		public void Interrupt_StopsLongLibraryCalls()
+		{
+			string[] chunks =
+			{
+				"return (string.gsub(s, 'a', 'b'))",
+				"return (string.find(s:sub(1, 3000), '.-b'))",
+				"for w in string.gmatch(s, 'x') do end",
+				"return #string.rep('ab', 3e6)",
+				"return #table.concat(t)",
+				"table.sort(t)",
+			};
+
+			foreach (string chunk in chunks)
+			{
+				Script s = new Script();
+				bool armed = false;
+				int calls = 0;
+				long last = -1;
+				s.Options.InterruptHandler = n => { last = n; return armed && ++calls >= 3; };
+				s.Globals["s"] = new string('a', 1000000);
+				s.DoString("t = {} for i = 1, 200000 do t[i] = (i * 7919) % 200000 end");
+
+				armed = true;
+				ScriptInterruptedException ex = Assert.Throws<ScriptInterruptedException>(() => s.DoString(chunk), chunk);
+
+				// Library steps do not count as instructions: the count stays that of the few instructions run.
+				Assert.Less(ex.Instructions, 100, chunk);
+				Assert.AreEqual(last, ex.Instructions, chunk);
+			}
+		}
+
+		// List.Sort wraps what a comparer throws; table.sort passed on script errors only and dropped an
+		// interruption raised inside a Lua comparator, so the script went on with a half-sorted table.
+		[Test]
+		public void Interrupt_StopsSortComparators()
+		{
+			Script s = WithBudget(Budget);
+			s.Globals["reached"] = false;
+
+			AssertInterrupted(s, @"
+				local t = {} for i = 1, 1000 do t[i] = i end
+				table.sort(t, function(a, b) for i = 1, 100 do end return a > b end)
+				reached = true");
+
+			Assert.IsFalse(s.Globals.Get("reached").Boolean);
+		}
+
 		[Test]
 		public void Interrupt_NoHandlerNoEffect()
 		{

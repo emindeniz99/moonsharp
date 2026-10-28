@@ -54,6 +54,15 @@ namespace MoonSharp.Interpreter.Execution.VM
 			return m_YieldRequest;
 		}
 
+		/// <summary>
+		/// True when the top frame is a C# function's: when the coroutine is suspended, only a pending frame
+		/// can be (a running C# function cannot yield).
+		/// </summary>
+		private bool PendingFrameOnTop()
+		{
+			return m_ExecutionStack.Count > 0 && m_ExecutionStack.Peek().ClrFunction != null;
+		}
+
 		public CoroutineState State { get { return m_State; } }
 		public Coroutine AssociatedCoroutine { get; set; }
 
@@ -97,7 +106,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				{
 					retVal = Processing_Loop(PushClrToScriptStackFrame(CallStackItemFlags.ResumeEntryPoint, null, args));
 				}
-				else if (m_SavedInstructionPtr < 0)
+				else if (m_SavedInstructionPtr < 0 && !PendingFrameOnTop())
 				{
 					// A C# body that yielded (coroutine.create(coroutine.yield)) has nothing left to run:
 					// the values of this resume are its results.
@@ -105,15 +114,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 				}
 				else
 				{
-					// The values of this resume are the results of the yield call: none reads as nil.
+					// The values of this resume are the results of the yield call; none is no value, so
+					// select('#', coroutine.yield()) is 0 and a local assigned from it is nil.
 					if (previous == CoroutineState.Suspended)
-					{
-						if (args.Length == 0)
-							m_ValueStack.Push(LuaValue.Nil);
-						else
-							m_ValueStack.Push(DynValue.NewTuple(args));
-					}
+						m_ValueStack.Push(DynValue.NewTuple(args));
 
+					// A C# function that yielded with handlers (pcall(coroutine.yield), a continuation)
+					// left its frame pending: the values go through it first.
+					m_ReturnToPending = PendingFrameOnTop();
 					retVal = Processing_Loop(m_SavedInstructionPtr);
 				}
 

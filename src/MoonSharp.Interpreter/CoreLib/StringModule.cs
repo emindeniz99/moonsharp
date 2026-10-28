@@ -153,7 +153,7 @@ namespace MoonSharp.Interpreter.CoreLib
 		[MoonSharpModuleMethod]
 		public static DynValue match(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			return LuaPatterns.Find(args, false);
+			return LuaPatterns.Find(executionContext, args, false);
 		}
 
 
@@ -172,7 +172,7 @@ namespace MoonSharp.Interpreter.CoreLib
 		[MoonSharpModuleMethod]
 		public static DynValue find(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			return LuaPatterns.Find(args, true);
+			return LuaPatterns.Find(executionContext, args, true);
 		}
 
 
@@ -213,6 +213,10 @@ namespace MoonSharp.Interpreter.CoreLib
 					result.Append(sep);
 
                 result.Append(arg_s.String);
+
+				// Lets the host's interrupt handler stop string.rep('x', 1e9).
+				if ((i & 1023) == 1023)
+					executionContext.LibraryWork(1024);
             }
 
             return DynValue.NewString(result.ToString());

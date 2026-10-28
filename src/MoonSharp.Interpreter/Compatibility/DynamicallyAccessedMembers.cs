@@ -33,6 +33,7 @@ namespace System.Diagnostics.CodeAnalysis
 	{
 		PublicParameterlessConstructor = 0x0001,
 		PublicMethods = 0x0008,
+		NonPublicMethods = 0x0010,
 		All = ~0,
 	}
 }

@@ -2,7 +2,8 @@ name: Unity
 
 # Runs the MoonSharp test suite on real Unity editors, for each LTS line the package
 # supports: in the editor (Mono) and in a Linux IL2CPP player. Each run is compared test
-# by test with the same suite on .NET (src/TestRunners/EmbeddedTestRunner). It pulls a
+# by test with the same suite on .NET (src/TestRunners/EmbeddedTestRunner), and reports what
+# MoonSharp adds to the size of a Linux IL2CPP player (src/Unity/SizeProbe). It pulls a
 # 4-6 GB editor image and builds an IL2CPP player per version, so it runs on master and by
 # hand, not on pull requests. Without the Unity secrets the matrix is skipped.
 #
@@ -226,6 +227,36 @@ jobs:
           set -e
           src/Unity/UnityTestBed/compare-results.sh "$RESULTS/reference.tsv" "$RESULTS/il2cpp.tsv" "Unity ${{ matrix.unity }} IL2CPP player" || code=1
           exit "$code"
+
+      # What MoonSharp adds to an IL2CPP player, as a proxy for an Android ARM64 APK: src/Unity/SizeProbe
+      # built as committed and without MoonSharp (no Assets/Probe, no package), with the editor's
+      # default player settings. The sizes go to the job summary; then the player with MoonSharp
+      # must run its script, or stripping removed what the script needs.
+      - name: Size of MoonSharp in a Linux IL2CPP player
+        if: always() && (steps.activate-serial.outcome == 'success' || steps.activate-totp.outcome == 'success')
+        timeout-minutes: 45
+        run: |
+          set -euo pipefail
+          mkdir -p .unity-size
+          cp -r src/Unity/SizeProbe .unity-size/project-without
+          rm -rf .unity-size/project-without/Assets/Probe
+          jq 'del(.dependencies["org.moonsharp.moonsharp"])' src/Unity/SizeProbe/Packages/manifest.json \
+            > .unity-size/project-without/Packages/manifest.json
+
+          build() {
+            docker exec unity unity-editor -batchmode -nographics -quit -logFile - \
+              -projectPath "$2" -executeMethod MoonSharp.SizeProbe.SizeBuild.BuildLinuxIl2cpp \
+              -moonsharpBuild "/github/workspace/.unity-size/$1/SizeProbe.x86_64" | tee ".unity-size/build-$1.log"
+          }
+          build without /github/workspace/.unity-size/project-without
+          build with /github/workspace/src/Unity/SizeProbe
+
+          tools/size/unity-players.sh "Unity ${{ matrix.unity }}" .unity-size/without .unity-size/with \
+            "$(grep -m 1 '^SizeBuild: Unity' .unity-size/build-with.log)"
+
+          docker exec unity /github/workspace/.unity-size/with/SizeProbe.x86_64 -batchmode -nographics -logFile - \
+            | tee .unity-size/run.log
+          grep -q '^MoonSharp size probe: abab42' .unity-size/run.log
 
       # The results files only: the editor logs, which may name the account, stay in the
       # job log, where GitHub masks the secrets.

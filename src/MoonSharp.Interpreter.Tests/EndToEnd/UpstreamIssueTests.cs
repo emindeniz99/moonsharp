@@ -170,5 +170,50 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual("d", r.Tuple[1].String);
 			Assert.AreEqual(5.0, r.Tuple[2].Number);
 		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/229: tonumber followed .NET number
+		// parsing instead of Lua's numerals. Hexadecimal input such as colours or flags read from
+		// a config ("0x23") gave nil, while strings Lua rejects ("1,000", "(5)") became numbers.
+		[Test]
+		public void Issue229_TonumberReadsLuaNumerals()
+		{
+			Script s = new Script();
+
+			DynValue r = s.DoString(@"
+				return tonumber('0x23'), tonumber(' -0X1f '), tonumber('0x.8'), tonumber('0x1p4'),
+					tonumber('1e2'), tonumber(' .5 '), tonumber('5.')");
+
+			double[] expected = { 35, -31, 0.5, 16, 100, 0.5, 5 };
+
+			for (int i = 0; i < expected.Length; i++)
+				Assert.AreEqual(expected[i], r.Tuple[i].Number, "value " + (i + 1));
+		}
+
+		[Test]
+		public void Issue229_TonumberRejectsWhatLuaRejects()
+		{
+			string[] notNumerals = { "0x", "0xg", "0x1p", "1,000", "(5)", "nan", "inf", "", " ", "1e", "1 2", "0x1 2" };
+
+			foreach (string text in notNumerals)
+			{
+				Script s = new Script();
+				s.Globals["text"] = text;
+				Assert.IsTrue(s.DoString("return tonumber(text)").IsNil(), "'" + text + "' is not a number");
+			}
+		}
+
+		// Arithmetic coerces strings with the same rules as tonumber; DynValue.CastToNumber still
+		// uses .NET parsing and should call BasicModule.TryParseLuaNumber.
+		[Test]
+		[Ignore("waits for VM core work (DynValue.CastToNumber): https://github.com/moonsharp-devs/moonsharp/issues/229")]
+		public void Issue229_ArithmeticCoercesLuaNumerals()
+		{
+			Script s = new Script();
+
+			DynValue r = s.DoString("return '0x10' + 1, pcall(function() return '1,000' + 1 end)");
+
+			Assert.AreEqual(17.0, r.Tuple[0].Number);
+			Assert.AreEqual(false, r.Tuple[1].Boolean);
+		}
 	}
 }

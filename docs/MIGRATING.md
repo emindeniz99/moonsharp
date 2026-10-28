@@ -184,3 +184,20 @@ string, so JSON such as `[[1,2],[3,4]]` failed with "Unexpected token".
 It now reads `[[` as two array openings. Affected: hosts that inserted
 spaces between brackets as a workaround
 ([upstream #219](https://github.com/moonsharp-devs/moonsharp/issues/219)).
+
+## `tonumber` reads Lua numerals
+
+`tonumber(s)` used .NET number parsing. It returned `nil` for
+hexadecimal numerals such as `"0x23"`, and returned numbers for strings
+that Lua rejects, such as `"1,000"` (1000) and `"(5)"` (-5). It now
+follows Lua 5.2: decimal or hexadecimal numerals (with an optional
+fraction and `p` exponent), an optional sign and surrounding whitespace.
+
+```lua
+print(tonumber("0x23"), tonumber("1,000"))   -- before: nil 1000   now: 35 nil
+```
+
+String coercion in arithmetic (`"0x10" + 1`) still uses the old parsing
+until the VM work changes it. Affected: scripts that passed formatted
+numbers to `tonumber`
+([upstream #229](https://github.com/moonsharp-devs/moonsharp/issues/229)).

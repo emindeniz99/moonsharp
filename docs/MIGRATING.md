@@ -153,3 +153,38 @@ table.remove({}, -2)          -- before: returned nil   now: error "position out
 Affected: scripts that call `table.remove` on tables that may be empty
 (stacks, queues). `Table.Pairs` no longer returns a `0 = nil` entry to
 hosts after such a call.
+
+## Keys set to nil are gone for hosts, and every one of them is forgotten
+
+Two dead-key bugs are fixed:
+
+- `Table.Pairs`, `Table.Keys` and `Table.Values` returned keys whose value
+  had been set to nil, as pairs with a nil value. Hosts that convert tables
+  saw fields the script had removed: the hosting JSON writer turned a
+  sequence with a cleared field into an object, and `json.serialize` wrote
+  `null` for it.
+- A key set to nil is forgotten when the next new key is stored, so it goes
+  to the end of the `pairs` order when it gets a value again. Only the first
+  such key was forgotten; the others kept their old place. Now every one is.
+
+```lua
+local t = { 10, 20 }
+t.x = 1; t.x = nil
+-- hosting JSON before: {"1":10,"2":20,"x":null}   now: [10,20]
+
+local o = { a = 1, b = 2 }; o.b = nil
+print(json.serialize(o))   -- before: {"a":1,"b":null}   now: {"a":1}
+
+local u = {}
+u.a = 1; u.b = 2; u.c = 3
+u.a = nil; u.b = nil
+u.d = 4                    -- forgets a and b (before: only a)
+u.b = 5; u.a = 6
+for k in pairs(u) do io.write(k, ' ') end
+-- before: b c d a   now: c d b a
+```
+
+`pairs` in a script never returned the nil keys and still does not. Affected:
+hosts that enumerate tables (`Table.Pairs`, `Keys`, `Values`, JSON,
+`Dictionary` conversion, the Lua-source serializer) and scripts or snapshot
+tests that depend on the `pairs` order after clearing more than one key.

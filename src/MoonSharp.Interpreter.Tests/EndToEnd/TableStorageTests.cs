@@ -313,10 +313,11 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void PairsOrderIsPinnedForMixedKeysWithRemovalsAndReinsertions()
 		{
-			// Today's rules, pinned: entries iterate in insertion order; assigning nil leaves the entry in
+			// The rules, pinned: entries iterate in insertion order; assigning nil leaves the entry in
 			// place; assigning a value to a key whose entry is still there keeps its place. Storing a value
-			// into a new or nil key after a nil was stored drops the FIRST entry that holds nil (only that
-			// one), so a key whose entry was dropped moves to the end when it gets a value again.
+			// into a new or nil key after a nil was stored drops every entry that holds nil, so a key whose
+			// entry was dropped moves to the end when it gets a value again. (Until 2026-10 only the first
+			// such entry was dropped; the last two checkpoints differed: '1=2,m=1 | 1=2,x=4,m=1,y=3'.)
 			string res = Script.RunString(@"
 				local r = {}
 				local function P(t) local s = {} for k, v in pairs(t) do s[#s + 1] = tostring(k) .. '=' .. tostring(v) end r[#r + 1] = table.concat(s, ',') end
@@ -332,14 +333,60 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				t[3] = nil; t[3] = nil; t.q = nil; t[3] = 'E'; P(t)
 				t.x = nil; t.q = 'h'; t.x = 'X'; P(t)
 				for k in pairs(t) do t[k] = nil end; P(t)
-				t.m = 1; t[1] = 2; P(t)          -- m drops only y's entry; 1's entry is still there
-				t.y = 3; t.x = 4; P(t)           -- y was dropped: appended; x still has an entry
+				t.m = 1; t[1] = 2; P(t)          -- m drops every dead entry: 1 is new again
+				t.y = 3; t.x = 4; P(t)           -- so are y and x: appended
 				return table.concat(r, ' | ')").String;
 
 			Assert.AreEqual(
 				"1=a,x=b,2=c,y=d,3=e | 1=a,y=d,3=e | 1=a,x=B,y=d,3=e | 1=a,x=B,y=d,3=e,2=C | 1=a,x=B,y=d,3=e,2=C,z=f | " +
 				"x=B,y=d,3=e,2=C,z=f,w=g | x=B,y=d,3=e,2=C,z=f,w=g,1=A | x=B,y=D,3=e,2=C,z=f,w=g,1=A | " +
-				"x=B,y=D,3=E,2=C,z=f,w=g,1=A | y=D,3=E,2=C,z=f,w=g,1=A,q=h,x=X |  | 1=2,m=1 | 1=2,x=4,m=1,y=3", res);
+				"x=B,y=D,3=E,2=C,z=f,w=g,1=A | y=D,3=E,2=C,z=f,w=g,1=A,q=h,x=X |  | m=1,1=2 | m=1,1=2,y=3,x=4", res);
+		}
+
+		[Test]
+		public void EveryDeadKeyIsForgottenAtTheNextInsert()
+		{
+			// A key set to nil is forgotten when the next new key is stored, so it goes to the end when it
+			// gets a value again. The sweep used to stop after the first dead key: b kept its old place
+			// before c, so the order depended on how many keys had been cleared.
+			string res = Script.RunString(@"
+				local t = {}
+				t.a = 1; t.b = 2; t.c = 3
+				t.a = nil; t.b = nil
+				t.d = 4
+				t.b = 5; t.a = 6
+				local s = {}
+				for k, v in pairs(t) do s[#s + 1] = k .. '=' .. v end
+				return table.concat(s, ',')").String;
+
+			Assert.AreEqual("c=3,d=4,b=5,a=6", res);
+		}
+
+		static string HostView(Table t)
+		{
+			return string.Join(",", t.Pairs.Select(p => p.Key.ToPrintString() + "=" + p.Value.ToPrintString()))
+				+ " | " + string.Join(",", t.Keys.Select(k => k.ToPrintString()))
+				+ " | " + string.Join(",", t.Values.Select(v => v.ToPrintString()));
+		}
+
+		[Test]
+		public void HostEnumerationSkipsKeysSetToNil()
+		{
+			// Table.Pairs, Keys and Values returned keys whose value had been set to nil (as nil pairs), so
+			// hosts that convert tables saw fields the script had removed: a sequence with a cleared field
+			// became the JSON object {"1":10,"2":20,"x":null} instead of [10,20].
+			var script = new Script();
+			script.DoString(@"
+				seq = { 10, 20 }; seq.x = 1; seq.x = nil
+				obj = {}; obj.a = 1; obj.b = 2; obj.c = 3; obj.a = nil; obj.b = nil; obj.d = 4
+				json_obj = json.serialize(obj)
+				rec = { a = 1, x = 2 }; rec.x = nil
+				json_rec = json.serialize(rec)");
+
+			Assert.AreEqual("1=10,2=20 | 1,2 | 10,20", HostView(script.Globals.Get("seq").Table), "cleared field, no insert after it");
+			Assert.AreEqual("c=3,d=4 | c,d | 3,4", HostView(script.Globals.Get("obj").Table), "two cleared fields, then an insert");
+			Assert.AreEqual("{\"c\":3,\"d\":4}", script.Globals.Get("json_obj").String);
+			Assert.AreEqual("{\"a\":1}", script.Globals.Get("json_rec").String);
 		}
 
 		[Test]
@@ -388,19 +435,18 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			StringAssert.EndsWith("|nil", res);
 		}
 
-		// The dead-key sweep removes the first entry holding nil and stops (see the pinned test above).
-		static void RemoveFirstNil(List<KeyValuePair<string, string>> model)
+		// The dead-key sweep removes every entry holding nil (see the pinned test above).
+		static void RemoveNils(List<KeyValuePair<string, string>> model)
 		{
-			int i = model.FindIndex(e => e.Value == null);
-			if (i >= 0) model.RemoveAt(i);
+			model.RemoveAll(e => e.Value == null);
 		}
 
 		[Test]
 		public void PairsOrderMatchesTheInsertionModelUnderRandomEdits()
 		{
-			// Reference model of today's entry list (including entries that hold nil, which Table.Pairs
-			// returns to hosts). Random script-style stores of mixed integer and string keys, C# removes and
-			// explicit CollectDeadKeys calls must leave the table's entry list identical to the model's.
+			// Reference model of the entry list (including entries that hold nil, which neither pairs() nor
+			// Table.Pairs returns). Random script-style stores of mixed integer and string keys, C# removes
+			// and explicit CollectDeadKeys calls must leave the table's order identical to the model's.
 			var rnd = new Random(1028);
 			var script = new Script();
 			var t = new Table(script);
@@ -428,7 +474,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 					if (modelHasNil && val != null && wasAbsentOrNil)
 					{
-						RemoveFirstNil(model);
+						RemoveNils(model);
 						modelHasNil = false;
 					}
 					else if (val == null)
@@ -444,16 +490,14 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				else
 				{
 					t.CollectDeadKeys();
-					RemoveFirstNil(model);
+					RemoveNils(model);
 					modelHasNil = false;
 				}
 
-				string expectedAll = string.Join(",", model.Select(e => e.Key + "=" + (e.Value ?? "nil")));
-				string actualAll = string.Join(",", t.Pairs.Select(p => p.Key.ToPrintString() + "=" + (p.Value.IsNil() ? "nil" : p.Value.ToPrintString())));
-				Assert.AreEqual(expectedAll, actualAll, "Table.Pairs after step " + step);
-
-				string expectedLua = string.Join(",", model.Where(e => e.Value != null).Select(e => e.Key + "=" + e.Value));
-				Assert.AreEqual(expectedLua, script.Call(pairsToString, tv).String, "pairs() after step " + step);
+				string expected = string.Join(",", model.Where(e => e.Value != null).Select(e => e.Key + "=" + e.Value));
+				string actualHost = string.Join(",", t.Pairs.Select(p => p.Key.ToPrintString() + "=" + (p.Value.IsNil() ? "nil" : p.Value.ToPrintString())));
+				Assert.AreEqual(expected, actualHost, "Table.Pairs after step " + step);
+				Assert.AreEqual(expected, script.Call(pairsToString, tv).String, "pairs() after step " + step);
 			}
 		}
 

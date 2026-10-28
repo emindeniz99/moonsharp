@@ -584,20 +584,23 @@ namespace MoonSharp.Interpreter
 		/// </summary>
 		public void CollectDeadKeys()
 		{
-			// This removes only the first removable entry that holds nil, in iteration order. The original
-			// loop stepped to node.Next after LinkedList.Remove had cleared it, which ended the walk at the
-			// first removal; pairs() order depends on which nil entries survive, so that is kept as is.
-			// With no removable nil entry the walk would find nothing, so it is skipped.
+			// Removes every removable entry that holds nil. With none left the walk stops; with none at all
+			// it is skipped.
 			if (m_SweepableNilEntries > 0)
 			{
 				long steps = 0;
+				LinkedListNode<TablePair> node = m_Values.First;
 
-				for (LinkedListNode<TablePair> node = m_Values.First; node != null; node = node.Next)
+				while (node != null && m_SweepableNilEntries > 0)
 				{
 					steps++;
+					// read Next first: LinkedList.Remove clears it
+					LinkedListNode<TablePair> next = node.Next;
 
-					if (node.Value.Value.IsNil() && Remove(node.Value.Key))
-						break;
+					if (node.Value.Value.IsNil())
+						Remove(node.Value.Key);
+
+					node = next;
 				}
 
 				s_ScanSteps += steps;
@@ -729,7 +732,7 @@ namespace MoonSharp.Interpreter
 		{
 			get
 			{
-				return m_Values.Select(n => new TablePair(n.Key, n.Value));
+				return m_Values.Where(n => !n.Value.IsNil());
 			}
 		}
 
@@ -741,7 +744,7 @@ namespace MoonSharp.Interpreter
 		{
 			get
 			{
-				return m_Values.Select(n => n.Key);
+				return m_Values.Where(n => !n.Value.IsNil()).Select(n => n.Key);
 			}
 		}
 
@@ -753,7 +756,7 @@ namespace MoonSharp.Interpreter
 		{
 			get
 			{
-				return m_Values.Select(n => n.Value);
+				return m_Values.Where(n => !n.Value.IsNil()).Select(n => n.Value);
 			}
 		}
 	}

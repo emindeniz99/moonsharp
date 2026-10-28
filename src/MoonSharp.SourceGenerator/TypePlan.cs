@@ -291,25 +291,34 @@ namespace MoonSharp.SourceGenerator
 			}
 
 			/// <summary>
-			/// The members Type.GetMethods/GetProperties/GetFields/GetEvents return with public, non-public,
-			/// instance and static flags: everything declared on the type, plus the non-private instance
-			/// members of its base classes. Overridden members appear once, as the override; a base
-			/// property or event hidden by name (and index parameters) is left out, as reflection does.
+			/// The members StandardUserDataDescriptor reads by reflection: everything declared on the type,
+			/// plus the non-private instance members of its base classes and their non-private static
+			/// members, except statics declared in the core library (upstream #175). Overridden members
+			/// appear once, as the override; a base property or event hidden by name (and index parameters),
+			/// and a base static method or field hidden by a derived one, are left out, as reflection does.
 			/// </summary>
 			IEnumerable<ISymbol> ReflectionMembers()
 			{
 				var overridden = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
 				var propertyNames = new HashSet<string>();
 				var eventNames = new HashSet<string>();
+				var hidingStatics = new HashSet<string>();
 
 				for (INamedTypeSymbol cur = m_Type; cur != null; cur = m_Type.TypeKind == TypeKind.Interface ? null : cur.BaseType)
 				{
 					bool own = SymbolEqualityComparer.Default.Equals(cur, m_Type);
+					bool coreLibrary = SymbolEqualityComparer.Default.Equals(cur.ContainingAssembly, m_Known.Object.ContainingAssembly);
 
 					foreach (ISymbol m in cur.GetMembers())
 					{
-						if (!own && (m.IsStatic || m.DeclaredAccessibility == Accessibility.Private))
+						if (!own && m.DeclaredAccessibility == Accessibility.Private)
 							continue;
+
+						string hidingKey = HidingKey(m);
+						if (!own && m.IsStatic && (coreLibrary || (hidingKey != null && hidingStatics.Contains(hidingKey))))
+							continue;
+						if (hidingKey != null)
+							hidingStatics.Add(hidingKey);
 
 						if (overridden.Contains(m))
 							continue;
@@ -337,6 +346,20 @@ namespace MoonSharp.SourceGenerator
 						yield return m;
 					}
 				}
+			}
+
+			/// <summary>
+			/// What a derived member hides a base static by: a static method its signature, a field, property
+			/// or event its name (StandardUserDataDescriptor.IsHiddenBySignature and IsHiddenByDerivedMember).
+			/// </summary>
+			static string HidingKey(ISymbol m)
+			{
+				var method = m as IMethodSymbol;
+				if (method != null)
+					return method.IsStatic && method.MethodKind == MethodKind.Ordinary
+						? method.MetadataName + "(" + string.Join(",", method.Parameters.Select(p => p.Type.ToDisplayString(Names.Fq))) + ")"
+						: null;
+				return m is IFieldSymbol || m is IPropertySymbol || m is IEventSymbol ? m.MetadataName : null;
 			}
 
 			static ISymbol Overridden(ISymbol m)

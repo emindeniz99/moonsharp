@@ -691,3 +691,86 @@ did not point to anything") instead of printing "Key '{0}' ...".
 Setting `TablePair.Value` recursed until the process
 ended with a stack overflow; it now sets the pair's value (a copy: the
 table does not change). Affected: hosts that caught those exceptions.
+
+## A fractional number picks a floating-point overload
+
+**Before:** a Lua number weighed the same for every integer parameter and for
+`float`, so with overloads `F(int)` and `F(float)`, `F(1.5)` called `F(int)`
+when that overload sorted first, and the fraction was lost.
+
+**After:** a number with a fractional part (or NaN) weighs less for an
+integer parameter than for `float`, `double` or `decimal`, so `F(1.5)` calls
+`F(float)`. A whole number such as `F(2)` picks the same overload as before,
+and a fractional number still converts to an integer parameter when no
+floating-point overload exists. The overload cache records whether each
+number argument is whole, so a cached choice for `F(2)` is not reused for
+`F(1.5)`
+([upstream #293](https://github.com/moonsharp-devs/moonsharp/issues/293)).
+
+**Affected:** hosts with integer and `float` overloads of one method whose
+scripts pass fractional numbers.
+
+## An exact type match beats a custom converter
+
+**Before:** an argument that a custom converter
+(`Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion`) could
+convert weighed the same as an argument whose type matched the parameter
+exactly, so the overload that sorted first won. With a string-to-`Tag`
+converter and overloads `Describe(Tag)` and `Describe(string)`,
+`Describe("x")` called `Describe(Tag)`.
+
+**After:** the exact match wins: `Describe("x")` calls `Describe(string)`. A
+converter still beats every other conversion (number to `int`, number to
+string, table to list), so arguments that only the converter can take reach
+the converter's overload as before
+([upstream #294](https://github.com/moonsharp-devs/moonsharp/issues/294)).
+
+**Affected:** hosts with custom converters and overloads that take both the
+converter's target type and the argument's own type, for example a
+number-to-`int` converter on a method with `F(int)` and `F(double)`, where a
+number now calls `F(double)`.
+
+## Static members of base classes are visible through derived types
+
+**Before:** a registered type exposed only the static members it declared
+itself. `Square.Make()` failed with "cannot access field Make" when `Make`
+was a static method of `Square`'s base class, although C# code can call it
+that way.
+
+**After:** a type also exposes the static methods, properties, fields and
+events of its base classes, as C# does. A static member that the derived
+type hides with `new` stays hidden, and same-named static methods of the
+derived and base types become overloads of one member. Static members
+declared in the core library (`object.ReferenceEquals`,
+`object.Equals(a, b)`, the statics of `Enum`, `EventArgs`, `Exception` and
+other framework base types) stay out, so member lists, Hardwire output and
+LuaCATS definitions do not fill up with them
+([upstream #175](https://github.com/moonsharp-devs/moonsharp/issues/175),
+[PR #336](https://github.com/moonsharp-devs/moonsharp/pull/336)).
+
+**Affected:** hosts that list a descriptor's members, scripts that relied
+on such a member being missing, and Hardwire and LuaCATS output for types
+whose base classes declare public statics: the new members appear on the
+derived type too. For example, a registered Unity component now also exposes
+the public static methods of `UnityEngine.Object`, such as `Destroy` and
+`Instantiate`.
+
+## Lists and dictionaries become tables under automatic registration
+
+**Before:** with `UserData.RegistrationPolicy = InteropRegistrationPolicy.Automatic`,
+a `List<T>`, an array or a `Dictionary<K,V>` passed to a script was
+registered on the spot and became userdata, so `#list`, `ipairs` and
+`pairs` did not work on it and indexing started at 0. The default policy
+already gave tables.
+
+**After:** lists (`IList`, arrays included) and dictionaries (`IDictionary`)
+become tables under every policy, as documented: a copy with Lua indices
+from 1. A type the host registers explicitly, or that a registered base
+type or interface covers, is still userdata. Other enumerables and other
+types are registered automatically as before
+([upstream #274](https://github.com/moonsharp-devs/moonsharp/issues/274)).
+
+**Affected:** hosts using automatic registration whose scripts call list or
+dictionary methods (`list.Add`, `dict.ContainsKey`) or change the C#
+collection through it. Register the collection type with
+`UserData.RegisterType` to keep the userdata.

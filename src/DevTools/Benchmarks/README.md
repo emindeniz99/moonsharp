@@ -64,7 +64,8 @@ cost used to grow with the table size.
 The same mode also runs cases that flag_bench does not have: calls across the
 C#/Lua boundary in both directions (`cs_to_lua_call3`, `lua_to_cs_call1`),
 CLR method and property access (`clr_interop` in the default access mode,
-`clr_interop_reflection` as IL2CPP gets it), pushing a registered enum value
+`clr_interop_reflection` as IL2CPP gets it), an overloaded method called
+with whole and fractional numbers (`overload_call`, the overload cache), pushing a registered enum value
 (`enum_push`) and an instance of an unregistered subclass (`derived_type_push`).
 Name cases after the run count to run only those:
 

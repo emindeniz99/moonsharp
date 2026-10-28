@@ -61,6 +61,7 @@ assert(w.X == -12)
 assert(Player.Create("cat").Name == "cat")
 assert(Player.Created >= 1)
 assert(Player.MaxLevel == 99)
+assert(Player.PeekNextId() > p.Id)
 local badge = Player.Badge.__new()
 badge.Title = "first"
 

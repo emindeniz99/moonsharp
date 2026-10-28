@@ -334,5 +334,18 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual("aN上b", r.Tuple[0].String);
 			Assert.AreEqual("a\n@b", r.Tuple[1].String);
 		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/134: %p used Char.IsPunctuation, which
+		// leaves out symbols C's ispunct counts ('=', '+', '$', '<', '|', '~', '^', '`').
+		[Test]
+		[Ignore("waits for string library work: https://github.com/moonsharp-devs/moonsharp/issues/134")]
+		public void Issue134_PunctuationClassMatchesAsciiPunctuation()
+		{
+			Script s = new Script();
+
+			DynValue r = s.DoString("return ('a=b+c$<|~^`'):gsub('%p', '')");
+
+			Assert.AreEqual("abc", r.Tuple[0].String);
+		}
 	}
 }

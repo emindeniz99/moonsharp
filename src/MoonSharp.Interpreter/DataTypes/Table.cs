@@ -154,14 +154,31 @@ namespace MoonSharp.Interpreter
 		public void Append(DynValue value)
 		{
 			this.CheckScriptOwnership(value);
-			PerformTableSet(m_ArrayMap, Length + 1, DynValue.NewNumber(Length + 1), value, true, Length + 1);
+			int key = Length + 1;
+			LinkedListNode<TablePair> node = m_ArrayMap.Find(key);
+			PerformTableSet(m_ArrayMap, key, node, node == null ? DynValue.NewNumber(key) : null, value, true, key);
 		}
 
 		#region Set
 
-		private void PerformTableSet<T>(LinkedListIndex<T, TablePair> listIndex, T key, DynValue keyDynValue, DynValue value, bool isNumber, int appendKey)
+		/// <summary>
+		/// Stores a value. <paramref name="node"/> is the existing entry for the key (or null); when it exists
+		/// its key DynValue is kept, so callers create <paramref name="keyDynValue"/> only for a new key.
+		/// </summary>
+		private void PerformTableSet<T>(LinkedListIndex<T, TablePair> listIndex, T key, LinkedListNode<TablePair> node, DynValue keyDynValue, DynValue value, bool isNumber, int appendKey)
 		{
-			TablePair prev = listIndex.Set(key, new TablePair(keyDynValue, value));
+			TablePair prev;
+
+			if (node != null)
+			{
+				prev = node.Value;
+				node.Value = new TablePair(prev.Key, value);
+			}
+			else
+			{
+				prev = default(TablePair);
+				listIndex.Add(key, new TablePair(keyDynValue, value));
+			}
 
 			// If this is an insert, we can invalidate all iterators and collect dead keys
 			if (m_ContainsNilEntries && value.IsNotNil() && (prev.Value == null || prev.Value.IsNil()))
@@ -213,7 +230,8 @@ namespace MoonSharp.Interpreter
 				throw ScriptRuntimeException.TableIndexIsNil();
 
 			this.CheckScriptOwnership(value);
-			PerformTableSet(m_StringMap, key, DynValue.NewString(key), value, false, -1);
+			LinkedListNode<TablePair> node = m_StringMap.Find(key);
+			PerformTableSet(m_StringMap, key, node, node == null ? DynValue.NewString(key) : null, value, false, -1);
 		}
 
 		/// <summary>
@@ -224,7 +242,8 @@ namespace MoonSharp.Interpreter
 		public void Set(int key, DynValue value)
 		{
 			this.CheckScriptOwnership(value);
-			PerformTableSet(m_ArrayMap, key, DynValue.NewNumber(key), value, true, -1);
+			LinkedListNode<TablePair> node = m_ArrayMap.Find(key);
+			PerformTableSet(m_ArrayMap, key, node, node == null ? DynValue.NewNumber(key) : null, value, true, -1);
 		}
 
 		/// <summary>
@@ -262,7 +281,7 @@ namespace MoonSharp.Interpreter
 			this.CheckScriptOwnership(key);
 			this.CheckScriptOwnership(value);
 
-			PerformTableSet(m_ValueMap, key, key, value, false, -1);
+			PerformTableSet(m_ValueMap, key, m_ValueMap.Find(key), key, value, false, -1);
 		}
 
 		/// <summary>

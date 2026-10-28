@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using NUnit.Framework;
 
 namespace MoonSharp.Interpreter.Tests.EndToEnd
@@ -15,6 +16,12 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		{
 			public int X;
 			public HashPoint(int x) { X = x; }
+		}
+
+		public class EventSender
+		{
+			public event Action Fired;
+			public void Fire() { if (Fired != null) Fired(); }
 		}
 
 		public class OverloadA { }
@@ -152,6 +159,80 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				UserData.UnregisterType<OverloadPicker>();
 				foreach (Type t in OverloadArgTypes)
 					UserData.UnregisterType(t);
+			}
+		}
+
+		// Subscribes a script handler and fires it once; nothing outside keeps the sender or the script.
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		static WeakReference SubscribeThenDrop(out WeakReference script)
+		{
+			var sender = new EventSender();
+			Script s = new Script();
+			s.Globals["sender"] = sender;
+			s.DoString("count = 0 sender.Fired.add(function() count = count + 1 end)");
+			sender.Fire();
+			Assert.AreEqual(1, s.Globals.Get("count").Number);
+			script = new WeakReference(s);
+			return new WeakReference(sender);
+		}
+
+		[Test]
+		public void Interop_Event_SubscribedSenderCanBeCollected()
+		{
+			try
+			{
+				UserData.RegisterType<EventSender>();
+				WeakReference script;
+				WeakReference sender = SubscribeThenDrop(out script);
+
+				GC.Collect();
+				GC.WaitForPendingFinalizers();
+				GC.Collect();
+
+				// The event descriptor is global and used to hold every sender and its handlers forever.
+				Assert.IsFalse(sender.IsAlive, "sender kept alive by the event descriptor");
+				Assert.IsFalse(script.IsAlive, "script kept alive by the event descriptor");
+			}
+			finally
+			{
+				UserData.UnregisterType<EventSender>();
+			}
+		}
+
+		[Test]
+		public void Interop_Event_LiveSenderKeepsItsHandlers()
+		{
+			try
+			{
+				UserData.RegisterType<EventSender>();
+				var sender = new EventSender();
+				int hits = 0;
+				Script s = new Script();
+				s.Globals["sender"] = sender;
+				s.Globals["hit"] = (Action)(() => hits++);
+				s.DoString("function h() hit() end sender.Fired.add(h) sender.Fired.add(h)");
+				s = null;
+
+				GC.Collect();
+				GC.WaitForPendingFinalizers();
+
+				// Handlers live as long as their sender, even when nothing else holds the script; a handler
+				// added twice runs twice.
+				sender.Fire();
+				Assert.AreEqual(2, hits);
+				Script again = new Script();
+				again.Globals["sender"] = sender;
+				again.DoString("n = 0 function g() n = n + 1 end sender.Fired.add(g)");
+				sender.Fire();
+				Assert.AreEqual(1, again.Globals.Get("n").Number);
+
+				again.DoString("sender.Fired.remove(g)");
+				sender.Fire();
+				Assert.AreEqual(1, again.Globals.Get("n").Number);
+			}
+			finally
+			{
+				UserData.UnregisterType<EventSender>();
 			}
 		}
 	}

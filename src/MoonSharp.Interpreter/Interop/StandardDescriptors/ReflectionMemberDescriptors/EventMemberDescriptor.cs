@@ -2,8 +2,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using MoonSharp.Interpreter.Compatibility;
-using MoonSharp.Interpreter.DataStructs;
 using MoonSharp.Interpreter.Interop.BasicDescriptors;
 using MoonSharp.Interpreter.Interop.StandardDescriptors;
 
@@ -22,8 +22,17 @@ namespace MoonSharp.Interpreter.Interop
 
 
 		object m_Lock = new object();
-		MultiDictionary<object, Closure> m_Callbacks = new MultiDictionary<object, Closure>(new ReferenceEqualityComparer());
-		Dictionary<object, Delegate> m_Delegates = new Dictionary<object, Delegate>(new ReferenceEqualityComparer());
+
+		// Per sender: the script handlers and the delegate attached to its event. The table holds the
+		// sender weakly, so a sender with handlers (and the scripts they belong to) can still be
+		// collected; while the sender lives, its handlers live too.
+		ConditionalWeakTable<object, Subscription> m_Subscriptions = new ConditionalWeakTable<object, Subscription>();
+
+		private sealed class Subscription
+		{
+			public readonly List<Closure> Closures = new List<Closure>();
+			public Delegate Handler;
+		}
 
 		/// <summary>
 		/// Tries to create a new StandardUserDataEventDescriptor, returning <c>null</c> in case the method is not
@@ -177,8 +186,11 @@ namespace MoonSharp.Interpreter.Interop
 				Closure closure = args.AsType(0, string.Format("userdata<{0}>.{1}.add", EventInfo.DeclaringType, EventInfo.Name),
 					DataType.Function, false).Function;
 
-				if (m_Callbacks.Add(o, closure))
-					RegisterCallback(o);
+				Subscription subscription = m_Subscriptions.GetOrCreateValue(o);
+				subscription.Closures.Add(closure);
+
+				if (subscription.Handler == null)
+					RegisterCallback(o, subscription);
 
 				return DynValue.Void;
 			}
@@ -191,33 +203,29 @@ namespace MoonSharp.Interpreter.Interop
 				Closure closure = args.AsType(0, string.Format("userdata<{0}>.{1}.remove", EventInfo.DeclaringType, EventInfo.Name),
 					DataType.Function, false).Function;
 
-				if (m_Callbacks.RemoveValue(o, closure))
-					UnregisterCallback(o);
+				Subscription subscription;
+
+				if (m_Subscriptions.TryGetValue(o, out subscription))
+				{
+					subscription.Closures.Remove(closure);
+
+					if (subscription.Closures.Count == 0)
+					{
+						m_Subscriptions.Remove(o);
+						m_Remove.Invoke(o, new object[] { subscription.Handler });
+					}
+				}
 
 				return DynValue.Void;
 			}
 		}
 
-		private void RegisterCallback(object o)
+		private void RegisterCallback(object o, Subscription subscription)
 		{
-			m_Delegates.GetOrCreate(o, () =>
-				{
-					Delegate d = CreateDelegate(o);
-					Delegate handler = Delegate.CreateDelegate(EventInfo.EventHandlerType, d.Target, d.Method);
-					m_Add.Invoke(o, new object[] { handler });
-					return handler;
-				});
-		}
-
-		private void UnregisterCallback(object o)
-		{
-			Delegate handler = m_Delegates.GetOrDefault(o);
-
-			if (handler == null)
-				throw new InternalErrorException("can't unregister null delegate");
-
-			m_Delegates.Remove(o);
-			m_Remove.Invoke(o, new object[] { handler });
+			Delegate d = CreateDelegate(o);
+			Delegate handler = Delegate.CreateDelegate(EventInfo.EventHandlerType, d.Target, d.Method);
+			m_Add.Invoke(o, new object[] { handler });
+			subscription.Handler = handler;
 		}
 
 
@@ -273,7 +281,12 @@ namespace MoonSharp.Interpreter.Interop
 			Closure[] closures = null;
 			lock (m_Lock)
 			{
-				closures = m_Callbacks.Find(sender).ToArray();
+				Subscription subscription;
+
+				if (!m_Subscriptions.TryGetValue(sender, out subscription))
+					return;
+
+				closures = subscription.Closures.ToArray();
 			}
 
 			foreach (Closure c in closures)

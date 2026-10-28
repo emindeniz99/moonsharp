@@ -107,3 +107,16 @@ print(MyFlags.flagsOr(MyFlags.A, MyFlags.B) == MyFlags.AB)    -- before: false  
 
 They now return values of the enum type. Affected: scripts that printed or
 compared these results, and hosts that received them as `object`.
+
+## Objects with script event handlers can be collected
+
+An event descriptor is shared by every script and lives as long as the
+type's registration. It kept each object that had a script handler, the
+handler closures and so their scripts, in plain dictionaries, so none of
+them were ever collected unless the script removed every handler. It now
+holds the object weakly: while the object lives its handlers live and
+fire as before; once the host drops the object, the object, its handlers
+and a script referenced only by them can be collected. Affected: hosts
+that relied on a script staying alive only because one of its functions
+handled an event of an object nobody else referenced (such an event could
+never fire again anyway).

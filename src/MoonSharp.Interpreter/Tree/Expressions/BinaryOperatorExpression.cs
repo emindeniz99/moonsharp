@@ -398,11 +398,7 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 				case Operator.Div:
 					return d1 / d2;
 				case Operator.Mod:
-					{
-						double mod = Math.IEEERemainder(d1, d2);
-						if (mod < 0) mod += d2;
-						return mod;
-					}
+					return Execution.VM.Processor.Modulo(d1, d2);
 				default:
 					throw new DynamicExpressionException("Unsupported operator {0}", m_Operator);
 			}

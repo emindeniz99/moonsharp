@@ -34,3 +34,25 @@ comparisons of unrelated types still name the operands in source order.
 **Affected:** hosts that call `DynValue.Assign` on a boolean they received from a script. That now
 throws `ScriptRuntimeException` ("Assigning on r-value") instead of changing the value; create a new
 value with `DynValue.NewBoolean` instead. `DynValue.NewBoolean` still returns a writable value.
+
+## `%` follows Lua 5.2 for negative divisors
+
+**Before:** `a % b` was `IEEERemainder(a, b)`, plus `b` when that was negative. That is right for a
+positive divisor and wrong for a negative one.
+
+**After:** `a % b` is `a - math.floor(a/b)*b`, the Lua 5.2 definition
+([3.4.1](https://www.lua.org/manual/5.2/manual.html#3.4.1)), in scripts and in dynamic expressions.
+The result has the sign of the divisor.
+
+| Expression | Before | After (and Lua 5.2) |
+|---|---|---|
+| `5 % -3` | `-4` | `-1` |
+| `-5 % -3` | `1` | `-2` |
+| `5.5 % -2` | `-2.5` | `-0.5` |
+| `5 % (1/0)` | `5` | `nan` |
+| `-5 % (1/0)` | `inf` | `nan` |
+
+Positive divisors give the same results as before, except where the two formulas round differently
+in the last bit for fractional operands.
+
+**Affected:** scripts that use `%` with a negative or infinite divisor.

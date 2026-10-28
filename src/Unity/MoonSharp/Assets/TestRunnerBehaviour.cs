@@ -153,6 +153,7 @@ public class TestRunnerBehaviour : MonoBehaviour
 
         Type[] testFixtures = new Type[] {
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.AllocationBudgetTests),
+            typeof(MoonSharp.Interpreter.Tests.EndToEnd.ArithmeticTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.BinaryDumpTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.CallPathTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.ClosureTests),

@@ -77,7 +77,12 @@ namespace MoonSharp.Interpreter.Execution.VM
 							m_ValueStack.Push(i.Value);
 							break;
 						case OpCode.Add:
-							instructionPtr = ExecAdd(i, instructionPtr);
+						case OpCode.Sub:
+						case OpCode.Mul:
+						case OpCode.Div:
+						case OpCode.Mod:
+						case OpCode.Power:
+							instructionPtr = ExecArithmetic(i, instructionPtr);
 							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
 							break;
 						case OpCode.Concat:
@@ -86,26 +91,6 @@ namespace MoonSharp.Interpreter.Execution.VM
 							break;
 						case OpCode.Neg:
 							instructionPtr = ExecNeg(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
-							break;
-						case OpCode.Sub:
-							instructionPtr = ExecSub(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
-							break;
-						case OpCode.Mul:
-							instructionPtr = ExecMul(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
-							break;
-						case OpCode.Div:
-							instructionPtr = ExecDiv(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
-							break;
-						case OpCode.Mod:
-							instructionPtr = ExecMod(i, instructionPtr);
-							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
-							break;
-						case OpCode.Power:
-							instructionPtr = ExecPower(i, instructionPtr);
 							if (instructionPtr == YIELD_SPECIAL_TRAP) goto yield_to_calling_coroutine;
 							break;
 						case OpCode.Eq:
@@ -944,138 +929,81 @@ namespace MoonSharp.Interpreter.Execution.VM
 		}
 
 
-		private int ExecAdd(Instruction i, int instructionPtr)
+		private int ExecArithmetic(Instruction i, int instructionPtr)
 		{
 			DynValue r = m_ValueStack.Pop().ToScalar();
 			DynValue l = m_ValueStack.Pop().ToScalar();
+			double ln, rn;
 
-			double? rn = r.CastToNumber();
-			double? ln = l.CastToNumber();
-
-			if (ln.HasValue && rn.HasValue)
+			// Numbers first; strings that convert to numbers next; then metamethods.
+			if (l.Type == DataType.Number && r.Type == DataType.Number)
 			{
-				m_ValueStack.Push(DynValue.NewNumber(ln.Value + rn.Value));
-				return instructionPtr;
+				ln = l.Number;
+				rn = r.Number;
 			}
 			else
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__add", instructionPtr);
-				if (ip >= 0) return ip;
-				else throw ScriptRuntimeException.ArithmeticOnNonNumber(l, r);
+				double? lc = l.CastToNumber();
+				double? rc = r.CastToNumber();
+
+				if (!lc.HasValue || !rc.HasValue)
+				{
+					int ip = Internal_InvokeBinaryMetaMethod(l, r, ArithmeticEvent(i.OpCode), instructionPtr);
+					if (ip >= 0) return ip;
+					else throw ScriptRuntimeException.ArithmeticOnNonNumber(l, r);
+				}
+
+				ln = lc.Value;
+				rn = rc.Value;
+			}
+
+			double result;
+
+			switch (i.OpCode)
+			{
+				case OpCode.Add: result = ln + rn; break;
+				case OpCode.Sub: result = ln - rn; break;
+				case OpCode.Mul: result = ln * rn; break;
+				case OpCode.Div: result = ln / rn; break;
+				case OpCode.Mod: result = Modulo(ln, rn); break;
+				default: result = Math.Pow(ln, rn); break;
+			}
+
+			m_ValueStack.Push(DynValue.NewNumber(result));
+			return instructionPtr;
+		}
+
+		private static string ArithmeticEvent(OpCode op)
+		{
+			switch (op)
+			{
+				case OpCode.Add: return "__add";
+				case OpCode.Sub: return "__sub";
+				case OpCode.Mul: return "__mul";
+				case OpCode.Div: return "__div";
+				case OpCode.Mod: return "__mod";
+				default: return "__pow";
 			}
 		}
 
-		private int ExecSub(Instruction i, int instructionPtr)
+		/// <summary>
+		/// Lua 5.2 modulo (manual 3.4.1): a - floor(a/b)*b, so the result has the sign of the divisor.
+		/// </summary>
+		internal static double Modulo(double a, double b)
 		{
-			DynValue r = m_ValueStack.Pop().ToScalar();
-			DynValue l = m_ValueStack.Pop().ToScalar();
-
-			double? rn = r.CastToNumber();
-			double? ln = l.CastToNumber();
-
-			if (ln.HasValue && rn.HasValue)
-			{
-				m_ValueStack.Push(DynValue.NewNumber(ln.Value - rn.Value));
-				return instructionPtr;
-			}
-			else
-			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__sub", instructionPtr);
-				if (ip >= 0) return ip;
-				else throw ScriptRuntimeException.ArithmeticOnNonNumber(l, r);
-			}
-		}
-
-
-		private int ExecMul(Instruction i, int instructionPtr)
-		{
-			DynValue r = m_ValueStack.Pop().ToScalar();
-			DynValue l = m_ValueStack.Pop().ToScalar();
-
-			double? rn = r.CastToNumber();
-			double? ln = l.CastToNumber();
-
-			if (ln.HasValue && rn.HasValue)
-			{
-				m_ValueStack.Push(DynValue.NewNumber(ln.Value * rn.Value));
-				return instructionPtr;
-			}
-			else
-			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__mul", instructionPtr);
-				if (ip >= 0) return ip;
-				else throw ScriptRuntimeException.ArithmeticOnNonNumber(l, r);
-			}
-		}
-
-		private int ExecMod(Instruction i, int instructionPtr)
-		{
-			DynValue r = m_ValueStack.Pop().ToScalar();
-			DynValue l = m_ValueStack.Pop().ToScalar();
-
-			double? rn = r.CastToNumber();
-			double? ln = l.CastToNumber();
-
-			if (ln.HasValue && rn.HasValue)
-			{
-				double mod = Math.IEEERemainder(ln.Value, rn.Value);
-				if (mod < 0) mod += rn.Value;
-				m_ValueStack.Push(DynValue.NewNumber(mod));
-				return instructionPtr;
-			}
-			else
-			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__mod", instructionPtr);
-				if (ip >= 0) return ip;
-				else throw ScriptRuntimeException.ArithmeticOnNonNumber(l, r);
-			}
-		}
-
-		private int ExecDiv(Instruction i, int instructionPtr)
-		{
-			DynValue r = m_ValueStack.Pop().ToScalar();
-			DynValue l = m_ValueStack.Pop().ToScalar();
-
-			double? rn = r.CastToNumber();
-			double? ln = l.CastToNumber();
-
-			if (ln.HasValue && rn.HasValue)
-			{
-				m_ValueStack.Push(DynValue.NewNumber(ln.Value / rn.Value));
-				return instructionPtr;
-			}
-			else
-			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__div", instructionPtr);
-				if (ip >= 0) return ip;
-				else throw ScriptRuntimeException.ArithmeticOnNonNumber(l, r);
-			}
-		}
-		private int ExecPower(Instruction i, int instructionPtr)
-		{
-			DynValue r = m_ValueStack.Pop().ToScalar();
-			DynValue l = m_ValueStack.Pop().ToScalar();
-
-			double? rn = r.CastToNumber();
-			double? ln = l.CastToNumber();
-
-			if (ln.HasValue && rn.HasValue)
-			{
-				m_ValueStack.Push(DynValue.NewNumber(Math.Pow(ln.Value, rn.Value)));
-				return instructionPtr;
-			}
-			else
-			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__pow", instructionPtr);
-				if (ip >= 0) return ip;
-				else throw ScriptRuntimeException.ArithmeticOnNonNumber(l, r);
-			}
-
+			return a - Math.Floor(a / b) * b;
 		}
 
 		private int ExecNeg(Instruction i, int instructionPtr)
 		{
 			DynValue r = m_ValueStack.Pop().ToScalar();
+
+			if (r.Type == DataType.Number)
+			{
+				m_ValueStack.Push(DynValue.NewNumber(-r.Number));
+				return instructionPtr;
+			}
+
 			double? rn = r.CastToNumber();
 
 			if (rn.HasValue)

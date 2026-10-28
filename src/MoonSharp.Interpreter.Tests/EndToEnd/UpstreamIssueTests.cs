@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using MoonSharp.Interpreter.Loaders;
+using MoonSharp.Interpreter.Platforms;
 using System.Linq.Expressions;
 using NUnit.Framework;
 
@@ -221,13 +222,29 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual(false, r.Tuple[1].Boolean);
 		}
 
+		// The io module needs a full platform; Unity's default (the embedded runner's) leaves it out.
+		private static Script NewScriptWithIo()
+		{
+			IPlatformAccessor saved = Script.GlobalOptions.Platform;
+
+			try
+			{
+				Script.GlobalOptions.Platform = new StandardPlatformAccessor();
+				return new Script(CoreModules.Preset_Complete);
+			}
+			finally
+			{
+				Script.GlobalOptions.Platform = saved;
+			}
+		}
+
 		// https://github.com/moonsharp-devs/moonsharp/issues/70: Script.Options.Stdout (and Stdin,
 		// Stderr) were read only while the Script was constructed, so a host that redirected a
 		// script's output afterwards (to a log or a UI console) still got it on the process console.
 		[Test]
 		public void Issue70_StandardStreamsSetAfterCreationAreUsed()
 		{
-			Script s = new Script(CoreModules.Preset_Complete);
+			Script s = NewScriptWithIo();
 			MemoryStream output = new MemoryStream();
 			s.Options.Stdout = output;
 
@@ -293,7 +310,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void Issue161_StandardOutputIsWrittenWithoutFlush()
 		{
-			Script s = new Script(CoreModules.Preset_Complete);
+			Script s = NewScriptWithIo();
 			MemoryStream output = new MemoryStream();
 			s.Options.Stdout = output;
 

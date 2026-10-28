@@ -11,6 +11,7 @@ note; they are not part of this repository.
 | [lua-csharp.md](lua-csharp.md), [lua-csharp-measured.md](lua-csharp-measured.md) | Lua-CSharp's design, unsafe inventory, measured comparison |
 | [luau.md](luau.md), [jint.md](jint.md), [xlua.md](xlua.md) | Techniques from Luau, Jint, xLua and xlua-ng |
 | [other-managed.md](other-managed.md), [unityenhanced.md](unityenhanced.md) | WattleScript, SolarSharp, UniLua, NeoLua, moonsharp-unityenhanced |
+| [wattlescript-measured.md](wattlescript-measured.md) | WattleScript measured against the fork and Lua-CSharp, plus its history checkpoints |
 | [puerts-quickjs.md](puerts-quickjs.md) | Binding and interpreter techniques from PuerTS and QuickJS |
 | [moonsharp-profile.md](moonsharp-profile.md) | Where MoonSharp spends time and allocations |
 | [table-order.md](table-order.md) | Table array part and `pairs` order, measured |

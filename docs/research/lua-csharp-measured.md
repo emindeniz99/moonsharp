@@ -154,11 +154,37 @@ therefore runs as on-stack-replacement code with dynamic PGO, not as a call-coun
 whether that favours either engine, the workloads were re-run with tiering off, which means fully optimised JIT
 code with no PGO. This used 3 rounds, below the 7-round minimum, so treat it as an indication only.
 
-TC0_TABLE
+| Workload | MoonSharp, TC off | Lua-CSharp, TC off | MoonSharp / Lua-CSharp, TC off | same, default tiering (above) |
+|---|---:|---:|---:|---:|
+| empty_loop | 60.2 | 5.3 | 11.3x | 9.8x |
+| function_call | 372.0 | 95.8 | 3.9x | 3.9x |
+| method_call | 773.1 | 184.8 | 4.2x | 3.6x |
+| table_array_insert | 1,224 | 71.0 | 17.2x | 14.2x |
+| table_array_read | 464.8 | 39.3 | 11.8x | 8.2x |
+| table_hash_set_get | 806.3 | 94.6 | 8.5x | 7.4x |
+| string_concat | 679.1 | 316.4 | 2.1x | 2.2x |
+| string_format | 5,241 | 333.4 | 15.7x | 13.1x |
+| closure_create_call | 938.2 | 216.7 | 4.3x | 3.4x |
+| int_math | 310.4 | 32.5 | 9.5x | 8.1x |
+| fib_recursive | 206,643 | 52,226 | 4.0x | 4.4x |
+| float_math | 495.0 | 52.4 | 9.4x | 9.7x |
+| string_pattern | 26,704 | 9,566 | 2.8x | 3.7x |
+| table_sort_52 | 145,231 | 81,056 | 1.8x | 4.2x |
+| table_concat | 1,408 | 1,286 | 1.1x | 1.4x |
+| coroutine_switch | 799.4 | 983.9 | 0.8x | 1.0x |
+| gc_small_tables | 1,299 | 368.8 | 3.5x | 3.1x |
+| oop_inherit | 664.0 | 215.5 | 3.1x | 3.2x |
 
-With tiering off, both engines were slower. The loop, arithmetic and table ratios stayed about the same
-(MoonSharp / Lua-CSharp of 8-17x). Lua-CSharp lost more than MoonSharp on `coroutine_switch`, `table_concat` and
-`table_sort_52`. That suggests these paths rely on PGO, probably through guarded devirtualisation of
+- All values are ns per iteration, as the median of 3 rounds.
+- The MoonSharp A/A (median of rounds) was 0.93-1.07.
+- Round 1 ran while other agents' unlocked work pushed the load average up to 10.6, which widened some IQRs.
+  Raw data and IQRs are in `luacs-bench/results/tc0-summary.md`.
+- All checks matched. All 486 Lua-CSharp `ValueTask`s completed synchronously.
+
+With tiering off, both engines were slower in most cases. The loop, arithmetic, table and `string.format`
+ratios stayed similar or grew (MoonSharp / Lua-CSharp of 8.5-17x). Lua-CSharp lost more than MoonSharp on
+`table_sort_52` (4.2x fell to 1.8x), `coroutine_switch` (1.0x fell to 0.8x, so MoonSharp was faster) and
+`table_concat`. That suggests these paths rely on PGO, probably through guarded devirtualisation of
 `ValueTask` and delegate calls; this is not verified. The default-tiering numbers above are the primary result.
 
 ## Results: host boundary (1,000,000 calls, 7 rounds)

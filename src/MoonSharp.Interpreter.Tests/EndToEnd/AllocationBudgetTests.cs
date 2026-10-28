@@ -191,7 +191,10 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void AllocationBudget_CoroutineSwitch()
 		{
-			AssertLuaBudget("coroutine_switch", "return function(n) local co = coroutine.wrap(function() local i = 0 while true do i = i + 1 coroutine.yield(i) end end)\nlocal s = 0 for i = 1, n do s = s + co() end return s end", 400);
+			// Each coroutine reuses its yield request, a resume with no values pushes nil without a DynValue,
+			// and an empty argument list is a shared array (400 bytes before). Left: two call contexts, the
+			// argument objects, the yielded values' array and the yielded number's DynValue.
+			AssertLuaBudget("coroutine_switch", "return function(n) local co = coroutine.wrap(function() local i = 0 while true do i = i + 1 coroutine.yield(i) end end)\nlocal s = 0 for i = 1, n do s = s + co() end return s end", 248);
 		}
 
 		[Test]

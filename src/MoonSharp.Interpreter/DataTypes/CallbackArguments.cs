@@ -13,6 +13,8 @@ namespace MoonSharp.Interpreter
 		// stack, which the standard library reads in place while the call runs. A view is valid only during
 		// the call; library functions never keep it. The view is a subclass so that list arguments, which
 		// any host callback gets, stay as small as they were.
+		static readonly DynValue[] s_NoValues = new DynValue[0];
+
 		IList<DynValue> m_Args;
 		int m_Count;
 		bool m_LastIsTuple = false;
@@ -201,7 +203,7 @@ namespace MoonSharp.Interpreter
 		public DynValue[] GetArray(int skip = 0)
 		{
 			if (skip >= m_Count)
-				return new DynValue[0];
+				return s_NoValues;
 
 			DynValue[] vals = new DynValue[m_Count - skip];
 

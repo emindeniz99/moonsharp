@@ -961,7 +961,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				if (callback.BuiltinId != 0 && TryFastCall(callback.BuiltinId, argsCount))
 					return instructionPtr;
 
-				DynValue[] args = callback.ReadsArgumentsInPlace ? null : CreateArgsListForFunctionCall(argsCount);
+				DynValue[] args = (callback.ReadsArgumentsInPlace && argsCount > 0) ? null : CreateArgsListForFunctionCall(argsCount);
 
 				// instructionPtr - 1: instructionPtr already points to the next instruction at this moment
 				// but we need the current instruction here

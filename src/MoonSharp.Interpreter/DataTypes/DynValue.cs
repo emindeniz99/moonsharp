@@ -707,7 +707,8 @@ namespace MoonSharp.Interpreter
 			DynValue rv = ToScalar();
 			if (rv.Type == DataType.Number)
 			{
-				return rv.Number.ToString();
+				// The same text as tostring, whatever the thread's culture: 1.5, never 1,5.
+				return rv.Number.ToString(CultureInfo.InvariantCulture);
 			}
 			else if (rv.Type == DataType.String)
 			{

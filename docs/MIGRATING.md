@@ -366,3 +366,13 @@ each level overwrote `CallStack`, and the host saw only the outermost frames.
 the error outwards.
 
 **Affected:** hosts that print `CallStack`; the list is longer and starts where the error happened.
+
+## Numbers become text the same way everywhere
+
+**Before:** `..` and the string functions that take numbers (`string.format('%s', x)`, `string.rep`,
+...) turned a number into text with the thread's culture, so `1.5 .. ''` was `1,5` on a device set
+to Turkish, German or French, while `tostring(1.5)` was `1.5`.
+
+**After:** they use the invariant culture, like `tostring`: `1.5` on every device.
+
+**Affected:** scripts that run on devices with a decimal-comma locale and relied on the comma.

@@ -109,13 +109,10 @@ After step 4: the checkpoint in the decisions table.
 
 - Run the official Lua 5.2 test suite and track failures.
 - Name the variable in runtime errors ("attempt to call a nil value (global 'foo')").
-- Turn native stack exhaustion into a `ScriptRuntimeException` (`RuntimeHelpers.EnsureSufficientExecutionStack`).
 - A `Script` keeps every chunk it compiles, so a long-lived `Script` that compiles in a loop grows without bound.
 - `ScriptOptions(defaults)` does not copy `ColonOperatorClrCallbackBehaviour`.
 - The Unity test runner list misses `ProtectedCallMetamethodTests`, `TonumberTests` and `NewIndexAssignmentTests`.
 - Found by the conformance corpus; each is a case with a `note`, so a fix updates its expectation. The owner decides which are bugs to fix (in `legacy` too) and which stay as documented differences:
-  - Concatenation and `string.format('%s')` format numbers with the process culture: `1.5 .. ''` is `1,5` under `tr_TR` or `de_DE` (`DynValue.CastToString`, `Number.ToString()` without a culture). `known-failures/dotnet-tr-TR.json` lists the two cases.
-  - `%` with a negative divisor takes the dividend's sign: `7 % -3` is 1, Lua gives -2.
   - `math.huge` is `Double.MaxValue`, so `math.huge == 1/0` is false.
   - `error(t)` with a table, and `error()`, raise "bad argument #1 to 'error'"; `pcall` never sees the error object.
   - The `json` module parses with the Lua lexer: `json.parse('[[1]]')` fails (a long string) and `\u00e9` escapes fail. `json.serialize` drops the string keys of a table that also has keys 1..n.

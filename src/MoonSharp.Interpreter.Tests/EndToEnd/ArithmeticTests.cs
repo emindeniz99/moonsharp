@@ -69,6 +69,24 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
+		public void Arithmetic_NumbersCoerceToStringsWithoutCulture()
+		{
+			// .. and string functions turn numbers into the text tostring gives, on every device.
+			foreach (string culture in new[] { "de-DE", "tr-TR", "fr-FR" })
+			{
+				DynValue r = Utils.WithCulture(culture, () => new Script().DoString(
+					"return 1.5 .. '', 'x' .. -0.25, string.format('%s', 2.75), string.rep(1.5, 2), ('a'):rep(2, 0.5), tostring(1.5)"));
+
+				Assert.AreEqual("1.5", r.Tuple[0].String, culture);
+				Assert.AreEqual("x-0.25", r.Tuple[1].String, culture);
+				Assert.AreEqual("2.75", r.Tuple[2].String, culture);
+				Assert.AreEqual("1.51.5", r.Tuple[3].String, culture);
+				Assert.AreEqual("a0.5a", r.Tuple[4].String, culture);
+				Assert.AreEqual("1.5", r.Tuple[5].String, culture);
+			}
+		}
+
+		[Test]
 		public void Arithmetic_MetamethodsOnTables()
 		{
 			DynValue r = new Script().DoString(@"

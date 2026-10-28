@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <Nullable>disable</Nullable>
+        <IsPackable>false</IsPackable>
+        <InvariantGlobalization>true</InvariantGlobalization>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\MoonSharp.Hosting\MoonSharp.Hosting.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- MoonSharp registers its standard library (string, table, require...) by reflection over
+             attributed methods. Without this the trimmer removes them and scripts see nil. -->
+        <TrimmerRootAssembly Include="MoonSharp.Interpreter" />
+    </ItemGroup>
+
+</Project>

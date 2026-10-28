@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MoonSharp Playground</title>
+  <link rel="stylesheet" href="playground.css">
+</head>
+<body>
+  <header>
+    <h1>MoonSharp Playground</h1>
+    <p>Lua runs in this tab on <span id="engine">…</span> compiled to WebAssembly. Nothing is sent to a server.</p>
+  </header>
+
+  <main>
+    <section class="editor">
+      <div class="row">
+        <label>Sample <select id="sample"></select></label>
+        <label>Module id <input id="module" value="main"></label>
+        <label>Function <input id="function" value="eligible"></label>
+        <label><input type="checkbox" id="use-worker"> Run in a Web Worker</label>
+      </div>
+      <label for="source">Lua source</label>
+      <textarea id="source" spellcheck="false"></textarea>
+      <label for="args">Arguments (JSON array)</label>
+      <textarea id="args" class="short" spellcheck="false"></textarea>
+      <div class="row">
+        <button id="validate">Validate</button>
+        <button id="load">Load module</button>
+        <button id="invoke" class="primary">Invoke</button>
+        <button id="bench">Invoke ×1000</button>
+        <button id="fixtures">Run shared fixtures</button>
+      </div>
+    </section>
+
+    <section class="results">
+      <h2>Result</h2>
+      <pre id="status" class="status">Starting the .NET runtime…</pre>
+      <pre id="result"></pre>
+      <h2>Output (print)</h2>
+      <pre id="output"></pre>
+      <h2>Fixtures</h2>
+      <div id="fixture-report"></div>
+    </section>
+  </main>
+
+  <script type="module" src="js/playground.js"></script>
+</body>
+</html>

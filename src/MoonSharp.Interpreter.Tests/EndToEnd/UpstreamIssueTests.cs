@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Text;
 using System.Linq.Expressions;
 using NUnit.Framework;
 
@@ -214,6 +216,21 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 			Assert.AreEqual(17.0, r.Tuple[0].Number);
 			Assert.AreEqual(false, r.Tuple[1].Boolean);
+		}
+
+		// https://github.com/moonsharp-devs/moonsharp/issues/70: Script.Options.Stdout (and Stdin,
+		// Stderr) were read only while the Script was constructed, so a host that redirected a
+		// script's output afterwards (to a log or a UI console) still got it on the process console.
+		[Test]
+		public void Issue70_StandardStreamsSetAfterCreationAreUsed()
+		{
+			Script s = new Script(CoreModules.Preset_Complete);
+			MemoryStream output = new MemoryStream();
+			s.Options.Stdout = output;
+
+			s.DoString("io.write('logged') io.flush()");
+
+			Assert.AreEqual("logged", Encoding.UTF8.GetString(output.ToArray()));
 		}
 	}
 }

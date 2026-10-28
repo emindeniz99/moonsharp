@@ -201,3 +201,13 @@ String coercion in arithmetic (`"0x10" + 1`) still uses the old parsing
 until the VM work changes it. Affected: scripts that passed formatted
 numbers to `tonumber`
 ([upstream #229](https://github.com/moonsharp-devs/moonsharp/issues/229)).
+
+## Standard streams set after a script is created are used
+
+`Script.Options.Stdin`, `Stdout` and `Stderr` were read only while the
+`Script` was constructed; setting them later had no effect and `io`
+kept using the process console. The `io` module now switches to the
+stream the options name when it next uses a standard file. A file value
+a script already holds (`local out = io.stdout`) keeps its old stream.
+Affected: hosts that set these options after creating a script
+([upstream #70](https://github.com/moonsharp-devs/moonsharp/issues/70)).

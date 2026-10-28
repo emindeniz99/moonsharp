@@ -7,6 +7,11 @@ namespace MoonSharp.Interpreter.CoreLib.IO
 	/// </summary>
 	internal class StandardIOFileUserDataBase : StreamFileUserDataBase
 	{
+		internal bool Wraps(Stream stream)
+		{
+			return m_Stream == stream;
+		}
+
 		protected override string Close()
 		{
 			return ("cannot close standard file");

@@ -8,7 +8,11 @@ namespace MoonSharp.Interpreter.Execution.VM
 {
 	sealed partial class Processor
 	{
+		// Maximum stack depths. The stacks start small and grow on demand, so an idle Script or
+		// coroutine does not hold two arrays of this size.
 		const int STACK_SIZE = 131072;
+		const int INITIAL_VALUE_STACK_SIZE = 256;
+		const int INITIAL_EXECUTION_STACK_SIZE = 64;
 
 		ByteCode m_RootChunk;
 
@@ -27,8 +31,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		public Processor(Script script, Table globalContext, ByteCode byteCode)
 		{
-			m_ValueStack = new FastStack<DynValue>(STACK_SIZE);
-			m_ExecutionStack = new FastStack<CallStackItem>(STACK_SIZE);
+			m_ValueStack = new FastStack<DynValue>(INITIAL_VALUE_STACK_SIZE, STACK_SIZE);
+			m_ExecutionStack = new FastStack<CallStackItem>(INITIAL_EXECUTION_STACK_SIZE, STACK_SIZE);
 			m_CoroutinesStack = new List<Processor>();
 
 			m_Debug = new DebugContext();
@@ -41,8 +45,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private Processor(Processor parentProcessor)
 		{
-			m_ValueStack = new FastStack<DynValue>(STACK_SIZE);
-			m_ExecutionStack = new FastStack<CallStackItem>(STACK_SIZE);
+			m_ValueStack = new FastStack<DynValue>(INITIAL_VALUE_STACK_SIZE, STACK_SIZE);
+			m_ExecutionStack = new FastStack<CallStackItem>(INITIAL_EXECUTION_STACK_SIZE, STACK_SIZE);
 			m_Debug = parentProcessor.m_Debug;
 			m_RootChunk = parentProcessor.m_RootChunk;
 			m_GlobalTable = parentProcessor.m_GlobalTable;

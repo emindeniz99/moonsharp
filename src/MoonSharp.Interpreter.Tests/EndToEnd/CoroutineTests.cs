@@ -284,10 +284,38 @@ checkresume(6, false, 'cannot resume dead coroutine');
 			Assert.IsTrue(cycles > 10);
 		}
 
+		// Hosts create coroutines freely (one per running task or animation). Each one used to
+		// allocate two 131072-slot stacks, about 2 MB, before running a single instruction.
+		[Test]
+		public void Coroutine_IdleCoroutinesRetainLittleMemory()
+		{
+			Script S = new Script(CoreModules.Coroutine);
+			DynValue body = S.DoString("return function() coroutine.yield(1) end");
+			var keep = new List<DynValue>();
 
+			long before = GC.GetTotalMemory(true);
 
+			for (int i = 0; i < 200; i++)
+				keep.Add(S.CreateCoroutine(body));
 
+			long perCoroutine = (GC.GetTotalMemory(true) - before) / keep.Count;
+			GC.KeepAlive(keep);
 
+			Assert.Less(perCoroutine, 64 * 1024, "bytes retained per idle coroutine");
+		}
 
+		// Stacks grow on demand, and a coroutine must still reach the full depth.
+		[Test]
+		public void Coroutine_DeepRecursionInsideCoroutine()
+		{
+			Script S = new Script(CoreModules.Coroutine);
+			DynValue res = S.DoString(@"
+				local function depth(n) if n == 0 then return 0 end return 1 + depth(n - 1) end
+				local co = coroutine.create(function() coroutine.yield(depth(30000)) end)
+				local ok, v = coroutine.resume(co)
+				return v");
+
+			Assert.AreEqual(30000, res.Number);
+		}
 	}
 }

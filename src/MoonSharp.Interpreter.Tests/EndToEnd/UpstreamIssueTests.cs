@@ -232,5 +232,35 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 
 			Assert.AreEqual("logged", Encoding.UTF8.GetString(output.ToArray()));
 		}
+
+		// Found by the conformance corpus, no upstream issue: json.parse read strings with Lua's
+		// escape rules, so JSON's "\u00e9" failed with "'{' expected near '\u'". Every JSON
+		// writer escapes non-ASCII text this way, so such input failed whenever it held an accent.
+		[Test]
+		public void Json_ParsesUnicodeEscapes()
+		{
+			Script s = new Script();
+
+			DynValue r = s.DoString(@"
+				local t = json.parse('[""caf\\u00e9"", ""\\ud83d\\udc4b"", ""a\\/b\\u0041""]')
+				return t[1], t[2], t[3]");
+
+			Assert.AreEqual("caf\u00e9", r.Tuple[0].String);
+			Assert.AreEqual("\ud83d\udc4b", r.Tuple[1].String);
+			Assert.AreEqual("a/bA", r.Tuple[2].String);
+		}
+
+		[Test]
+		public void Json_RejectsLuaOnlyEscapes()
+		{
+			string[] notJson = { "[\"\\x41\"]", "[\"\\65\"]", "[\"\\u{41}\"]", "[\"\\u12\"]", "[\"\\a\"]" };
+
+			foreach (string text in notJson)
+			{
+				Script s = new Script();
+				s.Globals["text"] = text;
+				Assert.AreEqual(false, s.DoString("return (pcall(json.parse, text))").Boolean, text + " is not JSON");
+			}
+		}
 	}
 }

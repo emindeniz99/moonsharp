@@ -347,3 +347,13 @@ stream the options name when it next uses a standard file. A file value
 a script already holds (`local out = io.stdout`) keeps its old stream.
 Affected: hosts that set these options after creating a script
 ([upstream #70](https://github.com/moonsharp-devs/moonsharp/issues/70)).
+
+## `json.parse` reads JSON string escapes
+
+`json.parse` unescaped strings with Lua's rules: `é` failed with
+"'{' expected near '\u'", while Lua-only escapes such as `\x41`, `\65`
+and `\u{41}` were accepted. Strings now use JSON's escapes (`\"`, `\\`,
+`\/`, `\b`, `\f`, `\n`, `\r`, `\t`, `\uXXXX`, with surrogate pairs kept
+as two UTF-16 units), and other escapes are a parse error. Affected:
+hosts that pre-processed JSON to avoid `\u` escapes, and input that
+relied on Lua escapes.

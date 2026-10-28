@@ -118,7 +118,7 @@ After step 4: the checkpoint in the decisions table.
   - `%` with a negative divisor takes the dividend's sign: `7 % -3` is 1, Lua gives -2.
   - `math.huge` is `Double.MaxValue`, so `math.huge == 1/0` is false.
   - `error(t)` with a table, and `error()`, raise "bad argument #1 to 'error'"; `pcall` never sees the error object.
-  - The `json` module parses with the Lua lexer: `json.parse('[[1]]')` fails (a long string) and `\u00e9` escapes fail. `json.serialize` drops the string keys of a table that also has keys 1..n.
+  - `json.serialize` drops the string keys of a table that also has keys 1..n.
   - The lexer reads `1e15+0.5` as one malformed number.
   - Arithmetic does not coerce hexadecimal strings (`'0x10' + 1`) and accepts .NET forms such as `'1,000'`: `DynValue.CastToNumber` should call `BasicModule.TryParseLuaNumber`, which `tonumber` uses (ignored test `Issue229_ArithmeticCoercesLuaNumerals`).
   - `string.format`: `%e` writes three exponent digits, `%d` of 2^63 wraps instead of failing, `%s` rejects nil.

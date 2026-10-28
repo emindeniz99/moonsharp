@@ -152,6 +152,7 @@ public class TestRunnerBehaviour : MonoBehaviour
         UserData.RegistrationPolicy = new HardwireAndLogPolicy();
 
         Type[] testFixtures = new Type[] {
+            typeof(MoonSharp.Interpreter.Tests.EndToEnd.AllocationBudgetTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.BinaryDumpTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.ClosureTests),
             typeof(MoonSharp.Interpreter.Tests.EndToEnd.CollectionsBaseGenRegisteredTests),

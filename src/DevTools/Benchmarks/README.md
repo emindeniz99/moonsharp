@@ -49,6 +49,30 @@ dotnet run -c Release --project src/DevTools/Benchmarks -- workloads 7
 with a loop because Lua 5.2 has no `table.move`; its seed arithmetic exceeds
 2^53, so its check value differs from Lua 5.3+.
 
+The same mode also runs cases that flag_bench does not have: calls across the
+C#/Lua boundary in both directions (`cs_to_lua_call3`, `lua_to_cs_call1`),
+CLR method and property access (`clr_interop` in the default access mode,
+`clr_interop_reflection` as IL2CPP gets it), pushing a registered enum value
+(`enum_push`) and an instance of an unregistered subclass (`derived_type_push`),
+and two table patterns that are quadratic today (`table_insert_remove_10k`,
+`table_remove_readd`). Name cases after the run count to run only those:
+
+```sh
+dotnet run -c Release --project src/DevTools/Benchmarks -- workloads 7 function_call fib_recursive
+```
+
+Every case reports the exact bytes allocated per iteration next to the time.
+Bytes do not depend on machine load, so they are the better evidence for a
+change that removes allocations. The unit tests pin them: see
+`src/MoonSharp.Interpreter.Tests/EndToEnd/AllocationBudgetTests.cs`.
+
+**Allocations by type** for one or more cases (sampled from the runtime's
+allocation events, about one sample per 100 KB):
+
+```sh
+dotnet run -c Release --project src/DevTools/Benchmarks -- alloc function_call
+```
+
 ## Notes
 
 - A `Script` keeps every chunk it compiles. Compiling repeatedly into one

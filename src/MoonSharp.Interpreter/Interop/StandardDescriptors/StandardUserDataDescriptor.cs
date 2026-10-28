@@ -40,29 +40,44 @@ namespace MoonSharp.Interpreter.Interop
 			FillMemberList();
 		}
 
-		private static void AddVisible(List<KeyValuePair<MemberInfo, IMemberDescriptor>> members, MemberInfo member, IMemberDescriptor desc)
-		{
-			if (desc != null)
-				members.Add(new KeyValuePair<MemberInfo, IMemberDescriptor>(member, desc));
-		}
-
 		/// <summary>
 		/// Whether a more derived type declares a visible member with the same name, as C# "new"
 		/// does. Reflection returns both members; a script, like C# code using this type, sees the
-		/// derived one.
+		/// derived one. Allocates only when two members share a name.
 		/// </summary>
-		private static bool IsHiddenByDerivedMember(MemberInfo member, List<KeyValuePair<MemberInfo, IMemberDescriptor>> visibleMembers)
+		private bool IsHiddenByDerivedMember(MemberInfo member, PropertyInfo[] properties, FieldInfo[] fields, EventInfo[] events)
 		{
-			foreach (var visible in visibleMembers)
-			{
-				MemberInfo other = visible.Key;
+			return IsHiddenBy(member, properties) || IsHiddenBy(member, fields) || IsHiddenBy(member, events);
+		}
 
+		private bool IsHiddenBy(MemberInfo member, MemberInfo[] others)
+		{
+			foreach (MemberInfo other in others)
+			{
 				if (other.Name == member.Name && other.DeclaringType != member.DeclaringType
-					&& Framework.Do.IsAssignableFrom(member.DeclaringType, other.DeclaringType))
+					&& Framework.Do.IsAssignableFrom(member.DeclaringType, other.DeclaringType)
+					&& CreateIfVisible(other) != null)
 					return true;
 			}
 
 			return false;
+		}
+
+		private void AddDataMember(MemberInfo member, PropertyInfo[] properties, FieldInfo[] fields, EventInfo[] events)
+		{
+			IMemberDescriptor desc = CreateIfVisible(member);
+
+			if (desc != null && !IsHiddenByDerivedMember(member, properties, fields, events))
+				AddMember(member.Name, desc);
+		}
+
+		private IMemberDescriptor CreateIfVisible(MemberInfo member)
+		{
+			if (member is PropertyInfo)
+				return PropertyMemberDescriptor.TryCreateIfVisible((PropertyInfo)member, this.AccessMode);
+			if (member is FieldInfo)
+				return FieldMemberDescriptor.TryCreateIfVisible((FieldInfo)member, this.AccessMode);
+			return EventMemberDescriptor.TryCreateIfVisible((EventInfo)member, this.AccessMode);
 		}
 
 		/// <summary>
@@ -127,37 +142,33 @@ namespace MoonSharp.Interpreter.Interop
 			}
 
 			// properties, fields and events; reflection also returns the inherited members a derived
-			// type hides with "new", so they are added once all visible ones are known
-			var dataMembers = new List<KeyValuePair<MemberInfo, IMemberDescriptor>>();
+			// type hides with "new"
+			PropertyInfo[] properties = Framework.Do.GetProperties(type);
+			FieldInfo[] fields = Framework.Do.GetFields(type);
+			EventInfo[] events = Framework.Do.GetEvents(type);
 
-			foreach (PropertyInfo pi in Framework.Do.GetProperties(type))
+			foreach (PropertyInfo pi in properties)
 			{
 				if (pi.IsSpecialName || pi.GetIndexParameters().Any() || membersToIgnore.Contains(pi.Name))
 					continue;
 
-				AddVisible(dataMembers, pi, PropertyMemberDescriptor.TryCreateIfVisible(pi, this.AccessMode));
+				AddDataMember(pi, properties, fields, events);
 			}
 
-			foreach (FieldInfo fi in Framework.Do.GetFields(type))
+			foreach (FieldInfo fi in fields)
 			{
 				if (fi.IsSpecialName || membersToIgnore.Contains(fi.Name))
 					continue;
 
-				AddVisible(dataMembers, fi, FieldMemberDescriptor.TryCreateIfVisible(fi, this.AccessMode));
+				AddDataMember(fi, properties, fields, events);
 			}
 
-			foreach (EventInfo ei in Framework.Do.GetEvents(type))
+			foreach (EventInfo ei in events)
 			{
 				if (ei.IsSpecialName || membersToIgnore.Contains(ei.Name))
 					continue;
 
-				AddVisible(dataMembers, ei, EventMemberDescriptor.TryCreateIfVisible(ei, this.AccessMode));
-			}
-
-			foreach (var member in dataMembers)
-			{
-				if (!IsHiddenByDerivedMember(member.Key, dataMembers))
-					AddMember(member.Key.Name, member.Value);
+				AddDataMember(ei, properties, fields, events);
 			}
 
 			// get nested types and create statics

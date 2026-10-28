@@ -1,0 +1,16 @@
+{
+  "name": "MoonSharp.Interpreter.Tests",
+  "rootNamespace": "MoonSharp.Interpreter.Tests",
+  "references": [
+    "MoonSharp.Interpreter"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

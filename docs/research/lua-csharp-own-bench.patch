@@ -1,0 +1,215 @@
+Adds a "MoonSharpFork" engine to Lua-CSharp's sandbox/Benchmark suites, for docs/research/lua-csharp-own-bench.md.
+Apply to github.com/nuskey8/Lua-CSharp at a8d84c7c5e858a6118e2a9747f08856f5224793a with `git apply --ignore-whitespace` (their files use CRLF; this copy is stored with LF).
+The context lines and the copied adapter code come from Lua-CSharp, MIT License, Copyright (c) 2025 Yusuke Nakada.
+
+diff --git a/sandbox/Benchmark/Benchmark.csproj b/sandbox/Benchmark/Benchmark.csproj
+index 8ace844..8dcef0e 100644
+--- a/sandbox/Benchmark/Benchmark.csproj
++++ b/sandbox/Benchmark/Benchmark.csproj
+@@ -17,6 +17,14 @@
+     <ProjectReference Include="..\..\src\Lua\Lua.csproj" />
+   </ItemGroup>
+ 
++  <!-- Added: a MoonSharp build with AssemblyName=MoonSharpFork.Interpreter, placed in fork/ next to this file. -->
++  <ItemGroup>
++    <Reference Include="MoonSharpFork.Interpreter">
++      <HintPath>$(MSBuildThisFileDirectory)fork/MoonSharpFork.Interpreter.dll</HintPath>
++      <Aliases>msfork</Aliases>
++    </Reference>
++  </ItemGroup>
++
+   <ItemGroup>
+     <EmbeddedResource Include="n-body.lua" LogicalName="Comparison.n-body.lua" />
+   </ItemGroup>
+diff --git a/sandbox/Benchmark/CompilationComparison.cs b/sandbox/Benchmark/CompilationComparison.cs
+index a7ab1a8..fd03412 100644
+--- a/sandbox/Benchmark/CompilationComparison.cs
++++ b/sandbox/Benchmark/CompilationComparison.cs
+@@ -37,6 +37,7 @@ public class CompilationComparison
+     LuaState lua = default!;
+     Script moon = default!;
+     Lua52State native = default!;
++    readonly MoonSharpForkCompiler fork = new();
+     const int BatchSize = 64;
+ 
+     [GlobalSetup(Target = nameof(LuaCSharp))]
+@@ -69,6 +70,16 @@ public class CompilationComparison
+         WarmCompiler(ResetNuLua, NuLua52, CleanupNuLua);
+     }
+ 
++    [GlobalSetup(Target = nameof(MoonSharpFork))]
++    public void SetupMoonSharpFork()
++    {
++        var workload = ComparisonWorkloads.FindCompilation(Case);
++        source = workload.Source;
++        var runner = new MoonSharpForkComparison(source);
++        ComparisonWorkloads.Check(workload, "MoonSharp fork", runner.Run());
++        WarmCompiler(ResetMoonSharpFork, () => MoonSharpFork(), CleanupMoonSharpFork);
++    }
++
+     static void WarmCompiler(Action reset, Action compile, Action cleanup)
+     {
+         // Bounded batches let tiered JIT settle without retaining unbounded source.
+@@ -102,6 +113,9 @@ public class CompilationComparison
+         moon = new(CoreModules.Preset_Complete);
+     }
+ 
++    [IterationSetup(Target = nameof(MoonSharpFork))]
++    public void ResetMoonSharpFork() => fork.Reset();
++
+     [IterationSetup(Target = nameof(NuLua52))]
+     public void ResetNuLua()
+     {
+@@ -137,6 +151,12 @@ public class CompilationComparison
+         }
+     }
+ 
++    [Benchmark(OperationsPerInvoke = BatchSize)]
++    public object MoonSharpFork() => fork.Load(source, BatchSize);
++
++    [IterationCleanup(Target = nameof(MoonSharpFork))]
++    public void CleanupMoonSharpFork() => fork.Cleanup();
++
+     [IterationCleanup(Target = nameof(LuaCSharp))]
+     public void CleanupLua() => lua.Dispose();
+ 
+@@ -161,6 +181,9 @@ public class StartupComparison
+     [Benchmark]
+     public Script MoonSharp() => new(CoreModules.Preset_Complete);
+ 
++    [Benchmark]
++    public object MoonSharpFork() => MoonSharpForkCompiler.NewState();
++
+     [Benchmark]
+     public void NuLua52()
+     {
+diff --git a/sandbox/Benchmark/InterpreterComparison.cs b/sandbox/Benchmark/InterpreterComparison.cs
+index 1560c35..4e7a90b 100644
+--- a/sandbox/Benchmark/InterpreterComparison.cs
++++ b/sandbox/Benchmark/InterpreterComparison.cs
+@@ -30,6 +30,7 @@ public class InterpreterComparison
+     LuaCSharpComparison lua = default!;
+     MoonSharpComparison moonSharp = default!;
+     NuLua52Comparison nuLua = default!;
++    MoonSharpForkComparison moonSharpFork = default!;
+ 
+     [GlobalSetup(Target = nameof(LuaCSharp))]
+     public void SetupLua()
+@@ -55,6 +56,14 @@ public class InterpreterComparison
+         ComparisonWorkloads.Check(workload, "NuLua Lua 5.2", nuLua.Run());
+     }
+ 
++    [GlobalSetup(Target = nameof(MoonSharpFork))]
++    public void SetupMoonSharpFork()
++    {
++        var workload = ComparisonWorkloads.Find(Case);
++        moonSharpFork = new(workload.Source);
++        ComparisonWorkloads.Check(workload, "MoonSharp fork", moonSharpFork.Run());
++    }
++
+     [Benchmark(Baseline = true)]
+     public double LuaCSharp() => lua.Run();
+ 
+@@ -64,6 +73,9 @@ public class InterpreterComparison
+     [Benchmark]
+     public double NuLua52() => nuLua.Run();
+ 
++    [Benchmark]
++    public double MoonSharpFork() => moonSharpFork.Run();
++
+     [GlobalCleanup(Target = nameof(LuaCSharp))]
+     public void CleanupLua() => lua.Dispose();
+ 
+@@ -82,6 +94,7 @@ public class InterpreterComparison
+             using var lua = new LuaCSharpComparison(workload.Source);
+             using var bytes = new LuaCSharpComparison(workload.Source, bytes: true);
+             var moon = new MoonSharpComparison(workload.Source);
++            var fork = new MoonSharpForkComparison(workload.Source);
+             using var native = new NuLua52Comparison(workload.Source);
+             // A second invocation detects accidental reuse of mutated workload data.
+             for (var i = 0; i < 2; i++)
+@@ -89,6 +102,7 @@ public class InterpreterComparison
+                 ComparisonWorkloads.Check(workload, "Lua-CSharp", lua.Run());
+                 ComparisonWorkloads.Check(workload, "Lua-CSharp bytes", bytes.Run());
+                 ComparisonWorkloads.Check(workload, "MoonSharp", moon.Run());
++                ComparisonWorkloads.Check(workload, "MoonSharp fork", fork.Run());
+                 ComparisonWorkloads.Check(workload, "NuLua Lua 5.2", native.Run());
+             }
+             Console.WriteLine(
+@@ -97,5 +111,9 @@ public class InterpreterComparison
+         }
+     }
+ 
+-    static void ScriptWarmUp() => global::MoonSharp.Interpreter.Script.WarmUp();
++    static void ScriptWarmUp()
++    {
++        global::MoonSharp.Interpreter.Script.WarmUp();
++        MoonSharpForkComparison.WarmUp();
++    }
+ }
+diff --git a/sandbox/Benchmark/MoonSharpForkComparison.cs b/sandbox/Benchmark/MoonSharpForkComparison.cs
+new file mode 100644
+index 0000000..6e65847
+--- /dev/null
++++ b/sandbox/Benchmark/MoonSharpForkComparison.cs
+@@ -0,0 +1,48 @@
++extern alias msfork;
++using ForkCoreModules = msfork::MoonSharp.Interpreter.CoreModules;
++using ForkDynValue = msfork::MoonSharp.Interpreter.DynValue;
++using ForkScript = msfork::MoonSharp.Interpreter.Script;
++
++// Added to compare a MoonSharp fork build (not part of upstream Lua-CSharp).
++// Same code as MoonSharpComparison, compiled against the fork build
++// (assembly renamed to MoonSharpFork.Interpreter so it can sit next to the NuGet package).
++public sealed class MoonSharpForkComparison
++{
++    readonly ForkScript state = new(ForkCoreModules.Preset_Complete);
++    readonly ForkDynValue closure;
++
++    public MoonSharpForkComparison(string source)
++    {
++        state.Globals["host_add"] = ForkDynValue.NewCallback(
++            (context, args) => ForkDynValue.NewNumber(args[0].Number + args[1].Number)
++        );
++        closure = state.LoadString(source, codeFriendlyName: "comparison");
++    }
++
++    public double Run() => state.Call(closure).Number;
++
++    public static void WarmUp() => ForkScript.WarmUp();
++
++    public static string Version => typeof(ForkScript).Assembly.GetName().Version!.ToString();
++}
++
++// Mirrors CompilationComparison.ResetMoonSharp/MoonSharp for the fork.
++public sealed class MoonSharpForkCompiler
++{
++    ForkScript moon = default!;
++
++    public void Reset() => moon = new(ForkCoreModules.Preset_Complete);
++
++    public object Load(string source, int batch)
++    {
++        ForkDynValue result = default!;
++        for (var i = 0; i < batch; i++)
++            result = moon.LoadString(source, codeFriendlyName: "comparison");
++        return result;
++    }
++
++    public void Cleanup() => moon = default!;
++
++    // Mirrors StartupComparison.MoonSharp.
++    public static object NewState() => new ForkScript(ForkCoreModules.Preset_Complete);
++}
+diff --git a/sandbox/Benchmark/Program.cs b/sandbox/Benchmark/Program.cs
+index 5999c35..3d6e85b 100644
+--- a/sandbox/Benchmark/Program.cs
++++ b/sandbox/Benchmark/Program.cs
+@@ -12,6 +12,7 @@ if (args.Contains("--verify"))
+     Console.WriteLine(
+         $"MoonSharp: {typeof(MoonSharp.Interpreter.Script).Assembly.GetName().Version}"
+     );
++    Console.WriteLine($"MoonSharp fork: {MoonSharpForkComparison.Version}");
+     Console.WriteLine(
+         $"NuLua Lua52 assembly: {typeof(NuLua.Lua52.Lua52State).Assembly.GetName().Version}"
+     );

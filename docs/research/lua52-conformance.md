@@ -283,18 +283,20 @@ owner. "Plain bug" means Lua 5.2 behaviour is the only sensible one; it still go
     queue idiom `local x = table.remove(q, 1)` on an empty queue. Lua 5.2 allows `1 <= pos <= #t + 1`
     and returns `t[pos]`. Cause: `pos >= len + 1` (`CoreLib/TableModule.cs:208`). Extra arguments raise
     "wrong number of arguments" (`:192`); 5.2 ignores them. S. `TableModule`, the Table agent's file.
-    Plain bug.
+    Plain bug. **Fixed on `perf/table-layout`** (tremove's rules).
 15. **`table.unpack(t, i, j)` with `i > j + 1` ends the process** with `OverflowException` [C]:
     `table.unpack({}, 2)`, `unpack(args, 2)` on an empty list. Cause: `new DynValue[ij - ii + 1]`
     (`CoreLib/TableModule.cs:28`). There is no "too many results to unpack" limit either:
     `unpack({}, 1, 1e7)` returns ten million `nil`s and `unpack({}, 1, 2^40)` overflows the `int` cast.
     S. `TableModule` (Table agent). Plain bug. (The VM agent's unpack work is on another branch; check
-    whether it covers this.)
+    whether it covers this.) **Fixed on `perf/table-layout`**: no values for `i > j`, "too many results
+    to unpack" from a million results, positions read as `luaL_optint` does.
 16. **`table.insert(t, pos, nil)` appends the position** [C]: `local t = {1, 2}; table.insert(t, 1, nil)`
     leaves `{nil, 1, 2}` on 5.2 and `{1, 2, 1}` on the fork, because a `nil` value is taken for the
     two-argument form (`CoreLib/TableModule.cs:160-164`). `table.insert(t)` is accepted; `insert` and
     `sort` return the table instead of nothing; a string position is rejected. S. Table agent's file.
-    Plain bug.
+    Plain bug. **Fixed on `perf/table-layout`** except the return values and string positions: the
+    argument count picks the form, and `table.insert(t)` is an error.
 17. **`table.sort` calls the comparator twice per comparison** (`lt(a, b)` and `lt(b, a)`,
     `CoreLib/TableModule.cs:118-127`), raises "invalid order function" where 5.2 sorts, and sorts a
     table with a `nil` hole where 5.2 raises [C]. M (a port of 5.2's `auxsort` also fixes the unstable

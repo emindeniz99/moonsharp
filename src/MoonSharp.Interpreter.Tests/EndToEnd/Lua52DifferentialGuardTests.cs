@@ -27,10 +27,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		/// </summary>
 		static readonly HashSet<string> KnownCrashes = new HashSet<string>
 		{
-			// table.unpack with i > j + 1: new DynValue[j - i + 1] overflows (CoreLib/TableModule.cs, the Table work).
-			"tables/unpack i > j + 1",
-			"tables/unpack i much larger",
-			"tables/unpack huge",
 		};
 
 		// A case that runs this many instructions is reported as a hang.

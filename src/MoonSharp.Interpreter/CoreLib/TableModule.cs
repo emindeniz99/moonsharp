@@ -14,6 +14,14 @@ namespace MoonSharp.Interpreter.CoreLib
 	[MoonSharpModule(Namespace = "table")]
 	public class TableModule
 	{
+		const int MaxUnpackResults = 1000000;
+
+		// A number as luaL_optint reads it: through a 64-bit integer, keeping the low 32 bits.
+		static int ToInt(double d)
+		{
+			return unchecked((int)(long)d);
+		}
+
 		[MoonSharpModuleMethod]
 		public static DynValue unpack(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
@@ -21,8 +29,15 @@ namespace MoonSharp.Interpreter.CoreLib
 			DynValue vi = args.AsType(1, "unpack", DataType.Number, true);
 			DynValue vj = args.AsType(2, "unpack", DataType.Number, true);
 
-			int ii = vi.IsNil() ? 1 : (int)vi.Number;
-			int ij = vj.IsNil() ? GetTableLength(executionContext, s) : (int)vj.Number;
+			int ii = vi.IsNil() ? 1 : ToInt(vi.Number);
+			int ij = vj.IsNil() ? GetTableLength(executionContext, s) : ToInt(vj.Number);
+
+			if (ii > ij)
+				return DynValue.Void;
+
+			// Lua 5.2 fails when the results do not fit on its stack (LUAI_MAXSTACK slots).
+			if ((long)ij - ii >= MaxUnpackResults)
+				throw new ScriptRuntimeException("too many results to unpack");
 
 			Table t = s.Table;
 
@@ -149,16 +164,17 @@ namespace MoonSharp.Interpreter.CoreLib
 		public static DynValue insert(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
 			DynValue vlist = args.AsType(0, "table.insert", DataType.Table, false);
+
+			// Lua 5.2's tinsert: the argument count, not a nil value, picks the form.
+			if (args.Count != 2 && args.Count != 3)
+				throw new ScriptRuntimeException("wrong number of arguments to 'insert'");
+
+			int len = GetTableLength(executionContext, vlist);
+			Table list = vlist.Table;
 			DynValue vpos = args[1];
 			DynValue vvalue = args[2];
 
-			if (args.Count > 3)
-				throw new ScriptRuntimeException("wrong number of arguments to 'insert'");
-			
-			int len = GetTableLength(executionContext, vlist);
-			Table list = vlist.Table;
-
-			if (vvalue.IsNil())
+			if (args.Count == 2)
 			{
 				vvalue = vpos;
 				vpos = DynValue.NewNumber(len + 1);
@@ -167,7 +183,7 @@ namespace MoonSharp.Interpreter.CoreLib
 			if (vpos.Type != DataType.Number)
 				throw ScriptRuntimeException.BadArgument(1, "table.insert", DataType.Number, vpos.Type, false);
 
-			int pos = (int)vpos.Number;
+			int pos = ToInt(vpos.Number);
 
 			if (pos > len + 1 || pos < 1)
 				throw new ScriptRuntimeException("bad argument #2 to 'insert' (position out of bounds)");
@@ -188,35 +204,23 @@ namespace MoonSharp.Interpreter.CoreLib
 		{
 			DynValue vlist = args.AsType(0, "table.remove", DataType.Table, false);
 			DynValue vpos = args.AsType(1, "table.remove", DataType.Number, true);
-			DynValue ret = DynValue.Nil;
-
-			if (args.Count > 2)
-				throw new ScriptRuntimeException("wrong number of arguments to 'remove'");
 
 			int len = GetTableLength(executionContext, vlist);
 			Table list = vlist.Table;
 
-			int pos = vpos.IsNil() ? len : (int)vpos.Number;
+			int pos = vpos.IsNil() ? len : ToInt(vpos.Number);
 
-			// Lua 5.2 with #t <= 0: return t[#t] and set it to nil.
-			if (pos == len && len < 1)
-			{
-				ret = list.Get(pos);
-				list.Set(pos, DynValue.Nil);
-				return ret;
-			}
-
-			if (pos >= len + 1 || pos < 1)
+			// Lua 5.2's tremove: a position other than #t must be in 1..#t + 1. It returns t[pos], moves
+			// the elements after it down and clears the last one (t[0] for an empty table).
+			if (pos != len && (pos < 1 || pos > len + 1))
 				throw new ScriptRuntimeException("bad argument #1 to 'remove' (position out of bounds)");
 
-			for (int i = pos; i <= len; i++)
-			{
-				if (i == pos)
-					ret = list.Get(i);
+			DynValue ret = list.Get(pos);
 
-				list.SetValue(i, list.RawGetValue(i + 1));
-			}
+			for (; pos < len; pos++)
+				list.SetValue(pos, list.RawGetValue(pos + 1));
 
+			list.SetValue(pos, LuaValue.Nil);
 			return ret;
 		}
 

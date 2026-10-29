@@ -777,5 +777,65 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.IsTrue(a.Get(2).IsNil());
 			Assert.AreEqual(new double[] { 1, 3 }, a.Values.Select(v => v.Number).ToArray());
 		}
+
+		[Test]
+		public void UnpackFollowsLua52ForEmptyAndHugeRanges()
+		{
+			// i > j + 1 ended the process with OverflowException (new DynValue[j - i + 1]); Lua 5.2 returns no
+			// values, reads 2^40 as luaL_optint does (low 32 bits: 0) and refuses more results than its stack
+			// holds.
+			DynValue r = Script.RunString(@"
+				local ok, err = pcall(table.unpack, {}, 1, 1e7)
+				return select('#', table.unpack({}, 2)), select('#', table.unpack({1}, 5, 1)),
+					select('#', table.unpack({}, 1, 2^40)), ok, err");
+
+			Assert.AreEqual(0, r.Tuple[0].Number);
+			Assert.AreEqual(0, r.Tuple[1].Number);
+			Assert.AreEqual(0, r.Tuple[2].Number);
+			Assert.IsFalse(r.Tuple[3].Boolean);
+			StringAssert.Contains("too many results to unpack", r.Tuple[4].String);
+		}
+
+		[Test]
+		public void TableRemoveAcceptsPositionsUpToLengthPlusOne()
+		{
+			// Lua 5.2 allows 1 <= pos <= #t + 1 and ignores extra arguments; the fork raised "position out
+			// of bounds" for #t + 1 (the empty-queue idiom table.remove(q, 1)) and "wrong number of
+			// arguments" for a third argument.
+			DynValue r = Script.RunString(@"
+				local q = {}
+				local a = table.remove(q, 1)
+				local t = { 1, 2, 3 }
+				local b = table.remove(t, 4)
+				local c = table.remove(t, 1, 'ignored')
+				local ok = pcall(table.remove, t, 5)
+				return a, b, c, #t, t[1], t[2], ok");
+
+			Assert.IsTrue(r.Tuple[0].IsNil());
+			Assert.IsTrue(r.Tuple[1].IsNil());
+			Assert.AreEqual(1, r.Tuple[2].Number);
+			Assert.AreEqual(2, r.Tuple[3].Number);
+			Assert.AreEqual(2, r.Tuple[4].Number);
+			Assert.AreEqual(3, r.Tuple[5].Number);
+			Assert.IsFalse(r.Tuple[6].Boolean);
+		}
+
+		[Test]
+		public void TableInsertPicksItsFormByArgumentCount()
+		{
+			// table.insert(t, 1, nil) inserts nil at 1 in Lua 5.2; the fork took the nil for the two-argument
+			// form and appended 1. One argument is an error.
+			DynValue r = Script.RunString(@"
+				local t = { 1, 2 }
+				table.insert(t, 1, nil)
+				local ok, err = pcall(table.insert, t)
+				return t[1], t[2], t[3], ok, err");
+
+			Assert.IsTrue(r.Tuple[0].IsNil());
+			Assert.AreEqual(1, r.Tuple[1].Number);
+			Assert.AreEqual(2, r.Tuple[2].Number);
+			Assert.IsFalse(r.Tuple[3].Boolean);
+			StringAssert.Contains("wrong number of arguments to 'insert'", r.Tuple[4].String);
+		}
 	}
 }

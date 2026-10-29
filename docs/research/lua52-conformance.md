@@ -260,6 +260,16 @@ owner. "Plain bug" means Lua 5.2 behaviour is the only sensible one; it still go
     arithmetic on a nil value". S (`GC.GetTotalMemory`). Neither path. Compatibility question: whether
     `collectgarbage()` should keep forcing a blocking full CLR collection, which a script calling it
     every frame turns into a stall.
+    **Fixed** on `fix/stdlib-compat` (owner decision 2026-10-29): Lua 5.2's eleven options, results and
+    argument errors. `"count"` is the process's managed heap (`GC.GetTotalMemory(false)`) as KB plus the
+    remainder in bytes; `"collect"` asks for an optimized, non-blocking collection and returns 0; `"step"`
+    and `"isrunning"` return `true`, the tuning options 200 and the others 0, without effect (see
+    [MIGRATING.md](../MIGRATING.md)). All 24 `collectgarbage` differential cases match `lua5.2`; none of
+    them observes the no-op differences (`"step"` true before a cycle ends, `"isrunning"` true after
+    `"stop"`, the tuning options always 200). `gc.lua` passes line 5 (`isrunning`) and runs past its
+    first `gcinfo` call (line 143, `collectgarbage"count" * 1024`), where it stopped, to line 232 (weak
+    tables, 37); it fails lines 154, 156 and 181 (`isrunning` after `"stop"`) and 164 (`step` does not
+    collect) by design, and its workaround for lines 138-139 is gone [C].
 11. **`xpcall` handler errors** [C]: a `nil` handler or a handler that fails gives the original message
     (or "b\n...: a") instead of "error in error handling". S. Call path.
 12. **`print` returns one value, `tostring` of a `__tostring` returning `nil` returns none, `__unm` gets
@@ -330,6 +340,7 @@ owner. "Plain bug" means Lua 5.2 behaviour is the only sensible one; it still go
 23. **`math.huge` is `Double.MaxValue`** (already in ROADMAP) [C]; `math.log10` is absent (5.2 compat
     build has it); `math.frexp` of `inf`/`nan`/`-0`, `math.ldexp` with a fractional exponent,
     `math.max(1, 0/0, 3)`, `math.random(0)` and `math.random(2, 1)` differ [C]. S each.
+    `math.log10` is **added** on `fix/stdlib-compat` (with 29); its 16 differential cases match [C].
 24. **`bit32` differs in eight ways** [C] (`CoreLib/Bit32Module.cs`):
     - `band()`, `bor()`, `bxor()`, `btest()` with no arguments raise (5.2: identities) (`:51`);
     - shifts by 32 or more wrap modulo 32 (`lshift(1, 33)` is 2, 5.2: 0) (`:128-171`);
@@ -380,6 +391,12 @@ owner. "Plain bug" means Lua 5.2 behaviour is the only sensible one; it still go
 29. **`loadstring` is absent** [C]. Lua 5.2 as built by its Makefile (`LUA_COMPAT_ALL`) has it, and
     5.1-era scripts use it everywhere. `module` and `table.maxn` are absent too. S (an alias). Neither
     path. Compatibility question: which presets get the 5.1 names.
+    **Fixed** on `fix/stdlib-compat` (owner decision 2026-10-29): `loadstring` (with `load`, in
+    `CoreModules.LoadMethods`), `table.maxn` and `math.log10` exist; `module` and `package.seeall` do
+    not. `loadstring` is `load` under its own name, so `loadstring == load` is false (5.2: true, the same
+    C function); its messages name `loadstring`, as 5.2's do when it is called by that name. Of the
+    differential cases, the 10 `maxn` and 16 `math.log10` ones match `lua5.2`, and 9 of the 12
+    `loadstring` ones: the others are that comparison and two chunk names in syntax errors (13) [C].
 30. **`load` with a reader function** [C]: a reader that returns `""` (the documented end marker) gives
     "reader function must return a string" (`CoreLib/LoadModule.cs:125-130`); an error raised inside the
     reader propagates instead of `nil, msg`; pieces are joined with `+=` (quadratic). The `mode` argument
@@ -443,7 +460,7 @@ Ranked by how common the idiom is in application and game scripts, then by how q
 | 10 | `i, t[i] = i + 1, v` uses the new `i` | 3 | silently wrong table slot | M | compiler (VM area) | no |
 
 On `fix/lua52-batch1`: ranks 1, 3, 7, 9 and 10 are fixed; 2, 6 and 8 wait for the Table and call path
-work; 4 and 5 are owner questions.
+work; 4 and 5 are owner questions. On `fix/stdlib-compat`: 4 and 5 are fixed as the owner decided.
 
 Next in line: `#{...}` with `nil` arguments (18), `pcall(coroutine.wrap(f))` crash (9), `bit32` with
 negative numbers on .NET 9+ and likely ARM64 (24), error message positions that scripts parse (13),

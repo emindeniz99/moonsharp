@@ -20,7 +20,7 @@ find "${SOURCES_DEST}" -name '*.cs' -delete
 # found as "000-sanity.t" and More.lua.txt as "More.lua", the names the tests ask for.
 rm -rf "${SCRIPTS_DEST}"
 mkdir -p "${SCRIPTS_DEST}"
-for f in "${TESTS}"/TestMore/*.t "${TESTS}"/TestMore/Modules/Test/*.lua; do
+for f in "${TESTS}"/TestMore/*.t "${TESTS}"/TestMore/Modules/Test/*.lua "${TESTS}"/Lua52Differential/cases/*.lua; do
   cp "${f}" "${SCRIPTS_DEST}/$(basename "${f}").txt"
 done
 

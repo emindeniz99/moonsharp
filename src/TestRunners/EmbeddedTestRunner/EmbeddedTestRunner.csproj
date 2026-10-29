@@ -17,6 +17,7 @@
         <Compile Include="Program.cs" />
         <Compile Include="$(TestsDir)**\*.cs" Exclude="$(TestsDir)bin\**;$(TestsDir)obj\**" LinkBase="Tests" />
         <None Include="$(TestsDir)TestMore\**\*.t;$(TestsDir)TestMore\**\*.lua" LinkBase="TestMore" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="$(TestsDir)Lua52Differential\cases\*.lua" LinkBase="Lua52Differential\cases" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
     <ItemGroup>

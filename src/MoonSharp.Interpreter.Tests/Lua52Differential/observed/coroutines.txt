@@ -10,9 +10,9 @@ resume result count	OK	1	1
 resume error value	OK	2	false "string"
 resume error string	OK	2	false "x"
 wrap multiple values	OK	3	1 2 3
-wrap error propagates	CRASH	System.NullReferenceException
-wrap error table	CRASH	System.NullReferenceException
-wrap dead	CRASH	System.NullReferenceException
+wrap error propagates	OK	2	false "inner"
+wrap error table	OK	1	false
+wrap dead	OK	2	false "cannot resume dead coroutine"
 wrap type	OK	1	"function"
 yield outside	OK	2	false "=c:(1,0-32): attempt to yield from outside a coroutine"
 yield across pcall	OK	3	"in" true "out"

@@ -95,6 +95,12 @@ namespace MoonSharp.Interpreter.Tree.Statements
 		{
 			using (bc.EnterSource(m_Ref))
 			{
+				if (m_LValues.Count > 1)
+				{
+					CompileMultiple(bc);
+					return;
+				}
+
 				foreach (var exp in m_RValues)
 				{
 					exp.Compile(bc);
@@ -128,6 +134,53 @@ namespace MoonSharp.Interpreter.Tree.Statements
 
 				bc.Emit_Pop(m_RValues.Count + scratchOfs);
 			}
+		}
+
+		/// <summary>
+		/// Several targets. Lua 5.2 (3.3.3): "The assignment statement first evaluates all its expressions and only
+		/// then are the assignments performed", so in i, t[i] = i + 1, v the key is the old i. As in reference Lua,
+		/// the tables and keys of the targets are evaluated first, left to right, then the values, and the stores
+		/// run from the last target to the first (a, a = 1, 2 leaves 1).
+		/// </summary>
+		private void CompileMultiple(Execution.VM.ByteCode bc)
+		{
+			// Values each indexed target keeps on the stack: its table, and its key when that is computed.
+			int[] slots = new int[m_LValues.Count];
+			int saved = 0;
+
+			for (int i = 0; i < m_LValues.Count; i++)
+			{
+				IndexExpression ie = m_LValues[i] as IndexExpression;
+				if (ie != null)
+					saved += slots[i] = ie.CompileTarget(bc);
+			}
+
+			foreach (var exp in m_RValues)
+				exp.Compile(bc);
+
+			// The scratch slot an IndexSet through __newindex eats (see Compile).
+			int scratchOfs = saved > 0 ? 1 : 0;
+			if (scratchOfs > 0)
+				bc.Emit_Literal(DynValue.Nil);
+
+			int block = m_RValues.Count + scratchOfs;
+			int below = 0; // saved values of the targets after the current one
+
+			for (int i = m_LValues.Count - 1; i >= 0; i--)
+			{
+				int stackofs = Math.Max(m_RValues.Count - 1 - i, 0) + scratchOfs;
+				int tupleidx = i - Math.Min(i, m_RValues.Count - 1);
+				IndexExpression ie = m_LValues[i] as IndexExpression;
+
+				if (ie != null)
+					ie.CompileAssignmentFromTarget(bc, block + below, stackofs, tupleidx);
+				else
+					m_LValues[i].CompileAssignment(bc, stackofs, tupleidx);
+
+				below += slots[i];
+			}
+
+			bc.Emit_Pop(block + saved);
 		}
 
 	}

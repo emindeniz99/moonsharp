@@ -27,8 +27,9 @@ namespace MoonSharp.Interpreter.CoreLib
 				args.AsType(0, "wrap", DataType.Function); // this throws
 
 			DynValue v = create(executionContext, args);
-			DynValue c = DynValue.NewCallback(__wrap_wrapper);
-			c.Callback.AdditionalData = v;
+			// The coroutine lives in the delegate, not in AdditionalData: pcall(f) runs f with pcall's own
+			// context, whose AdditionalData is pcall's.
+			DynValue c = DynValue.NewCallback((ctx, a) => v.Coroutine.Resume(a.GetArray()));
 			// it copies its arguments at once
 			c.Callback.ReadsArgumentsInPlace = true;
 			return c;

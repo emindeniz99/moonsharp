@@ -190,6 +190,9 @@ namespace MoonSharp.Interpreter.CoreLib
             return DynValue.NewString(arg_s.String.ToUpperInvariant());
         }
 
+        // The longest string the CLR allocates (String's own limit on 64-bit runtimes).
+        const int MaxStringLength = 0x3FFFFFDF;
+
         [MoonSharpModuleMethod]
         public static DynValue rep(ScriptExecutionContext executionContext, CallbackArguments args)
         {
@@ -197,15 +200,26 @@ namespace MoonSharp.Interpreter.CoreLib
             DynValue arg_n = args.AsType(1, "rep", DataType.Number, false);
 			DynValue arg_sep = args.AsType(2, "rep", DataType.String, true);
 
-            if (String.IsNullOrEmpty(arg_s.String) || (arg_n.Number < 1))
-            {
-                return DynValue.NewString("");
-            }
-
 			string sep = (arg_sep.IsNotNil()) ? arg_sep.String : null;
+			double n = arg_n.Number;
 
-            int count = (int)arg_n.Number;
-            StringBuilder result = new StringBuilder(arg_s.String.Length * count);
+			// Not n >= 1 is also NaN; Lua 5.2 gives "" for an infinite count too.
+			if (!(n >= 1) || double.IsInfinity(n))
+				return DynValue.NewString("");
+
+			// The count truncates as Lua 5.2's luaL_checkint does; the separator goes between the copies, so
+			// rep("", 3, ".") is "..".
+			int count = n < int.MaxValue ? (int)n : int.MaxValue;
+			long length = (long)arg_s.String.Length * count + (long)(sep != null ? sep.Length : 0) * (count - 1);
+
+			if (length == 0)
+				return DynValue.NewString("");
+
+			// Longer than a CLR string can be: an error the script can catch, not an exception that ends the host.
+			if (length > MaxStringLength)
+				throw new ScriptRuntimeException("resulting string too large");
+
+            StringBuilder result = new StringBuilder((int)length);
 
             for (int i = 0; i < count; ++i)
             {
@@ -225,7 +239,7 @@ namespace MoonSharp.Interpreter.CoreLib
 		[MoonSharpModuleMethod]
 		public static DynValue format(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			return LuaFormatter.Format(args);
+			return LuaFormatter.Format(executionContext, args);
 		}
 
 

@@ -5,7 +5,7 @@ __lt different metatables same function	OK	1	true
 __lt different functions	OK	2	true true
 __lt table and number	OK	2	true true
 __eq same metatable	OK	1	true
-__eq different metatables same function	OK	1	false
+__eq different metatables same function	OK	1	true
 __eq different functions	OK	1	false
 __eq only one side	OK	1	false
 __eq table vs number	OK	1	false

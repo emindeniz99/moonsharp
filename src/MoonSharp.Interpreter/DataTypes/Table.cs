@@ -19,7 +19,8 @@ namespace MoonSharp.Interpreter
 	/// capacity, and when more than half of the grown array would hold values; on growth, hash keys in the new
 	/// range move into the array.</item>
 	/// <item>The hash part is a compact dictionary: entries are appended in insertion order and chained from
-	/// bucket heads.</item>
+	/// bucket heads. Tables that got the same keys in the same order keep each key in the same entry, which
+	/// the VM's field caches use (<see cref="TryGetEntry"/>).</item>
 	/// <item><c>next</c>, <c>pairs</c> and <see cref="Pairs"/> return keys in insertion order across both parts.
 	/// Keys 1..m_Prefix, appended in order while the hash part was empty, come first; every other array key
 	/// has a pointer entry in the hash part that marks its place.</item>
@@ -82,8 +83,8 @@ namespace MoonSharp.Interpreter
 		internal int MetaAbsent;
 
 		// For the VM's field caches (FieldCache). Shape changes whenever a key is added to the hash part or
-		// its entries move, so while it stays the same an entry index still names the same key (or a removed
-		// entry, whose value is nil) and a string key with no entry still has none. Its high 32 bits are an id that StampedShape gives the table the
+		// its entries move, so while it stays the same a string key with no entry still has none and a dead
+		// entry still holds the same key. Its high 32 bits are an id that StampedShape gives the table the
 		// first time a cache records it, so a shape a cache holds also names the table, without a reference
 		// that would keep the table alive.
 		internal long Shape;
@@ -144,13 +145,52 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
-		/// Replaces the value of a live string-key entry with a value that is not nil. A live key is never
-		/// one of the metamethods MetaAbsent lists, so the bits stay.
+		/// True when entry <paramref name="entry"/> exists and holds string key <paramref name="key"/>, live or
+		/// dead; <paramref name="value"/> is its value then (nil when dead). An entry index found in one table
+		/// can be tried on any other: tables that got the same keys in the same order agree on it.
 		/// </summary>
-		internal void SetEntryValue(int entry, LuaValue value)
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		internal bool TryGetEntry(int entry, string key, out LuaValue value)
 		{
-			CheckOwnership(ref value);
-			m_Entries[entry].Value = value;
+			Entry[] entries = m_Entries;
+
+			if (entries != null && (uint)entry < (uint)entries.Length)
+			{
+				object k = entries[entry].Key.Object;
+
+				if (object.ReferenceEquals(k, key) || (entries[entry].Key.Type == DataType.String && string.Equals((string)k, key)))
+				{
+					value = entries[entry].Value;
+					return true;
+				}
+			}
+
+			value = default(LuaValue);
+			return false;
+		}
+
+		/// <summary>
+		/// Replaces the value of entry <paramref name="entry"/> with <paramref name="value"/> (not nil) when the
+		/// entry holds string key <paramref name="key"/> with a value; false otherwise. A live key is never one
+		/// of the metamethods MetaAbsent lists, so the bits stay.
+		/// </summary>
+		internal bool TrySetEntry(int entry, string key, ref LuaValue value)
+		{
+			Entry[] entries = m_Entries;
+
+			if (entries != null && (uint)entry < (uint)entries.Length && entries[entry].Value.Type != DataType.Nil)
+			{
+				object k = entries[entry].Key.Object;
+
+				if (object.ReferenceEquals(k, key) || (entries[entry].Key.Type == DataType.String && string.Equals((string)k, key)))
+				{
+					CheckOwnership(ref value);
+					entries[entry].Value = value;
+					return true;
+				}
+			}
+
+			return false;
 		}
 
 		/// <summary>

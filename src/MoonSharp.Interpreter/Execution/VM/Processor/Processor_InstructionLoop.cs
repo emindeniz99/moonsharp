@@ -1900,16 +1900,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 				Table table = (Table)obj.Object;
 				FieldCache cache = i.Cache ?? (i.Cache = new FieldCache((string)idx.Object));
 
-				if (cache.TrySet(table, value))
+				if (cache.TrySet(table, ref value))
 					return instructionPtr;
-
-				int e = cache.FindLive(table);
-
-				if (e >= 0)
-				{
-					table.SetEntryValue(e, value);
-					return instructionPtr;
-				}
 
 				if (table.MetaTable == null)
 				{
@@ -1982,6 +1974,21 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private int ExecIndex(Instruction i, int instructionPtr)
 		{
+			// A field read whose cache hits replaces the table on top of the stack with the value.
+			FieldCache fieldCache = i.Cache;
+
+			if (fieldCache != null)
+			{
+				ref LuaValue top = ref m_ValueStack.Peek();
+				LuaValue cached;
+
+				if (top.Type == DataType.Table && fieldCache.TryGet((Table)top.Object, out cached))
+				{
+					top = cached;
+					return instructionPtr;
+				}
+			}
+
 			int nestedMetaOps = 100; // sanity check, to avoid potential infinite loop here
 
 			// stack: base - index

@@ -1,3 +1,4 @@
+using System;
 using NUnit.Framework;
 
 namespace MoonSharp.Interpreter.Tests.EndToEnd
@@ -5,7 +6,10 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 	/// <summary>
 	/// Field and global accesses with a constant name cache where they found the key. Each test runs the
 	/// same instruction (inside one function) before and after a change that must make the cached place
-	/// wrong, and checks that the second run sees the change.
+	/// wrong, or on another table where the cached place is wrong, and checks that the second run sees the
+	/// change. The cache is keyed by layout (the entry index of the key), so the tests after
+	/// FieldCache_SharedByCoroutines run one instruction over several tables; each names the check in
+	/// FieldCache or Table that it needs.
 	/// </summary>
 	[TestFixture]
 	public class FieldCacheTests
@@ -329,6 +333,253 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				return table.concat(out, ',')");
 
 			Assert.AreEqual("a,b,a,b,a2", r.String);
+		}
+
+		[Test]
+		public void FieldCache_OneSiteOverManyObjectsOfOneLayout()
+		{
+			// Tables built with the same keys in the same order keep each key in the same entry, so one read
+			// and one write site hit for all of them; each object keeps its own values.
+			DynValue r = Run(@"
+				local list = {}
+				for k = 1, 8 do list[k] = { x = k, y = k * 10, z = 0.5 } end
+				local function step(t) t.z = t.z + t.x * 0.25 return t.y end
+				local s = 0
+				for round = 1, 3 do
+					for k = 1, 8 do s = s + step(list[k]) end
+				end
+				return s, list[1].z, list[8].z");
+
+			AssertValues(r, 1080, 1.25, 6.5);
+		}
+
+		[Test]
+		public void FieldCache_AnotherInstanceShadowsTheMethod()
+		{
+			// The path went through a's metatable because a has no 'name'. b, another instance of the same
+			// class, has its own: the level check must look the key up in b (Table.FindStringEntry in
+			// FieldCache.TryGet), not only compare it with a.
+			DynValue r = Run(@"
+				local C = {} C.__index = C
+				function C:name() return 'class' end
+				local a = setmetatable({}, C)
+				local b = setmetatable({}, C)
+				b.name = function() return 'own' end
+				local c = setmetatable({ name = 1 }, C)
+				c.name = nil -- a dead key: the lookup goes on to the class
+				local function call(o) return o:name() end
+				return call(a), call(b), call(a), call(c)");
+
+			AssertValues(r, "class", "own", "class", "class");
+		}
+
+		[Test]
+		public void FieldCache_InstanceWithoutAMetatableAfterOneWithIt()
+		{
+			// The cached path goes through a metatable; the next table has none (the null check).
+			DynValue r = Run(@"
+				local C = { k = 'class' } C.__index = C
+				local list = { setmetatable({}, C), {}, setmetatable({}, C), { k = 'own' } }
+				local out = {}
+				for round = 1, 2 do
+					for i, t in ipairs(list) do out[#out + 1] = tostring(t.k) end
+				end
+				return table.concat(out, ',')");
+
+			Assert.AreEqual("class,nil,class,own,class,nil,class,own", r.String);
+		}
+
+		[Test]
+		public void FieldCache_MetatablesWithIndexInAnotherEntry()
+		{
+			// mt2's first entry holds a table under another key; the cached __index entry of mt1 must be
+			// checked for its key (Table.TryGetEntry), not only read.
+			DynValue r = Run(@"
+				local A = { k = 'A' }
+				local B = { k = 'B' }
+				local other = { k = 'other' }
+				local o1 = setmetatable({}, { __index = A })
+				local o2 = setmetatable({}, { other = other, __index = B })
+				local function get(o) return o.k end
+				return get(o1), get(o2), get(o1)");
+
+			AssertValues(r, "A", "B", "A");
+		}
+
+		[Test]
+		public void FieldCache_ClassesWithTheMethodInAnotherEntry()
+		{
+			// The holder of f is the class. B keeps another method where A keeps f, so the cached entry
+			// must be checked for its key (Table.TryGetEntry).
+			DynValue r = Run(@"
+				local A = {} A.__index = A
+				function A:f() return 'A' end
+				local B = {} B.__index = B
+				function B:g() return 'g' end
+				function B:f() return 'B' end
+				local function call(o) return o:f() end
+				return call(setmetatable({}, A)), call(setmetatable({}, B)), call(setmetatable({}, A))");
+
+			AssertValues(r, "A", "B", "A");
+		}
+
+		[Test]
+		public void FieldCache_AnotherObjectWithTheKeyDead()
+		{
+			// b has v in the cached entry, dead: the read goes on to the class (the value check in
+			// FieldCache.TryGet).
+			DynValue r = Run(@"
+				local C = { v = 'class' } C.__index = C
+				local a = setmetatable({ v = 'a' }, C)
+				local b = setmetatable({ v = 'b' }, C)
+				b.v = nil
+				local function get(o) return o.v end
+				return get(a), get(b), get(a)");
+
+			AssertValues(r, "a", "class", "a");
+		}
+
+		[Test]
+		public void FieldCache_SmallerTableAfterALargerOne()
+		{
+			// The cached entry index is past the end of the next table's entries (the bounds check).
+			DynValue r = Run(@"
+				local big = { a = 1, b = 2, c = 3, d = 4, e = 5, x = 'big' }
+				local small = { x = 'small' }
+				local empty = {}
+				local function get(t) return t.x end
+				return get(big), get(small), get(big), get(empty)");
+
+			AssertValues(r, "big", "small", "big", null);
+		}
+
+		[Test]
+		public void FieldCache_StoreSiteOverTablesOfOtherLayouts()
+		{
+			// The cached entry of x in t1 holds b in t2: the store must check the key (Table.TrySetEntry).
+			DynValue r = Run(@"
+				local t1 = {} t1.a = 1 t1.x = 1
+				local t2 = {} t2.x = 2 t2.b = 'b'
+				local function set(t, v) t.x = v end
+				set(t1, 10)
+				set(t2, 20)
+				set(t1, 11)
+				return t1.x, t2.x, t2.b, t1.a");
+
+			AssertValues(r, 11, 20, "b", 1);
+		}
+
+		[Test]
+		public void FieldCache_StoreIntoAnotherObjectsDeadKeyRunsNewIndex()
+		{
+			// b's v is dead, so storing into it is a store to an absent key: __newindex runs (the value
+			// check in Table.TrySetEntry).
+			DynValue r = Run(@"
+				local log = {}
+				local mt = { __newindex = function(t, k, v) log[#log + 1] = v end }
+				local a = setmetatable({ v = 1 }, mt)
+				local b = setmetatable({ v = 2 }, mt)
+				b.v = nil
+				local function set(o, x) o.v = x end
+				set(a, 10)
+				set(b, 20)
+				return a.v, rawget(b, 'v'), log[1]");
+
+			AssertValues(r, 10, null, 20);
+		}
+
+		[Test]
+		public void FieldCache_CachedStoreChecksScriptOwnership()
+		{
+			// A value owned by another script stored through the cached path fails as the uncached one
+			// does (the ownership check in Table.TrySetEntry).
+			Script other = new Script();
+			Table foreign = new Table(other);
+			Script s = new Script();
+			s.Globals["foreign"] = DynValue.NewCallback((ctx, args) => DynValue.NewTable(foreign));
+			s.DoString("t = { x = 1 } function set(v) t.x = v end set(2) set(3)");
+
+			Assert.Throws<ScriptRuntimeException>(() => s.DoString("set(foreign())"));
+			Assert.AreEqual(3, s.DoString("return t.x").Number);
+		}
+
+		[Test]
+		public void FieldCache_HostChangesToOneOfManyObjects()
+		{
+			// Host-side Remove, Set, Clear and CollectDeadKeys on one object of a shared layout; the other
+			// keeps hitting.
+			Script s = new Script();
+			s.DoString(@"
+				C = { k = 'class' } C.__index = C
+				a = setmetatable({ z = 1, k = 'a' }, C)
+				b = setmetatable({ z = 2, k = 'b' }, C)
+				get = function(o) return o.k end");
+			Func<string, string> get = name => s.DoString("return tostring(get(" + name + "))").String;
+			Table b = s.Globals.Get("b").Table;
+
+			Assert.AreEqual("a", get("a"));
+			Assert.AreEqual("b", get("b"));
+
+			b.Remove("k");
+			Assert.AreEqual("class", get("b"));
+			Assert.AreEqual("a", get("a"));
+
+			b.Set("k", DynValue.NewString("b2")); // now after z's entry and the hole k left
+			Assert.AreEqual("b2", get("b"));
+			Assert.AreEqual("a", get("a"));
+
+			b.Set("z", DynValue.Nil);
+			b.CollectDeadKeys(); // k moves to the first entry
+			Assert.AreEqual("b2", get("b"));
+			Assert.AreEqual("a", get("a"));
+
+			b.Clear();
+			Assert.AreEqual("class", get("b"));
+			Assert.AreEqual("a", get("a"));
+
+			s.DoString("rawset(a, 'k', nil)");
+			Assert.AreEqual("class", get("a"));
+
+			s.DoString("setmetatable(a, { __index = { k = 'other' } })");
+			Assert.AreEqual("other", get("a"));
+		}
+
+		[Test]
+		public void FieldCache_HostCollectDeadKeysMovesTheIndexEntryOfAMetatable()
+		{
+			// The metatable is checked by identity while its shape stays the same; collecting its dead key
+			// moves "__index" one entry down and "other" into its place (the shape change in Allocate).
+			Script s = new Script();
+			s.DoString(@"
+				A = { k = 'A' }
+				B = { k = 'B' }
+				mt = { a = 1, __index = A, other = B }
+				o = setmetatable({}, mt)
+				get = function() return o.k end
+				mt.a = nil");
+			Assert.AreEqual("A", s.DoString("return get()").String);
+
+			s.Globals.Get("mt").Table.CollectDeadKeys();
+			Assert.AreEqual("A", s.DoString("return get()").String);
+		}
+
+		[Test]
+		public void FieldCache_HostClearOfAMetatableAndOfAnInstance()
+		{
+			// Clear drops the entries a cached path names (the shape change in Clear).
+			Script s = new Script();
+			s.DoString(@"
+				C = { k = 'class' } C.__index = C
+				o = setmetatable({ k = 'own' }, C)
+				get = function() return o.k end
+				o.k = nil");
+			Assert.AreEqual("class", s.DoString("return get()").String);
+
+			s.Globals.Get("o").Table.Clear();
+			Assert.AreEqual("class", s.DoString("return get()").String);
+
+			s.Globals.Get("C").Table.Clear();
+			Assert.IsTrue(s.DoString("return get()").IsNil());
 		}
 	}
 }

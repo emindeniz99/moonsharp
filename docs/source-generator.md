@@ -270,6 +270,18 @@ method and calls Lua from C#, two runs each:
 | C# calls `function(a, b, c) return a * b + c end`, `Script.Call` with `DynValue`s | 346, 351 | 375, 317 | 224 |
 | the same, `Closure.Call<double, double, double, double>` | 205, 212 | 281, 238 | 0 |
 
+On branch `perf/call-path` (2026-10-29, against `next` 5761ae2, two runs each,
+both builds on the same machine one after the other under the benchmark lock;
+ns per iteration):
+
+| Case | JIT `next` | JIT branch | NativeAOT `next` | NativeAOT branch | bytes `next` | bytes branch |
+|---|---:|---:|---:|---:|---:|---:|
+| `obj:Add(i, 2)`, generated | 177, 181 | 113, 119 | 190, 191 | 130, 120 | 248 | 0 |
+| `obj:Pick(i)` (int or string overload), generated | 176, 169 | 120, 111 | 176, 178 | 129, 126 | 240 | 0 |
+| `obj:Add(i, 2)`, reflection | 256, 264 | 214, 212 | 452, 450 | 401, 382 | 360 | 192 |
+| `obj.Value`, generated | 60, 63 | 61, 62 | 61, 65 | 57, 59 | 40 | 40 |
+| `Script.Call` with `DynValue`s | 233, 221 | 172, 163 | 223, 212 | 170, 166 | 224 | 128 |
+
 ## Follow-ups
 
 - Run the Unity matrix once the secrets exist: it is the first real proof

@@ -353,3 +353,55 @@ median of the three runs (min-max), and the median of the per-run ratios to Lua-
 - **Startup** (`StartupComparison`, MoonSharpFork row, three runs each, after the module-table sizing
   commit): 18.90 to 18.21 µs, 56.04 to 56.64 KB. Before that commit the branch measured 21.0 µs and
   64.5 KB.
+
+## After `perf/call-path`
+
+Date: 2026-10-29. The same suite with two fork columns in the same runs: `next` at `5761ae2` (tables store
+`LuaValue`) and branch `perf/call-path` merged with it, each built as in "Reproducing" under its own assembly
+name (`MoonSharpForkNext.Interpreter`, `MoonSharpFork.Interpreter`). Lua-CSharp `a8d84c7`, .NET SDK 10.0.403,
+runtime 10.0.14, the same 4-vCPU VM; three runs of `InterpreterComparison`, one suite at a time under the
+shared benchmark lock (load average 1.0-2.6, other agents building alongside). Values: µs per execution,
+median of the three BenchmarkDotNet medians (min-max); ratios are medians of per-run ratios.
+
+| Case | Lua-CSharp µs | fork next µs | fork perf/call-path µs | MoonSharp 2.0.0 µs | NuLua µs | branch / next | branch / Lua-CSharp | next/Lua-CSharp |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| calls-varargs | 187.0 (186.1–190.2) | 407.0 (401.0–423.1) | 300.5 (292.7–301.1) | 880.0 (842.4–881.1) | 51.6 (50.8–52.1) | 0.72x | 1.61x | 2.15x |
+| coroutines | 201.7 (200.2–206.0) | 205.2 (194.6–207.8) | 169.8 (167.7–175.1) | 1,247.2 (1,233.1–1,295.7) | 60.4 (59.0–62.5) | 0.85x | 0.84x | 1.02x |
+| host-calls | 87.4 (84.9–89.0) | 196.6 (191.3–199.0) | 178.9 (176.5–181.2) | 344.8 (332.9–357.8) | 387.2 (386.9–393.7) | 0.91x | 2.04x | 2.24x |
+| math | 265.8 (264.5–282.5) | 234.5 (225.0–235.2) | 231.3 (223.8–237.4) | 1,073.2 (1,065.5–1,075.1) | 166.3 (164.0–171.3) | 0.99x | 0.85x | 0.85x |
+| metamethods | 342.0 (322.8–345.4) | 533.3 (507.7–533.7) | 527.7 (516.4–544.0) | 1,081.9 (1,052.6–1,113.7) | 110.9 (109.6–112.0) | 1.02x | 1.54x | 1.56x |
+| nbody | 376.7 (365.2–390.3) | 761.6 (740.2–772.0) | 754.2 (739.7–757.2) | 2,616.1 (2,611.8–2,674.8) | 223.2 (217.5–224.1) | 0.99x | 2.00x | 2.02x |
+| numeric-loop | 133.2 (129.4–135.1) | 247.1 (234.8–254.4) | 246.4 (236.8–249.0) | 1,816.7 (1,780.5–1,836.3) | 90.9 (89.0–94.7) | 0.98x | 1.83x | 1.91x |
+| patterns | 215.1 (212.2–215.3) | 164.6 (162.0–166.2) | 155.8 (155.8–157.5) | 824.1 (822.1–886.7) | 128.0 (127.8–138.5) | 0.95x | 0.73x | 0.77x |
+| strings | 192.0 (190.5–198.9) | 240.6 (235.3–241.6) | 223.7 (220.7–224.9) | 441.8 (422.7–460.0) | 229.5 (229.0–231.1) | 0.93x | 1.15x | 1.25x |
+| table-access | 237.5 (234.7–242.0) | 245.4 (240.3–245.5) | 252.1 (243.9–253.8) | 689.2 (682.4–699.1) | 154.6 (151.8–165.4) | 1.03x | 1.05x | 1.01x |
+| table-sort | 24.2 (24.0–25.0) | 42.0 (42.0–42.3) | 41.7 (40.7–43.2) | 72.4 (70.9–72.7) | 42.1 (41.9–43.3) | 0.98x | 1.72x | 1.75x |
+
+| Case | Lua-CSharp B/op | fork next B/op | fork perf/call-path B/op | MoonSharp 2.0.0 B/op | NuLua B/op |
+|---|---:|---:|---:|---:|---:|
+| calls-varargs | 56 | 496,312 | 184 | 2,465,240 | 0 |
+| coroutines | 8,384 | 283,072 | 123,216 | 3,051,832 | 0 |
+| host-calls | 0 | 396,528 | 300,400 | 912,896 | 0 |
+| math | 0 | 168 | 40 | 3,265,544 | 0 |
+| metamethods | 2,008 | 1,920 | 1,600 | 2,628,368 | 0 |
+| nbody | 3,952 | 5,760 | 5,536 | 6,005,400 | 0 |
+| numeric-loop | 0 | 168 | 40 | 3,840,744 | 0 |
+| patterns | 361,600 | 131,368 | 92,840 | 3,149,752 | 0 |
+| strings | 141,024 | 528,392 | 413,064 | 1,238,152 | 0 |
+| table-access | 681,256 | 441,544 | 441,416 | 1,711,440 | 0 |
+| table-sort | 24,656 | 33,528 | 33,304 | 149,856 | 0 |
+
+- The call path work moves calls-varargs from 2.15x to 1.61x of Lua-CSharp (496 KB to 184 B a run: what is
+  left is the chunk's own local function and the result), coroutines from 1.02x to 0.84x (283 to 123 KB),
+  and host-calls from 2.24x to 2.04x (397 to 300 KB).
+- host-calls still pays for its callback written the usual way: `DynValue.NewCallback`, `args[0].Number` and
+  `DynValue.NewNumber`. The same callback written against the allocation-free API
+  (`new CallbackFunction(...) { UsesArgumentsOnlyDuringCall = true }`, `args.NumberAt(i)`,
+  `context.Return(x)`), as a separate `HostCallsApiComparison` class in the same harness, three runs:
+  Lua-CSharp 86.4 µs (80.5-88.4), fork 118.3 µs (117.9-120.9), 1.37x, 40 B a run (the `DynValue` that
+  `Script.Call` returns).
+- The rows with no varargs and no C# calls in their loops (numeric-loop, nbody, table-access, table-sort,
+  metamethods) stay within 0.98-1.03 of `next`; math (fast-called builtins) 0.99, strings and patterns
+  (library calls) 0.93 and 0.95.
+- The harness copy, with the second fork column and the API class, is not committed anywhere; the patch in
+  [lua-csharp-own-bench.patch](lua-csharp-own-bench.patch) gives the one-fork version.

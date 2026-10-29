@@ -96,12 +96,8 @@ namespace MoonSharp.Interpreter.Platforms
 
 			if (mode == "r")
 				return FileAccess.Read;
-			else if (mode == "r+")
-				return FileAccess.ReadWrite;
-			else if (mode == "w")
+			else if (mode == "w" || mode == "a")
 				return FileAccess.Write;
-			else if (mode == "w+")
-				return FileAccess.ReadWrite;
 			else
 				return FileAccess.ReadWrite;
 		}
@@ -115,14 +111,13 @@ namespace MoonSharp.Interpreter.Platforms
 		{
 			mode = mode.Replace("b", "");
 
-			if (mode == "r")
+			// As C's fopen: "r+" needs the file, "w+" creates it, "a+" reads too (Append is write-only).
+			if (mode == "r" || mode == "r+")
 				return FileMode.Open;
-			else if (mode == "r+")
-				return FileMode.OpenOrCreate;
-			else if (mode == "w")
+			else if (mode == "w" || mode == "w+")
 				return FileMode.Create;
-			else if (mode == "w+")
-				return FileMode.Truncate;
+			else if (mode == "a+")
+				return FileMode.OpenOrCreate;
 			else
 				return FileMode.Append;
 		}
@@ -140,7 +135,12 @@ namespace MoonSharp.Interpreter.Platforms
 		/// <returns></returns>
 		public override Stream IO_OpenFile(Script script, string filename, Encoding encoding, string mode)
 		{
-			return new FileStream(filename, ParseFileMode(mode), ParseFileAccess(mode), FileShare.ReadWrite | FileShare.Delete);
+			var stream = new FileStream(filename, ParseFileMode(mode), ParseFileAccess(mode), FileShare.ReadWrite | FileShare.Delete);
+
+			if (mode.Replace("b", "") == "a+")
+				stream.Seek(0, SeekOrigin.End);
+
+			return stream;
 		}
 
 		/// <summary>

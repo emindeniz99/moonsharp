@@ -1,6 +1,7 @@
 ﻿// Disable warnings about XML documentation
 #pragma warning disable 1591
 
+using System;
 using System.Text;
 using MoonSharp.Interpreter.Debugging;
 using MoonSharp.Interpreter.Loaders;
@@ -192,6 +193,10 @@ namespace MoonSharp.Interpreter.CoreLib
 			{
 				return DynValue.NewTuple(DynValue.Nil, DynValue.NewString(ex.DecoratedMessage ?? ex.Message));
 			}
+			catch (Exception ex) when (!(ex is InterpreterException))
+			{
+				return DynValue.NewTuple(DynValue.Nil, DynValue.NewString(CannotOpen(ex, args[0].String)));
+			}
 		}
 
 
@@ -226,6 +231,17 @@ namespace MoonSharp.Interpreter.CoreLib
 			{
 				throw new ScriptRuntimeException(ex);
 			}
+			catch (Exception ex) when (!(ex is InterpreterException))
+			{
+				throw new ScriptRuntimeException(CannotOpen(ex, args[0].String));
+			}
+		}
+
+		// The script loader could not read the file (FileSystemScriptLoader throws FileNotFoundException, the
+		// Unity loader a plain Exception): an error a script can catch, with Lua 5.2's text.
+		private static string CannotOpen(Exception ex, string filename)
+		{
+			return "cannot open " + filename + ": " + IoModule.IoErrorText(ex);
 		}
 
 		//require (modname)

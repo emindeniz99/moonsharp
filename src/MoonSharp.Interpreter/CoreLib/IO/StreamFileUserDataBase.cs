@@ -97,30 +97,41 @@ namespace MoonSharp.Interpreter.CoreLib.IO
 			return true;
 		}
 
-		public override long seek(string whence, long offset = 0)
+		public override DynValue seek(string whence, long offset = 0)
 		{
 			CheckFileIsNotClosed();
 			if (whence != null)
 			{
+				SeekOrigin origin;
+
 				if (whence == "set")
-				{
-					m_Stream.Seek(offset, SeekOrigin.Begin);
-				}
+					origin = SeekOrigin.Begin;
 				else if (whence == "cur")
-				{
-					m_Stream.Seek(offset, SeekOrigin.Current);
-				}
+					origin = SeekOrigin.Current;
 				else if (whence == "end")
-				{
-					m_Stream.Seek(offset, SeekOrigin.End);
-				}
+					origin = SeekOrigin.End;
 				else
-				{
 					throw ScriptRuntimeException.BadArgument(0, "seek", "invalid option '" + whence + "'");
+
+				try
+				{
+					if (m_Writer != null)
+						m_Writer.Flush();
+
+					m_Stream.Seek(offset, origin);
+
+					// The reader holds text read ahead from the old position.
+					if (m_Reader != null)
+						m_Reader.DiscardBufferedData();
+				}
+				catch (IOException)
+				{
+					// Before the start of the file: C's fseek fails with EINVAL, and Lua returns nil and the message.
+					return DynValue.NewTuple(DynValue.Nil, DynValue.NewString("Invalid argument"), DynValue.NewNumber(22));
 				}
 			}
 
-			return m_Stream.Position;
+			return DynValue.NewNumber(m_Stream.Position);
 		}
 
 		public override bool setvbuf(string mode)

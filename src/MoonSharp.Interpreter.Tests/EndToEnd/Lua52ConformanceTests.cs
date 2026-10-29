@@ -187,5 +187,21 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			StringAssert.Contains("jumps into the scope of local 'x'",
 				RunString("local f, e = load('do goto e; local x = 1; ::e:: print(x) end') return e"));
 		}
+
+
+		// Entry 35: __eq ran only when both tables had the same metatable; Lua 5.2 runs it when the two metatables'
+		// __eq fields are the same value, as in class hierarchies that copy it into each class.
+		[Test]
+		public void Eq_SharedHandlerAcrossMetatables()
+		{
+			Assert.AreEqual("true|false|false|false",
+				RunString(@"
+					local eq = function(a, b) return a.v == b.v end
+					local A = setmetatable({ v = 1 }, { __eq = eq })
+					local B = setmetatable({ v = 1 }, { __eq = eq })
+					local C = setmetatable({ v = 1 }, { __eq = function() return true end })
+					local D = setmetatable({ v = 1 }, {})
+					return table.concat({ tostring(A == B), tostring(A == C), tostring(A == D), tostring(D == A) }, '|')"));
+		}
 	}
 }

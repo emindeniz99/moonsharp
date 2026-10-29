@@ -47,6 +47,8 @@ chat or a pull request.
 | 2026-10-29 | If the register VM is built, the debugger works on register code too (stepping, breakpoints, attaching mid-run), rather than forcing debugged functions onto the stack VM. | Debugging runs the same code as release; the cost is a debugger API whose instruction pointer changes meaning, recorded in MIGRATING when it lands. |
 | 2026-10-29 | Tables keep the 24-byte `LuaValue` slot for now; the Unity IL2CPP run measures table memory and speed before a 16-byte slot is tried. | Fractional-number tables shrank and table access stopped allocating, but a table of 16 small integers grew from 295 to 551 bytes. |
 | 2026-10-29 | The browser package ships two builds: the interpreter build (default, 1,095,488 bytes brotli) and an AOT build for pages that run heavy scripts (Lua 1.7–5.6x faster, 2.69 MB). CI tests both against the fixtures. | First load matters most for client logic; some pages run enough Lua to want the faster build. |
+| 2026-10-29 | `ScriptExecutionContext` is reused per call depth only where no host code can receive it (standard library, MoonSharp's own callbacks, generated and reflection members without a context parameter); hand-written host callbacks get a fresh context per call. | A host that stores its context must never see another call's data silently; the 48 bytes per host callback are accepted. |
+| 2026-10-29 | `CallbackFunction.UsesArgumentsOnlyDuringCall` stays opt-in (default false). | Existing host callbacks may keep their `CallbackArguments`; the standard library and generated code already read arguments in place. |
 | standing | Safe C# only: no `unsafe`, no `System.Runtime.CompilerServices.Unsafe`. Public Unity mechanisms only: no libil2cpp patches. | Bugs must stay exceptions, not memory corruption. The `Unsafe` package also fails to load in some Unity 6 setups ([Lua-CSharp#337](https://github.com/nuskey8/Lua-CSharp/issues/337)). |
 | 2026-10-28 | Work collects on the `next` branch and lands on `master` in batches with `git merge --no-ff`, after the full unit suite and the fixtures pass locally. Pull requests are optional. CI runs on pushes to `master` (not for docs-only changes), and a red `master` is fixed forward first. | Fewer round trips and fewer CI runs. CI does not run on branches, so local checks come first. |
 | 2026-10-28 | The development toolchain is pinned in `mise.toml` (.NET SDK 10 with the .NET 8 runtime, Java 17, Maven, Node 24, CMake), following the shared stack's toolchain rules; CI installs it with `jdx/mise-action`. clang and zlib come from apt. | Local and CI builds use the same exact versions instead of whatever a machine or runner image carries. mise offers clang only through conda, whose sysroot fails the NativeAOT link (`cannot find -lz`). |
@@ -190,15 +192,12 @@ float_math 71 vs 42.6 (1.7x), fib_recursive 54 vs 40.8 us (1.3x). The stack VM i
 
 ## Next: correctness and diagnostics
 
-- A `goto` out of a numeric or generic `for` leaves the loop's control values on the value stack, so
-  an enclosing `for` reads them as its own counters and fails with "stack overflow" (reproduced on
-  `next`; found while testing the struct values).
-
 - Lua 5.2 conformance, from [research/lua52-conformance.md](research/lua52-conformance.md) (entry numbers there; `fix/lua52-batch1` fixed 1-4, 8, 9, 20-22, 24-26, 30, 31, 35 and part of 27):
   - Host crash left: `table.unpack({}, 2)` (15), `TableModule`, after the Table work; remove its three entries from `KnownCrashes` in `Lua52DifferentialGuardTests` with the fix.
   - `table.remove(t, #t + 1)` and `table.insert(t, pos, nil)` (14, 16) after the Table work; `error` with a table (7) and `xpcall` handler errors, "error in error handling" (11), with the call path work.
   - Smaller ones left: `loadfile` takes `mode` and only a table as `env` (30 fixed `load` only); `io.open` failures have no `errno` value, and `file:seek()` reports the position after what the reader buffered, not after what the script read (31); `string.char(256)` gives "?", string indices of 2^31 or more wrap, `string.sub(s, nil)` is accepted (27); the names in `bad argument` messages (`'band'`, not `'bit32.band'`) and the other message differences (13); `math.frexp(-0.0)`, `math.max` with NaN, `math.random(0)` (23).
-  - Owner questions: `loadstring`, `module`, `table.maxn`, `math.log10` (Lua 5.2's default build has them) (29); `collectgarbage("count")` returning nil and whether `collectgarbage()` keeps forcing a blocking full GC (10); `#t` with holes, where 5.2 returns the array size (18; both are borders the manual allows); the `chunk:(line,col)` position format that scripts parse (13); whether `string.format("%c", n)` keeps giving the UTF-16 character for 256 <= n <= 65535 (Lua 5.2 gives the low byte).
+  - Decided 2026-10-29, to do: add `loadstring`, `table.maxn` and `math.log10` to the default presets, not `module` (29); `collectgarbage("count")` returns the managed heap in KB (process-wide), `collectgarbage()` asks for a non-blocking optimized collection instead of a forced full one, and an invalid option is an error (10).
+  - Owner questions: `#t` with holes, where 5.2 returns the array size (18; both are borders the manual allows); the `chunk:(line,col)` position format that scripts parse (13); whether `string.format("%c", n)` keeps giving the UTF-16 character for 256 <= n <= 65535 (Lua 5.2 gives the low byte).
   - Compare the values of the differential cases in the unit runner against a known-differences file, as the hosting corpus does (`Lua52DifferentialGuardTests` runs every case but checks only that none ends the host), and run the 5.2 suite in CI with `suite/workarounds.txt` shrinking as fixes land (`bitwise`, `constructs`, `events` and `math` now pass every assertion they reach; check which of their workarounds can go).
 - Name the variable in runtime errors ("attempt to call a nil value (global 'foo')").
 - A `Script` keeps every chunk it compiles, so a long-lived `Script` that compiles in a loop grows without bound.
@@ -252,7 +251,7 @@ float_math 71 vs 42.6 (1.7x), fib_recursive 54 vs 40.8 us (1.3x). The stack VM i
   - no memory limit per context: in process one capped .NET heap serves every context;
   - cancelling a running call from another thread (for example a Java `Future.cancel` reaching the context), on top of the time limit;
   - in-process builds for macOS and Windows, which the default would need.
-- Browser budget, owner decisions ([hosting.md](hosting.md), "Browser budget"): `InvariantTimezone` (-67 KB brotli, `os.date` local time becomes UTC); which assumption replaces the 5 s target, which the 1.10 MB download alone misses (5.2 s at 1.6 Mbit/s).
+- Browser budget ([hosting.md](hosting.md), "Browser budget"): `InvariantTimezone` stays off, so `os.date` keeps the user's local time (owner, 2026-10-29; it would save 67 KB brotli). Still open: which assumption replaces the 5 s target, which the 1.10 MB download alone misses (5.2 s at 1.6 Mbit/s).
 - Browser follow-ups: set the desktop start budgets (1,500 ms for both builds) from CI runners' numbers once the job has run a few times; the interpreter build grew from 1,095,488 to 1,126,768 bytes brotli on `next` (`System.Runtime.Numerics`, 25 KB, arrived with `string.format`'s `BigInteger` rounding in `bbeb262`), 13 KB under its 1,140,000 budget, so the next growth fails CI: decide whether that rounding is worth its download or the budget moves; re-measure `WasmEnableSIMD=false` (-23.5 KB, 4-7% slower string-keyed table work in Firefox) when the Lua workloads change; a cached runtime for repeat visits (service worker), if the owner wants repeat visits counted.
 - From upstream feature requests ([upstream-issues.md](upstream-issues.md)):
   - a `ScriptedImporter` for `.lua` files in the Unity package (upstream #235), with the Unity CI matrix;
@@ -271,6 +270,67 @@ float_math 71 vs 42.6 (1.7x), fib_recursive 54 vs 40.8 us (1.3x). The stack VM i
 - A Debug Adapter Protocol server, so any editor can debug scripts.
 - Save and restore a `Script`'s state.
 - A built-in integer subtype, if the struct-value step makes it cheap (see decisions).
+
+## Later: features for scripts that a backend delivers
+
+The use case is app or game logic that a backend sends and every client runs. The owner wants these
+written down in detail and judged none of them urgent (2026-10-29). Each entry says what is in place,
+what is left and what "done" means.
+
+1. **The same results on every host.** One script with the same inputs gives byte-identical results
+   on .NET, the Java hosts, the browser, Unity Mono and Unity IL2CPP.
+   - In place: shortest round-trip number text on every runtime (`NumberFormatting`), insertion-order
+     `pairs` (decision Q2), a culture-independent interpreter (the corpus runs under tr-TR), exact
+     `string.format` digits (`fix/lua52-batch1`).
+   - Left: `math.random` draws from `System.Random` (`CoreLib/MathModule.cs:20-35`). Microsoft does
+     not promise the same sequence for a seed across .NET versions [S], and Unity's class library is
+     Mono's [U]; a seeded generator of our own (for example xoshiro256**) would fix the sequence.
+     `math.sin`, `exp`, `pow` and the other functions come from each runtime's math library, which
+     may differ in the last bit between CoreCLR, Mono, IL2CPP and WebAssembly [U, not measured].
+     `os.time` and `os.date` follow the host's clock and time zone by design.
+   - Done when: a CI job runs the corpus plus a determinism suite (random sequences for fixed seeds,
+     the math functions over a fixed input set, number formatting) on every host and compares the
+     outputs byte for byte, with intended differences in a known-differences file.
+
+2. **Sandbox and memory limit.** A script gets only what the host grants and cannot hurt the host or
+   later scripts.
+   - In place: `CoreModules` presets choose the modules; time and instruction limits on every host;
+     the 200-level guard against C-stack recursion.
+   - Left: the standard library tables are writable, so one chunk can replace `string.format` for every
+     later chunk of the same `Script`. Luau makes its built-in tables read-only for this reason [S];
+     a read-only flag on `Table`, set on the library tables, would do it here. There is no memory
+     limit per context: .NET cannot measure one object graph, so a budget would count what the
+     interpreter allocates (strings, tables, closures, coroutines) where it allocates it. Measure the
+     counting cost; the paths that allocate nothing today must stay at 0 B.
+   - Done when: a suite of hostile scripts (replace library functions, grow a table forever, build a
+     huge string, recurse deeply, loop forever) ends each with a catchable error and leaves the host and
+     its other contexts working, on every host.
+
+3. **Signed script bundles.** The backend ships compiled chunks (`moonsharp-host compile`, which keeps
+   source locations) in a bundle with a manifest: names, hashes, the bytecode format version and the
+   lowest engine version that runs it, plus a signature.
+   - Why: the client runs only what the backend built, and an old client rejects a bundle it cannot run
+     before the first script starts, instead of failing halfway.
+   - In place: dumps carry a format version (0x154 today) and readers reject a newer one.
+   - Left: the bundle and manifest format and the signature algorithm. It must verify on netstandard2.0,
+     Unity Mono and IL2CPP, the browser and Java; which algorithms every one of them ships is not
+     checked yet [U]. A host-supplied verifier callback is the fallback.
+   - Done when: a tampered bundle, a bundle signed with another key and a bundle with a newer format
+     each fail to load with their own error, on every host.
+
+4. **Debugging and profiling.** Logic that runs on players' devices is debugged from logs, so errors
+   must say enough on their own.
+   - Left: `debug.getinfo` and `debug.traceback` as in Lua 5.2 (`debug.getinfo` is absent, conformance
+     survey); errors that name the variable (listed under correctness); the Debug Adapter Protocol
+     server (listed under ideas); a sampling profiler that reports time per Lua function, cheap enough
+     to leave on in a development build.
+   - Done when: a runtime error in a nested call logs the function names, chunk names and lines of each
+     frame on every host, and the profiler's report matches a script with known hot functions.
+
+5. **Memory still above Lua-CSharp's** in its own suite (bytes per run, [research/lua-csharp-own-bench.md](research/lua-csharp-own-bench.md)):
+   `strings` 576 KB against 141 KB; `coroutines` 123 KB against 8 KB and `host-calls` 300 KB against
+   0 (both measured on `perf/call-path`; `host-calls` takes 40 B with `NumberAt` and `Return`). Run the
+   whole suite on `master` once before choosing what to cut.
 
 ## Needs the owner
 

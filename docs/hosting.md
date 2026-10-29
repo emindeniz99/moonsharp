@@ -754,7 +754,7 @@ Rejected:
 
 - **`InvariantTimezone`** (−67 KB) drops the time zone data, and `os.date`
   without `!` then returns UTC instead of the browser's local time. That
-  changes what scripts see, so it needs the owner. The smoke test now runs in
+  changes what scripts see; the owner keeps it off (ROADMAP.md, 2026-10-29). The smoke test now runs in
   the Asia/Tokyo zone and fails with it on.
 - **`WasmEnableSIMD=false`** (−23.5 KB, and older Safari versions would run the
   page). Chromium showed no difference, Firefox ran string-keyed table work
@@ -812,8 +812,7 @@ It stays out of reach under slow 4G. The interpreter build's download alone take
 0.5 s desktop start, and the relinked `dotnet.native.wasm` is 450 KB by itself.
 CI enforces the measured state with a 4% margin (1,140,000 bytes) and keeps the
 desktop start budget at 1,500 ms until CI runners have a record. The levers
-that remain need the owner: `InvariantTimezone` (−67 KB, local time becomes
-UTC), a faster network assumption, a
+that remain need the owner: a faster network assumption, a
 cached runtime for repeat visits, or a smaller engine for the web.
 
 ## Status

@@ -213,7 +213,7 @@ namespace MoonSharp.Interpreter.CoreLib.StringLib
 			string p = CheckString(args, 1, "gmatch");
 
 			var state = new GMatchState { Src = s, Pat = p };
-			return DynValue.NewCallback(new CallbackFunction(state.Step, "gmatch"));
+			return CallbackFunction.NewInternal(state.Step, "gmatch");
 		}
 
 		internal static DynValue GSub(ScriptExecutionContext executionContext, CallbackArguments args)

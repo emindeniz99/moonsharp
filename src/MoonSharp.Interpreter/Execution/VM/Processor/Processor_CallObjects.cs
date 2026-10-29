@@ -5,12 +5,22 @@ namespace MoonSharp.Interpreter.Execution.VM
 {
 	sealed partial class Processor
 	{
-		// The ScriptExecutionContext and the argument view of every C# function call, one of each per call
-		// depth (the index of the function's frame), created on first use and reused by every later call at
-		// that depth: a C# function running at one depth can call Lua, which calls C# functions only at
-		// greater depths. A call creates neither object.
+		// The ScriptExecutionContext and the argument view of C# function calls, one of each per call depth
+		// (the index of the function's frame), created on first use and reused by every later call at that
+		// depth: a C# function running at one depth can call Lua, which calls C# functions only at greater
+		// depths. The context is lent only to MoonSharp's own functions (CallbackFunction.ReusesContext),
+		// which never let host code keep it; a host callback may keep its context and read it after it
+		// returned, so it gets a new one.
 		ScriptExecutionContext[] m_CallContexts;
 		CallbackArguments.StackArguments[] m_CallArguments;
+
+		/// <summary>
+		/// The result a C# function called by this processor gave with ScriptExecutionContext.Return, until the
+		/// processor takes it as the function returns. One slot per processor (per coroutine) is enough: the
+		/// function returns the placeholder right after Return, before any other call on this processor; in
+		/// the context it would make every context 24 bytes larger.
+		/// </summary>
+		internal LuaValue CallResult;
 
 		/// <summary>
 		/// The execution context for a call of <paramref name="callback"/> whose frame is at
@@ -18,6 +28,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 		/// </summary>
 		private ScriptExecutionContext CallContext(int depth, CallbackFunction callback, SourceRef sourceRef)
 		{
+			if (!callback.ReusesContext)
+				return new ScriptExecutionContext(this, callback, sourceRef) { LentByProcessor = true };
+
 			if (m_CallContexts == null || depth >= m_CallContexts.Length)
 				Array.Resize(ref m_CallContexts, Math.Max(8, (depth + 1) * 2));
 

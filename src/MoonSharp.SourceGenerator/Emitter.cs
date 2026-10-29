@@ -182,6 +182,8 @@ namespace MoonSharp.SourceGenerator
 				{
 					m_Id = id;
 					Initialize(name, isStatic, parameters, isExtensionMethod);
+					// Execute hands the context only to a ScriptExecutionContext parameter.
+					ExecuteKeepsNoContext = true;
 				}
 
 				public override " + MS + "DynValue Execute(" + MS + "Script script, object obj, " + MS + "ScriptExecutionContext context, " + MS + @"CallbackArguments args)

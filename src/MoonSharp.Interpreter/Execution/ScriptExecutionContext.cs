@@ -32,14 +32,13 @@ namespace MoonSharp.Interpreter
 			CallingLocation = sourceRef;
 		}
 
-		// A context the processor lends to the C# functions it calls keeps their result here when they return
-		// it with Return, and gives the processor ResultInContext instead of a new DynValue.
+		// The C# functions the processor calls with this context return a result given with Return through
+		// the processor (Processor.CallResult), and give it ResultInContext instead of a new DynValue.
 		internal bool LentByProcessor;
-		LuaValue m_Result;
 
 		/// <summary>
 		/// What <see cref="Return(double)"/> and <see cref="Return(string)"/> give the processor: the result is
-		/// in the context.
+		/// in <see cref="Processor.CallResult"/>.
 		/// </summary>
 		internal static readonly DynValue ResultInContext = DynValue.NewNil();
 
@@ -48,14 +47,14 @@ namespace MoonSharp.Interpreter
 		/// callback, the number goes onto the value stack without a new <see cref="DynValue"/>; otherwise (a call
 		/// from C#) it is <see cref="DynValue.NewNumber"/>. Use it only as the callback's return value, and
 		/// only from the callback this context was passed to: what it returns is a placeholder that is
-		/// valid until the next call of Return on this context.
+		/// valid until the next call of Return in the same coroutine.
 		/// </summary>
 		public DynValue Return(double number)
 		{
 			if (!LentByProcessor)
 				return DynValue.NewNumber(number);
 
-			m_Result = LuaValue.FromNumber(number);
+			m_Processor.CallResult = LuaValue.FromNumber(number);
 			return ResultInContext;
 		}
 
@@ -70,7 +69,7 @@ namespace MoonSharp.Interpreter
 			if (!LentByProcessor)
 				return DynValue.NewString(str);
 
-			m_Result = LuaValue.FromString(str);
+			m_Processor.CallResult = LuaValue.FromString(str);
 			return ResultInContext;
 		}
 
@@ -82,7 +81,7 @@ namespace MoonSharp.Interpreter
 			if (!LentByProcessor)
 				return value.ToDynValue();
 
-			m_Result = value;
+			m_Processor.CallResult = value;
 			return ResultInContext;
 		}
 
@@ -97,12 +96,22 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
-		/// The result a callback left with Return, as a VM value; the context lets go of it.
+		/// This context, or a copy for code that may keep it after the call (a userdata method with a
+		/// ScriptExecutionContext parameter): the processor lends a context it reuses for later calls. The
+		/// copy is not lent, so Return in that code gives an ordinary DynValue.
+		/// </summary>
+		internal ScriptExecutionContext ToKeep()
+		{
+			return LentByProcessor ? new ScriptExecutionContext(m_Processor, m_Callback, CallingLocation, IsDynamicExecution, StackFrameIndex) : this;
+		}
+
+		/// <summary>
+		/// The result a callback left with Return, as a VM value; the processor lets go of it.
 		/// </summary>
 		internal LuaValue TakeResult()
 		{
-			LuaValue v = m_Result;
-			m_Result = default(LuaValue);
+			LuaValue v = m_Processor.CallResult;
+			m_Processor.CallResult = default(LuaValue);
 			return v;
 		}
 

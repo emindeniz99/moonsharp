@@ -30,7 +30,7 @@ namespace MoonSharp.Interpreter.CoreLib
 			// The coroutine lives in the delegate, not in AdditionalData: pcall(f) runs f with pcall's own
 			// context, whose AdditionalData is pcall's.
 			// The resumed value goes to the caller through the context, without a DynValue.
-			DynValue c = DynValue.NewCallback((ctx, a) => ctx.Return(v.Coroutine.ResumeValue(a.GetArray())));
+			DynValue c = CallbackFunction.NewInternal((ctx, a) => ctx.Return(v.Coroutine.ResumeValue(a.GetArray())));
 			// it copies its arguments at once
 			c.Callback.ReadsArgumentsInPlace = true;
 			return c;

@@ -84,12 +84,12 @@ namespace MoonSharp.Interpreter.Interop
 			{
 				IsFlags = true;
 
-				AddEnumMethod("flagsAnd", DynValue.NewCallback(Callback_And));
-				AddEnumMethod("flagsOr", DynValue.NewCallback(Callback_Or));
-				AddEnumMethod("flagsXor", DynValue.NewCallback(Callback_Xor));
-				AddEnumMethod("flagsNot", DynValue.NewCallback(Callback_BwNot));
-				AddEnumMethod("hasAll", DynValue.NewCallback(Callback_HasAll));
-				AddEnumMethod("hasAny", DynValue.NewCallback(Callback_HasAny));
+				AddEnumMethod("flagsAnd", CallbackFunction.NewInternal(Callback_And));
+				AddEnumMethod("flagsOr", CallbackFunction.NewInternal(Callback_Or));
+				AddEnumMethod("flagsXor", CallbackFunction.NewInternal(Callback_Xor));
+				AddEnumMethod("flagsNot", CallbackFunction.NewInternal(Callback_BwNot));
+				AddEnumMethod("hasAll", CallbackFunction.NewInternal(Callback_HasAll));
+				AddEnumMethod("hasAny", CallbackFunction.NewInternal(Callback_HasAny));
 			}
 		}
 
@@ -352,7 +352,7 @@ namespace MoonSharp.Interpreter.Interop
 		public override DynValue MetaIndex(Script script, object obj, string metaname)
 		{
 			if (metaname == "__concat" && IsFlags)
-				return DynValue.NewCallback(Callback_Or);
+				return CallbackFunction.NewInternal(Callback_Or);
 
 			return null;
 		}

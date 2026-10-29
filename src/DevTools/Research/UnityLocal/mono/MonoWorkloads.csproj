@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Standalone: not part of any solution. The workloads-tsv runner of src/DevTools/Benchmarks as a net48
+       executable for Unity's Mono, compiled from the same files the Unity test bed copies (sync.sh).
+       MoonSharpDll: a net45 MoonSharp.Interpreter.dll. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net48</TargetFramework><LangVersion>9.0</LangVersion>
+    <Optimize>true</Optimize><Nullable>disable</Nullable><AssemblyName>bench</AssemblyName>
+    <MoonSharpDll Condition="'$(MoonSharpDll)' == ''">$(MSBuildThisFileDirectory)../../../../MoonSharp.Interpreter/bin/Release/net45/MoonSharp.Interpreter.dll</MoonSharpDll>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../Benchmarks/LuaWorkloads.cs" Link="LuaWorkloads.cs" />
+    <Compile Include="../../../Benchmarks/LuaCSharpScripts.cs" Link="LuaCSharpScripts.cs" />
+    <Compile Include="../../../Benchmarks/WorkloadTsv.cs" Link="WorkloadTsv.cs" />
+    <Reference Include="MoonSharp.Interpreter"><HintPath>$(MoonSharpDll)</HintPath></Reference>
+  </ItemGroup>
+</Project>

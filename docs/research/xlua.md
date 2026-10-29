@@ -8,9 +8,9 @@ Repositories and commits read:
 
 | Short | Repository | Commit | Where read |
 |---|---|---|---|
-| `XL/` | https://github.com/Tencent/xLua | `59bf42685dbe36fe0e1678a6ba8597f859ef7ca3` (2025-11-21, "修复例子在Unity6000的打包错误 (#1208)") | shallow clone at `/tmp/claude-0/-home-user/49abf7c9-632c-52bb-859e-20c0836e18dc/scratchpad/ext/xlua` |
-| `NG/` | https://github.com/emindeniz99/xlua-ng | `3042ef63dae56543ad4e43105170f52123e284a2` (on `origin/main`) | local clone `/home/user/xlua-ng` |
-| `MS/` | https://github.com/moonsharp-devs/moonsharp | `fbd03678d5c0f731d731d099211c7f4a3a1ae8b7` (upstream master, identical to the fork's `master`) | `/home/user/moonsharp` |
+| `XL/` | https://github.com/Tencent/xLua | `59bf42685dbe36fe0e1678a6ba8597f859ef7ca3` (2025-11-21, "修复例子在Unity6000的打包错误 (#1208)") | shallow clone (not kept) |
+| `NG/` | https://github.com/emindeniz99/xlua-ng | `3042ef63dae56543ad4e43105170f52123e284a2` (on `origin/main`) | local clone |
+| `MS/` | https://github.com/moonsharp-devs/moonsharp | `fbd03678d5c0f731d731d099211c7f4a3a1ae8b7` (upstream master, identical to the fork's `master`) | the fork's checkout |
 
 Permalink bases:
 

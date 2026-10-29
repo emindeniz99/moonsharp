@@ -599,7 +599,8 @@ To switch, a page points at the other build:
   `createMoonSharp("<aot wwwroot>/_framework")` on the main thread, and
   `WorkerClient.start("<aot wwwroot>/js/worker.js")` for the Web Worker (the
   worker loads `../_framework` relative to its own script). Both were checked
-  in Chromium with the AOT folder served under the interpreter build's page.
+  in Chromium with the AOT folder served under the interpreter build's page
+  (`cross.mjs` in the same folder).
 
 One page should start one runtime; loading both builds into the same page was
 not tested.
@@ -649,7 +650,8 @@ Script speed, the same page and harness, median of 5 runs after a warm-up, ms
 `string_pattern` and `table_hash_set_get` cases of
 `src/DevTools/Benchmarks/LuaWorkloads.cs` with smaller counts, run through
 `createContext().run()`; the invoke is the smoke test's cached
-`eligibility` call with JSON arguments:
+`eligibility` call with JSON arguments (`speed.mjs` in
+[src/DevTools/Research/Browser](../src/DevTools/Research/Browser/README.md)):
 
 | Workload | Chromium 153 interpreter | AOT | Firefox 155 interpreter | AOT | WebKit 26.6 interpreter | AOT |
 |---|---|---|---|---|---|---|

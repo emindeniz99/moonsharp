@@ -1,0 +1,90 @@
+diff --git a/src/MoonSharp.Interpreter/DataTypes/DynValue.cs b/src/MoonSharp.Interpreter/DataTypes/DynValue.cs
+index 30b21f1..a42d5b7 100644
+--- a/src/MoonSharp.Interpreter/DataTypes/DynValue.cs
++++ b/src/MoonSharp.Interpreter/DataTypes/DynValue.cs
+@@ -17,6 +17,8 @@ namespace MoonSharp.Interpreter
+ 		private int m_HashCode = -1;
+ 
+ 		private bool m_ReadOnly;
++		internal bool m_IsCell;
++		internal static DynValue NewCell(DynValue v) { var c = v.Clone(false); c.m_IsCell = true; return c; }
+ 		private double m_Number;
+ 		private object m_Object;
+ 		private DataType m_Type;
+diff --git a/src/MoonSharp.Interpreter/Execution/VM/Processor/Processor_InstructionLoop.cs b/src/MoonSharp.Interpreter/Execution/VM/Processor/Processor_InstructionLoop.cs
+index 91f4ba3..ce6ee30 100644
+--- a/src/MoonSharp.Interpreter/Execution/VM/Processor/Processor_InstructionLoop.cs
++++ b/src/MoonSharp.Interpreter/Execution/VM/Processor/Processor_InstructionLoop.cs
+@@ -198,7 +198,7 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 						case OpCode.Local:
+ 							var scope = m_ExecutionStack.Peek().LocalScope;
+ 							var index = i.Symbol.i_Index;
+-							m_ValueStack.Push(scope[index].AsReadOnly());
++							var lv = scope[index]; m_ValueStack.Push(lv.m_IsCell ? lv.AsReadOnly() : lv);
+ 							break;
+ 						case OpCode.Upvalue:
+ 							m_ValueStack.Push(m_ExecutionStack.Peek().ClosureScope[i.Symbol.i_Index].AsReadOnly());
+@@ -355,11 +355,8 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 		{
+ 			var stackframe = m_ExecutionStack.Peek();
+ 
+-			DynValue v = stackframe.LocalScope[symref.i_Index];
+-			if (v == null)
+-				stackframe.LocalScope[symref.i_Index] = v = DynValue.NewNil();
+-
+-			v.Assign(value);
++			var slot = stackframe.LocalScope[symref.i_Index];
++			if (slot != null && slot.m_IsCell) slot.Assign(value); else stackframe.LocalScope[symref.i_Index] = value;
+ 		}
+ 
+ 		private void ExecStoreLcl(Instruction i)
+@@ -422,7 +419,12 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 		private DynValue GetUpvalueSymbol(SymbolRef s)
+ 		{
+ 			if (s.Type == SymbolRefType.Local)
+-				return m_ExecutionStack.Peek().LocalScope[s.i_Index];
++			{
++				var ls = m_ExecutionStack.Peek().LocalScope;
++				var slot = ls[s.i_Index];
++				if (slot == null || !slot.m_IsCell) { slot = DynValue.NewCell(slot ?? DynValue.Nil); ls[s.i_Index] = slot; }
++				return slot;
++			}
+ 			else if (s.Type == SymbolRefType.Upvalue)
+ 				return m_ExecutionStack.Peek().ClosureScope[s.i_Index];
+ 			else
+@@ -545,17 +547,7 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 			DynValue top = m_ValueStack.Peek(0);
+ 			DynValue btm = m_ValueStack.Peek(i.NumVal);
+ 
+-			if (top.ReadOnly)
+-			{
+-				m_ValueStack.Pop();
+-
+-				if (top.ReadOnly)
+-					top = top.CloneAsWritable();
+-
+-				m_ValueStack.Push(top);
+-			}
+-
+-			top.AssignNumber(top.Number + btm.Number);
++			m_ValueStack.Pop(); m_ValueStack.Push(DynValue.NewNumber(top.Number + btm.Number));
+ 		}
+ 
+ 
+@@ -651,14 +643,14 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 
+ 					for (int ii = 0; ii < len; ii++, i++)
+ 					{
+-						varargs[ii] = argsList[i].ToScalar().CloneAsWritable();
++						varargs[ii] = argsList[i].ToScalar();
+ 					}
+ 
+ 					this.AssignLocal(I.SymbolList[I.SymbolList.Length - 1], DynValue.NewTuple(Internal_AdjustTuple(varargs)));
+ 				}
+ 				else
+ 				{
+-					this.AssignLocal(I.SymbolList[i], argsList[i].ToScalar().CloneAsWritable());
++					this.AssignLocal(I.SymbolList[i], argsList[i].ToScalar());
+ 				}
+ 			}
+ 		}

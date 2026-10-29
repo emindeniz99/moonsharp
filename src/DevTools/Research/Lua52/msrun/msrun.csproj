@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Standalone: not part of any solution. Runs one Lua file with this repository's interpreter. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../../MoonSharp.Interpreter/MoonSharp.Interpreter.csproj" />
+  </ItemGroup>
+</Project>

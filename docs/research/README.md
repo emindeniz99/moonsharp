@@ -1,9 +1,12 @@
 # Research notes
 
 Research behind the decisions in [ROADMAP.md](../ROADMAP.md), written on 2026-10-28. Claims carry
-evidence marks: [C] confirmed by reading source or docs, [S] secondary, [U] unconfirmed. Paths that
-start with `/tmp/` or mention a scratchpad point to the working files of the session that produced the
-note; they are not part of this repository.
+evidence marks: [C] confirmed by reading source or docs, [S] secondary, [U] unconfirmed.
+
+The harnesses and scripts behind the measurements are in
+[src/DevTools/Research](../../src/DevTools/Research/README.md), one folder per study, each with the
+commands to run it again. A note says "not kept" where a session's file was a one-off; third-party
+clones are named by repository and commit, not by a local path.
 
 | Note | What it covers |
 |---|---|

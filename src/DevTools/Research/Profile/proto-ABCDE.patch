@@ -1,0 +1,428 @@
+diff --git a/src/MoonSharp.Interpreter/DataTypes/DynValue.cs b/src/MoonSharp.Interpreter/DataTypes/DynValue.cs
+index 30b21f1..4110ec7 100644
+--- a/src/MoonSharp.Interpreter/DataTypes/DynValue.cs
++++ b/src/MoonSharp.Interpreter/DataTypes/DynValue.cs
+@@ -104,6 +104,14 @@ namespace MoonSharp.Interpreter
+ 			};
+ 		}
+ 
++		/// <summary>
++		/// Returns the shared read-only True or False instance (no allocation). Internal VM use.
++		/// </summary>
++		internal static DynValue FromBoolean(bool v)
++		{
++			return v ? True : False;
++		}
++
+ 		/// <summary>
+ 		/// Creates a new writable value initialized to the specified number.
+ 		/// </summary>
+diff --git a/src/MoonSharp.Interpreter/DataTypes/Table.cs b/src/MoonSharp.Interpreter/DataTypes/Table.cs
+index c4a4bec..0bcac6b 100644
+--- a/src/MoonSharp.Interpreter/DataTypes/Table.cs
++++ b/src/MoonSharp.Interpreter/DataTypes/Table.cs
+@@ -161,7 +161,19 @@ namespace MoonSharp.Interpreter
+ 
+ 		private void PerformTableSet<T>(LinkedListIndex<T, TablePair> listIndex, T key, DynValue keyDynValue, DynValue value, bool isNumber, int appendKey)
+ 		{
+-			TablePair prev = listIndex.Set(key, new TablePair(keyDynValue, value));
++			// Update in place when the key exists: reuse its key value instead of allocating a new one.
++			TablePair prev;
++			LinkedListNode<TablePair> existing = listIndex.Find(key);
++			if (existing != null)
++			{
++				prev = existing.Value;
++				existing.Value = new TablePair(prev.Key, value);
++			}
++			else
++			{
++				prev = default(TablePair);
++				listIndex.Add(key, new TablePair(keyDynValue ?? MakeKey(key), value));
++			}
+ 
+ 			// If this is an insert, we can invalidate all iterators and collect dead keys
+ 			if (m_ContainsNilEntries && value.IsNotNil() && (prev.Value == null || prev.Value.IsNil()))
+@@ -202,6 +214,13 @@ namespace MoonSharp.Interpreter
+ 			}
+ 		}
+ 
++		private static DynValue MakeKey<T>(T key)
++		{
++			if (key is string) return DynValue.NewString((string)(object)key);
++			if (key is int) return DynValue.NewNumber((int)(object)key);
++			return (DynValue)(object)key;
++		}
++
+ 		/// <summary>
+ 		/// Sets the value associated to the specified key.
+ 		/// </summary>
+@@ -213,7 +232,7 @@ namespace MoonSharp.Interpreter
+ 				throw ScriptRuntimeException.TableIndexIsNil();
+ 
+ 			this.CheckScriptOwnership(value);
+-			PerformTableSet(m_StringMap, key, DynValue.NewString(key), value, false, -1);
++			PerformTableSet(m_StringMap, key, null, value, false, -1);
+ 		}
+ 
+ 		/// <summary>
+@@ -224,7 +243,7 @@ namespace MoonSharp.Interpreter
+ 		public void Set(int key, DynValue value)
+ 		{
+ 			this.CheckScriptOwnership(value);
+-			PerformTableSet(m_ArrayMap, key, DynValue.NewNumber(key), value, true, -1);
++			PerformTableSet(m_ArrayMap, key, null, value, true, -1);
+ 		}
+ 
+ 		/// <summary>
+diff --git a/src/MoonSharp.Interpreter/Execution/Scopes/ClosureContext.cs b/src/MoonSharp.Interpreter/Execution/Scopes/ClosureContext.cs
+index 095fcd5..ec020d4 100644
+--- a/src/MoonSharp.Interpreter/Execution/Scopes/ClosureContext.cs
++++ b/src/MoonSharp.Interpreter/Execution/Scopes/ClosureContext.cs
+@@ -14,9 +14,21 @@ namespace MoonSharp.Interpreter.Execution
+ 		public string[] Symbols { get; private set; }
+ 
+ 		internal ClosureContext(SymbolRef[] symbols, IEnumerable<DynValue> values)
++			: base(symbols.Length)
+ 		{
+-			Symbols = symbols.Select(s => s.i_Name).ToArray();
+-			this.AddRange(values);
++			string[] names = new string[symbols.Length];
++			for (int i = 0; i < names.Length; i++)
++				names[i] = symbols[i].i_Name;
++			Symbols = names;
++
++			DynValue[] arr = values as DynValue[];
++			if (arr != null)
++			{
++				for (int i = 0; i < arr.Length; i++)
++					this.Add(arr[i]);
++			}
++			else
++				this.AddRange(values);
+ 		}
+ 
+ 		internal ClosureContext()
+diff --git a/src/MoonSharp.Interpreter/Execution/VM/ByteCode.cs b/src/MoonSharp.Interpreter/Execution/VM/ByteCode.cs
+index 0754992..90d2ae8 100755
+--- a/src/MoonSharp.Interpreter/Execution/VM/ByteCode.cs
++++ b/src/MoonSharp.Interpreter/Execution/VM/ByteCode.cs
+@@ -12,6 +12,18 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 	internal class ByteCode : RefIdObject
+ 	{
+ 		public List<Instruction> Code = new List<Instruction>();
++		Instruction[] m_CodeArray = new Instruction[0];
++
++		/// <summary>
++		/// Returns the instructions as an array, rebuilt only when instructions were appended since the last call.
++		/// Old snapshots stay valid for the addresses they contain (instructions are only ever appended).
++		/// </summary>
++		internal Instruction[] GetCodeArray()
++		{
++			if (m_CodeArray.Length != Code.Count)
++				m_CodeArray = Code.ToArray();
++			return m_CodeArray;
++		}
+ 		public Script Script { get; private set; }
+ 		private List<SourceRef> m_SourceRefStack = new List<SourceRef>();
+ 		private SourceRef m_CurrentSourceRef = null;
+diff --git a/src/MoonSharp.Interpreter/Execution/VM/Processor/Processor.cs b/src/MoonSharp.Interpreter/Execution/VM/Processor/Processor.cs
+index 8128de9..5043f5c 100755
+--- a/src/MoonSharp.Interpreter/Execution/VM/Processor/Processor.cs
++++ b/src/MoonSharp.Interpreter/Execution/VM/Processor/Processor.cs
+@@ -12,7 +12,7 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 
+ 		ByteCode m_RootChunk;
+ 
+-		FastStack<DynValue> m_ValueStack;
++		DynValueStack m_ValueStack;
+ 		FastStack<CallStackItem> m_ExecutionStack;
+ 		List<Processor> m_CoroutinesStack;
+ 
+@@ -27,7 +27,7 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 
+ 		public Processor(Script script, Table globalContext, ByteCode byteCode)
+ 		{
+-			m_ValueStack = new FastStack<DynValue>(STACK_SIZE);
++			m_ValueStack = new DynValueStack(STACK_SIZE);
+ 			m_ExecutionStack = new FastStack<CallStackItem>(STACK_SIZE);
+ 			m_CoroutinesStack = new List<Processor>();
+ 
+@@ -41,7 +41,7 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 
+ 		private Processor(Processor parentProcessor)
+ 		{
+-			m_ValueStack = new FastStack<DynValue>(STACK_SIZE);
++			m_ValueStack = new DynValueStack(STACK_SIZE);
+ 			m_ExecutionStack = new FastStack<CallStackItem>(STACK_SIZE);
+ 			m_Debug = parentProcessor.m_Debug;
+ 			m_RootChunk = parentProcessor.m_RootChunk;
+diff --git a/src/MoonSharp.Interpreter/Execution/VM/Processor/Processor_InstructionLoop.cs b/src/MoonSharp.Interpreter/Execution/VM/Processor/Processor_InstructionLoop.cs
+index 91f4ba3..34f664d 100644
+--- a/src/MoonSharp.Interpreter/Execution/VM/Processor/Processor_InstructionLoop.cs
++++ b/src/MoonSharp.Interpreter/Execution/VM/Processor/Processor_InstructionLoop.cs
+@@ -19,6 +19,7 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 			// This sentence is just a convoluted way to say "don't complain about gotos".
+ 
+ 			long executedInstructions = 0;
++			Instruction[] code = m_RootChunk.GetCodeArray();
+ 			bool canAutoYield = (AutoYieldCounter > 0) && m_CanYield && (this.State != CoroutineState.Main);
+ 
+ 			repeat_execution:
+@@ -27,7 +28,10 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 			{
+ 				while (true)
+ 				{
+-					Instruction i = m_RootChunk.Code[instructionPtr];
++					if ((uint)instructionPtr >= (uint)code.Length)
++						code = m_RootChunk.GetCodeArray();
++
++					Instruction i = code[instructionPtr];
+ 
+ 					if (m_Debug.DebuggerAttached != null)
+ 					{
+@@ -159,7 +163,7 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 							ExecBeginFn(i);
+ 							break;
+ 						case OpCode.ToBool:
+-							m_ValueStack.Push(DynValue.NewBoolean(m_ValueStack.Pop().ToScalar().CastToBool()));
++							m_ValueStack.Push(DynValue.FromBoolean(m_ValueStack.Pop().ToScalar().CastToBool()));
+ 							break;
+ 						case OpCode.Args:
+ 							ExecArgs(i);
+@@ -413,8 +417,11 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 
+ 		private void ExecClosure(Instruction i)
+ 		{
+-			Closure c = new Closure(this.m_Script, i.NumVal, i.SymbolList,
+-				i.SymbolList.Select(s => this.GetUpvalueSymbol(s)).ToList());
++			SymbolRef[] syms = i.SymbolList;
++			DynValue[] upvals = new DynValue[syms.Length];
++			for (int k = 0; k < syms.Length; k++)
++				upvals[k] = this.GetUpvalueSymbol(syms[k]);
++			Closure c = new Closure(this.m_Script, i.NumVal, syms, upvals);
+ 
+ 			m_ValueStack.Push(DynValue.NewClosure(c));
+ 		}
+@@ -568,15 +575,15 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 				throw new InternalErrorException("CNOT had non-bool arg");
+ 
+ 			if (not.CastToBool())
+-				m_ValueStack.Push(DynValue.NewBoolean(!(v.CastToBool())));
++				m_ValueStack.Push(DynValue.FromBoolean(!(v.CastToBool())));
+ 			else
+-				m_ValueStack.Push(DynValue.NewBoolean(v.CastToBool()));
++				m_ValueStack.Push(DynValue.FromBoolean(v.CastToBool()));
+ 		}
+ 
+ 		private void ExecNot(Instruction i)
+ 		{
+ 			DynValue v = m_ValueStack.Pop().ToScalar();
+-			m_ValueStack.Push(DynValue.NewBoolean(!(v.CastToBool())));
++			m_ValueStack.Push(DynValue.FromBoolean(!(v.CastToBool())));
+ 		}
+ 
+ 		private void ExecBeginFn(Instruction i)
+@@ -606,9 +613,11 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 			return xs.ReturnAddress;
+ 		}
+ 
++		static readonly DynValue[] s_EmptyArgs = new DynValue[0];
++
+ 		private IList<DynValue> CreateArgsListForFunctionCall(int numargs, int offsFromTop)
+ 		{
+-			if (numargs == 0) return new DynValue[0];
++			if (numargs == 0) return s_EmptyArgs;
+ 
+ 			DynValue lastParam = m_ValueStack.Peek(offsFromTop);
+ 
+@@ -634,6 +643,27 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 		private void ExecArgs(Instruction I)
+ 		{
+ 			int numargs = (int)m_ValueStack.Peek(0).Number;
++			SymbolRef[] syms = I.SymbolList;
++
++			// fast path: no tuple to expand in last position and no varargs; read args straight off the stack
++			// (no Slice, no interface calls) and use the fresh writable copy as the local's cell.
++			if ((numargs == 0 || m_ValueStack.Peek(1).Type != DataType.Tuple)
++				&& (syms.Length == 0 || syms[syms.Length - 1].i_Name != WellKnownSymbols.VARARGS))
++			{
++				int baseIdx = m_ValueStack.Count - 1 - numargs;
++				DynValue[] scope = m_ExecutionStack.Peek().LocalScope;
++
++				for (int i = 0; i < syms.Length; i++)
++				{
++					DynValue v = (i < numargs) ? m_ValueStack[baseIdx + i].ToScalar().CloneAsWritable() : DynValue.NewNil();
++					int idx = syms[i].i_Index;
++					if (scope[idx] == null)
++						scope[idx] = v;
++					else
++						scope[idx].Assign(v);
++				}
++				return;
++			}
+ 
+ 			// unpacks last tuple arguments to simplify a lot of code down under
+ 			var argsList = CreateArgsListForFunctionCall(numargs, 1);
+@@ -1080,7 +1110,7 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 			}
+ 
+ 			// else perform standard comparison
+-			m_ValueStack.Push(DynValue.NewBoolean(r.Equals(l)));
++			m_ValueStack.Push(DynValue.FromBoolean(r.Equals(l)));
+ 			return instructionPtr;
+ 		}
+ 
+@@ -1091,11 +1121,11 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 
+ 			if (l.Type == DataType.Number && r.Type == DataType.Number)
+ 			{
+-				m_ValueStack.Push(DynValue.NewBoolean(l.Number < r.Number));
++				m_ValueStack.Push(DynValue.FromBoolean(l.Number < r.Number));
+ 			}
+ 			else if (l.Type == DataType.String && r.Type == DataType.String)
+ 			{
+-				m_ValueStack.Push(DynValue.NewBoolean(l.String.CompareTo(r.String) < 0));
++				m_ValueStack.Push(DynValue.FromBoolean(l.String.CompareTo(r.String) < 0));
+ 			}
+ 			else
+ 			{
+@@ -1118,12 +1148,12 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 			if (l.Type == DataType.Number && r.Type == DataType.Number)
+ 			{
+ 				m_ValueStack.Push(DynValue.False);
+-				m_ValueStack.Push(DynValue.NewBoolean(l.Number <= r.Number));
++				m_ValueStack.Push(DynValue.FromBoolean(l.Number <= r.Number));
+ 			}
+ 			else if (l.Type == DataType.String && r.Type == DataType.String)
+ 			{
+ 				m_ValueStack.Push(DynValue.False);
+-				m_ValueStack.Push(DynValue.NewBoolean(l.String.CompareTo(r.String) <= 0));
++				m_ValueStack.Push(DynValue.FromBoolean(l.String.CompareTo(r.String) <= 0));
+ 			}
+ 			else
+ 			{
+@@ -1236,7 +1266,8 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 				{
+ 					if (!isMultiIndex)
+ 					{
+-						if (!obj.Table.Get(idx).IsNil())
++						// no metatable: __newindex cannot apply, so skip the extra lookup
++						if (obj.Table.MetaTable == null || !obj.Table.Get(idx).IsNil())
+ 						{
+ 							obj.Table.Set(idx, value);
+ 							return instructionPtr;
+diff --git a/src/MoonSharp.Interpreter/Execution/VM/Processor/Processor_Scope.cs b/src/MoonSharp.Interpreter/Execution/VM/Processor/Processor_Scope.cs
+index 9afcc2f..28e3c11 100644
+--- a/src/MoonSharp.Interpreter/Execution/VM/Processor/Processor_Scope.cs
++++ b/src/MoonSharp.Interpreter/Execution/VM/Processor/Processor_Scope.cs
+@@ -13,7 +13,13 @@ namespace MoonSharp.Interpreter.Execution.VM
+ 
+ 			if (to >= 0 && from >= 0 && to >= from)
+ 			{
+-				Array.Clear(array, from, to - from + 1);
++				if (to - from < 8)
++				{
++					for (int k = from; k <= to; k++)
++						array[k] = null;
++				}
++				else
++					Array.Clear(array, from, to - from + 1);
+ 			}
+ 		}
+ 
+diff --git a/src/MoonSharp.Interpreter/Interop/Converters/ClrToScriptConversions.cs b/src/MoonSharp.Interpreter/Interop/Converters/ClrToScriptConversions.cs
+index 8313f03..51b8f39 100755
+--- a/src/MoonSharp.Interpreter/Interop/Converters/ClrToScriptConversions.cs
++++ b/src/MoonSharp.Interpreter/Interop/Converters/ClrToScriptConversions.cs
+@@ -28,7 +28,7 @@ namespace MoonSharp.Interpreter.Interop.Converters
+ 			if (obj is string || obj is StringBuilder || obj is char)
+ 				return DynValue.NewString(obj.ToString());
+ 
+-			if (NumericConversions.NumericTypes.Contains(t))
++			if (NumericConversions.IsNumericType(t))
+ 				return DynValue.NewNumber(NumericConversions.TypeToDouble(t, obj));
+ 
+ 			if (obj is Table)
+@@ -70,7 +70,7 @@ namespace MoonSharp.Interpreter.Interop.Converters
+ 			if (obj is Closure)
+ 				return DynValue.NewClosure((Closure)obj);
+ 
+-			if (NumericConversions.NumericTypes.Contains(t))
++			if (NumericConversions.IsNumericType(t))
+ 				return DynValue.NewNumber(NumericConversions.TypeToDouble(t, obj));
+ 
+ 			if (obj is Table)
+diff --git a/src/MoonSharp.Interpreter/Interop/Converters/NumericConversions.cs b/src/MoonSharp.Interpreter/Interop/Converters/NumericConversions.cs
+index 63bd501..b0eb7db 100644
+--- a/src/MoonSharp.Interpreter/Interop/Converters/NumericConversions.cs
++++ b/src/MoonSharp.Interpreter/Interop/Converters/NumericConversions.cs
+@@ -27,6 +27,16 @@ namespace MoonSharp.Interpreter.Interop.Converters
+ 			NumericTypes = new HashSet<Type>(NumericTypesOrdered);
+ 		}
+ 
++		/// <summary>
++		/// Same answer as NumericTypes.Contains(t) without hashing the Type.
++		/// </summary>
++		internal static bool IsNumericType(Type t)
++		{
++			return t == typeof(double) || t == typeof(int) || t == typeof(float) || t == typeof(long)
++				|| t == typeof(uint) || t == typeof(short) || t == typeof(ushort) || t == typeof(byte)
++				|| t == typeof(sbyte) || t == typeof(ulong) || t == typeof(decimal);
++		}
++
+ 		/// <summary>
+ 		/// HashSet of numeric types
+ 		/// </summary>
+diff --git a/src/MoonSharp.Interpreter/Interop/Converters/ScriptToClrConversions.cs b/src/MoonSharp.Interpreter/Interop/Converters/ScriptToClrConversions.cs
+index 433fd0c..8c5970b 100755
+--- a/src/MoonSharp.Interpreter/Interop/Converters/ScriptToClrConversions.cs
++++ b/src/MoonSharp.Interpreter/Interop/Converters/ScriptToClrConversions.cs
+@@ -141,7 +141,7 @@ namespace MoonSharp.Interpreter.Interop.Converters
+ 						Type underType = Enum.GetUnderlyingType(desiredType);
+ 						return NumericConversions.DoubleToType(underType, value.Number);
+ 					}
+-					if (NumericConversions.NumericTypes.Contains(desiredType))
++					if (NumericConversions.IsNumericType(desiredType))
+ 					{
+ 						object d = NumericConversions.DoubleToType(desiredType, value.Number);
+ 						if (d.GetType() == desiredType)
+@@ -260,7 +260,7 @@ namespace MoonSharp.Interpreter.Interop.Converters
+ 					{	// number to enum conv
+ 						return WEIGHT_NUMBER_TO_ENUM;
+ 					}
+-					if (NumericConversions.NumericTypes.Contains(desiredType))
++					if (NumericConversions.IsNumericType(desiredType))
+ 						return GetNumericTypeWeight(desiredType);
+ 					if (stringSubType != StringConversions.StringSubtype.None)
+ 						return WEIGHT_NUMBER_TO_STRING;
+diff --git a/src/MoonSharp.Interpreter/Tree/Expressions/BinaryOperatorExpression.cs b/src/MoonSharp.Interpreter/Tree/Expressions/BinaryOperatorExpression.cs
+index a2be69b..5e3d90a 100755
+--- a/src/MoonSharp.Interpreter/Tree/Expressions/BinaryOperatorExpression.cs
++++ b/src/MoonSharp.Interpreter/Tree/Expressions/BinaryOperatorExpression.cs
+@@ -323,6 +323,14 @@ namespace MoonSharp.Interpreter.Tree.Expressions
+ 				m_Exp2.Compile(bc);
+ 			}
+ 
++			// Lua 5.2 3.4.3: a > b is b < a, a >= b is b <= a (not "not (a <= b)": wrong for NaN and metamethods)
++			if (m_Operator == Operator.Greater || m_Operator == Operator.GreaterOrEqual)
++			{
++				bc.Emit_Swap(0, 1);
++				bc.Emit_Operator(m_Operator == Operator.Greater ? OpCode.Less : OpCode.LessEq);
++				return;
++			}
++
+ 			bc.Emit_Operator(OperatorToOpCode(m_Operator));
+ 
+ 			if (ShouldInvertBoolean(m_Operator))
+@@ -451,9 +459,9 @@ namespace MoonSharp.Interpreter.Tree.Expressions
+ 						return r.Equals(l);
+ 					}
+ 				case Operator.Greater:
+-					return !EvalComparison(l, r, Operator.LessOrEqual);
++					return EvalComparison(r, l, Operator.Less);
+ 				case Operator.GreaterOrEqual:
+-					return !EvalComparison(l, r, Operator.Less);
++					return EvalComparison(r, l, Operator.LessOrEqual);
+ 				case Operator.NotEqual:
+ 					return !EvalComparison(l, r, Operator.Equal);
+ 				default:

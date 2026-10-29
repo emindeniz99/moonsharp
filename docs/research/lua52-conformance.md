@@ -47,7 +47,8 @@ Measured 2026-10-29 on branch `fix/lua52-batch1` with the same runner, cases and
   The 20 errors are `math.log10` (14, owner question with `loadstring`), `table.remove` and
   `table.insert` (5, Table work) and `tostring` of a `__tostring` returning a table (1). The 15
   accepts are `string.char` out of range (11) and `table.insert`/`table.sort` (4).
-- A new file, `cases/hostcrash.lua`, holds 24 calls a library fuzzer found ending the host; on `next`
+- A new file, `cases/hostcrash.lua`, holds 24 calls a library fuzzer (`fuzz/` in
+  [src/DevTools/Research/Lua52](../../src/DevTools/Research/Lua52/README.md)) found ending the host; on `next`
   13 of them crashed and one hung. Now 20 match Lua 5.2 and 4 differ by design (`string.rep` past a
   CLR string and `os.date` past `DateTime` raise or return nil where Lua 5.2 on Linux returns a value;
   `io.open`'s message names `open`, not `io.open`).
@@ -62,6 +63,9 @@ Measured 2026-10-29 on branch `fix/lua52-batch1` with the same runner, cases and
   and on `seek` positions, which count the bytes the reader buffered.
 
 ## How it was measured
+
+The runner, the fuzzer and the `string.format` and `bit32` diff scripts are in [src/DevTools/Research/Lua52](../../src/DevTools/Research/Lua52/README.md), with the
+commands.
 
 Reference: `lua5.2` from Debian (`Lua 5.2.4  Copyright (C) 1994-2015 Lua.org, PUC-Rio`), built with
 `LUA_COMPAT_ALL` as the 5.2 Makefile does by default, so `loadstring`, `unpack`, `module`, `table.maxn`,

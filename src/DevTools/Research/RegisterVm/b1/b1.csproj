@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Standalone: not part of any solution. One engine per build, chosen by properties (README.md):
+       MoonSharpDll (the MoonSharp build), Spike=true (a build with ScriptOptions.RegisterVm), or LuaCsDir
+       (Lua-CSharp instead of MoonSharp). net8.0 for NativeAOT; Mono=true builds net48 for Mono. -->
+  <PropertyGroup>
+    <TargetFramework Condition="'$(Mono)' != 'true'">net8.0</TargetFramework>
+    <TargetFramework Condition="'$(Mono)' == 'true'">net48</TargetFramework>
+    <OutputType>Exe</OutputType><Nullable>disable</Nullable><LangVersion>latest</LangVersion>
+    <Optimize>true</Optimize><InvariantGlobalization>true</InvariantGlobalization>
+    <DefineConstants Condition="'$(Spike)' == 'true'">$(DefineConstants);SPIKE</DefineConstants>
+    <DefineConstants Condition="'$(LuaCsDir)' != ''">$(DefineConstants);LUACS</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../Benchmarks/LuaCSharpScripts.cs" Link="LuaCSharpScripts.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(LuaCsDir)' == ''">
+    <Reference Include="MoonSharp.Interpreter"><HintPath>$(MoonSharpDll)</HintPath></Reference>
+  </ItemGroup>
+  <ItemGroup Condition="'$(LuaCsDir)' != ''">
+    <Reference Include="Lua"><HintPath>$(LuaCsDir)/Lua.dll</HintPath></Reference>
+    <Reference Include="Lua.Annotations"><HintPath>$(LuaCsDir)/Lua.Annotations.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,185 @@
+rounds: {'msA': 7, 'msB': 7, 'ws': 7, 'luacs': 7}
+
+| case | msA ns med (IQR) | msB ns med (IQR) | ws ns med (IQR) | luacs ns med (IQR) |
+|---|---:|---:|---:|---:|
+| c_create_default | 174,652 (155,445–183,643) | 172,058 (166,994–174,794) | 1,266,006 (1,245,344–1,374,718) | 43,319 (41,482–44,106) |
+| i_clr_method_call | 299.8 (285.8–309.5) | 293.7 (289.7–310.5) | 498.4 (487.7–513.5) | n/a |
+| i_clr_prop_get | 232.8 (216.9–238.6) | 259.2 (221.0–266.7) | 223.2 (217.5–240.8) | n/a |
+| a_cs_to_lua_call3 | 436.8 (422.5–442.6) | 425.8 (421.0–450.0) | 476.3 (459.2–492.2) | 338.1 (332.2–343.1) |
+| b_lua_to_cs_call1 | 277.7 (273.3–294.3) | 278.6 (271.6–291.6) | 256.0 (246.6–269.8) | 73.8 (71.9–78.4) |
+| empty_loop | 44.2 (42.2–47.3) | 42.1 (41.8–43.4) | 52.3 (51.2–53.6) | 5.8 (5.2–7.0) |
+| function_call | 276.2 (264.6–289.4) | 263.1 (257.5–270.4) | 338.2 (327.7–349.4) | 89.3 (82.2–113.8) |
+| method_call | 485.6 (475.4–501.0) | 483.5 (472.4–492.4) | 803.7 (783.1–866.6) | 171.0 (162.0–202.7) |
+| table_array_insert | 1,113 (1,090–1,132) | 1,108 (1,098–1,139) | 224.0 (213.2–241.6) | 87.6 (83.4–91.6) |
+| table_array_read | 314.1 (304.2–327.0) | 308.5 (297.8–317.3) | 289.5 (278.8–318.8) | 47.7 (41.0–52.1) |
+| table_hash_set_get | 580.6 (576.0–582.2) | 576.5 (563.7–584.6) | 598.7 (570.3–625.6) | 99.3 (98.4–102.8) |
+| string_concat | 412.9 (405.2–422.8) | 387.1 (369.5–395.2) | 508.1 (482.0–530.5) | 266.3 (249.7–276.1) |
+| string_format | 590.6 (575.6–628.8) | 628.9 (604.6–637.8) | 2,563 (2,510–2,741) | 319.8 (299.4–333.4) |
+| closure_create_call | 328.9 (324.7–342.1) | 346.1 (335.4–352.8) | 628.5 (621.5–671.9) | 179.7 (177.6–192.3) |
+| int_math | 198.2 (196.5–199.9) | 200.2 (194.9–202.8) | 159.1 (155.6–171.5) | 31.3 (30.8–33.0) |
+| fib_recursive | 130,500 (129,477–132,215) | 131,112 (129,348–133,030) | 156,659 (153,871–161,212) | 41,421 (40,397–43,155) |
+| float_math | 366.5 (356.8–372.4) | 367.1 (365.0–368.4) | 319.1 (292.4–327.1) | 40.8 (40.1–44.7) |
+| string_pattern | 23,318 (23,065–23,847) | 23,321 (22,985–23,706) | 14,094 (13,824–14,377) | 6,474 (6,412–7,279) |
+| table_sort_52 | 111,170 (107,291–115,984) | 115,455 (107,844–124,818) | 183,349 (175,093–192,909) | 30,585 (29,872–33,657) |
+| table_concat | 1,326 (1,222–1,521) | 1,264 (1,165–1,518) | 1,715 (1,658–1,941) | 1,064 (992.3–1,161) |
+| coroutine_switch | 724.2 (715.2–768.6) | 745.6 (734.7–809.6) | 881.1 (853.0–906.3) | 743.2 (730.3–751.9) |
+| gc_small_tables | 1,014 (1,002–1,051) | 993.5 (966.9–1,003) | 1,001 (977.6–1,055) | 342.9 (335.6–369.1) |
+| oop_inherit | 443.0 (425.2–451.1) | 436.3 (430.4–451.3) | 678.9 (675.9–687.7) | 172.4 (161.4–201.3) |
+| a_cs_to_lua_call3_stackapi | n/a | n/a | n/a | 124.6 (121.6–140.2) |
+| a_cs_to_lua_call3_await | n/a | n/a | n/a | 316.7 (314.2–356.3) |
+
+Ratios of medians (>1 means the first is slower):
+| case | msA/ws | ws/luacs | msA/luacs | msA/msB | A/A per-round range |
+|---|---:|---:|---:|---:|---|
+| c_create_default | 0.14 | 29.23 | 4.03 | 1.02 | 0.806–1.173 |
+| i_clr_method_call | 0.60 |  |  | 1.02 | 0.971–1.050 |
+| i_clr_prop_get | 1.04 |  |  | 0.90 | 0.794–1.091 |
+| a_cs_to_lua_call3 | 0.92 | 1.41 | 1.29 | 1.03 | 0.904–1.074 |
+| b_lua_to_cs_call1 | 1.08 | 3.47 | 3.76 | 1.00 | 0.886–1.109 |
+| empty_loop | 0.84 | 9.07 | 7.66 | 1.05 | 0.833–1.171 |
+| function_call | 0.82 | 3.79 | 3.09 | 1.05 | 0.954–1.165 |
+| method_call | 0.60 | 4.70 | 2.84 | 1.00 | 0.947–1.219 |
+| table_array_insert | 4.97 | 2.56 | 12.70 | 1.00 | 0.930–1.043 |
+| table_array_read | 1.08 | 6.07 | 6.58 | 1.02 | 0.926–1.107 |
+| table_hash_set_get | 0.97 | 6.03 | 5.85 | 1.01 | 0.977–1.057 |
+| string_concat | 0.81 | 1.91 | 1.55 | 1.07 | 0.970–1.128 |
+| string_format | 0.23 | 8.01 | 1.85 | 0.94 | 0.866–1.157 |
+| closure_create_call | 0.52 | 3.50 | 1.83 | 0.95 | 0.914–1.051 |
+| int_math | 1.25 | 5.08 | 6.32 | 0.99 | 0.936–1.019 |
+| fib_recursive | 0.83 | 3.78 | 3.15 | 1.00 | 0.912–1.041 |
+| float_math | 1.15 | 7.83 | 8.99 | 1.00 | 0.953–1.026 |
+| string_pattern | 1.65 | 2.18 | 3.60 | 1.00 | 0.965–1.068 |
+| table_sort_52 | 0.61 | 5.99 | 3.63 | 0.96 | 0.758–1.134 |
+| table_concat | 0.77 | 1.61 | 1.25 | 1.05 | 0.786–1.419 |
+| coroutine_switch | 0.82 | 1.19 | 0.97 | 0.97 | 0.793–1.112 |
+| gc_small_tables | 1.01 | 2.92 | 2.96 | 1.02 | 0.978–1.119 |
+| oop_inherit | 0.65 | 3.94 | 2.57 | 1.02 | 0.892–1.061 |
+| a_cs_to_lua_call3_stackapi |  |  |  |  |  |
+| a_cs_to_lua_call3_await |  |  |  |  |  |
+
+Allocated bytes per iteration (current thread, median of per-round medians):
+| case | msA | msB | ws | luacs |
+|---|---:|---:|---:|---:|
+| c_create_default | 69,160.2 | 69,160.2 | 198,160.2 | 28,720.2 |
+| i_clr_method_call | 440.0 | 440.0 | 312.0 | n/a |
+| i_clr_prop_get | 312.0 | 312.0 | 24.0 | n/a |
+| a_cs_to_lua_call3 | 720.0 | 720.0 | 224.0 | 48.0 |
+| b_lua_to_cs_call1 | 504.0 | 504.0 | 80.0 | 0.0 |
+| empty_loop | 48.0 | 48.0 | 0.0 | 0.0 |
+| function_call | 416.0 | 416.0 | 32.0 | 0.0 |
+| method_call | 512.0 | 512.0 | 32.0 | 0.0 |
+| table_array_insert | 371.4 | 371.4 | 41.9 | 50.3 |
+| table_array_read | 384.0 | 384.0 | 0.0 | 0.0 |
+| table_hash_set_get | 720.0 | 720.0 | 0.0 | 0.0 |
+| string_concat | 468.8 | 468.8 | 84.8 | 84.8 |
+| string_format | 688.0 | 688.0 | 2,348.8 | 174.4 |
+| closure_create_call | 584.0 | 584.0 | 464.0 | 200.0 |
+| int_math | 288.0 | 288.0 | 0.0 | 0.0 |
+| fib_recursive | 193,488.0 | 193,488.0 | 14,880.0 | 0.0 |
+| float_math | 576.0 | 576.0 | 0.0 | 0.0 |
+| string_pattern | 49,856.0 | 49,856.0 | 11,352.0 | 1,680.0 |
+| table_sort_52 | 115,848.3 | 115,848.3 | 19,072.1 | 12,344.1 |
+| table_concat | 1,392.0 | 1,392.0 | 824.0 | 200.0 |
+| coroutine_switch | 1,056.0 | 1,056.0 | 224.1 | 0.0 |
+| gc_small_tables | 1,736.0 | 1,736.0 | 544.0 | 704.0 |
+| oop_inherit | 464.0 | 464.0 | 32.0 | 0.0 |
+| a_cs_to_lua_call3_stackapi | n/a | n/a | n/a | 0.0 |
+| a_cs_to_lua_call3_await | n/a | n/a | n/a | 48.0 |
+
+Retained heap per instance (bytes): {'c_create_default/msA': '60,664', 'c_create_default/msB': '60,664', 'c_create_default/ws': '84,494', 'c_create_default/luacs': '25,216'}
+
+Checks (distinct values per series):
+  a_cs_to_lua_call3 luacs: ['1000002000000']
+  a_cs_to_lua_call3 msA: ['1000002000000']
+  a_cs_to_lua_call3 msB: ['1000002000000']
+  a_cs_to_lua_call3 ws: ['1000002000000']
+  a_cs_to_lua_call3_await luacs: ['1000002000000']
+  a_cs_to_lua_call3_stackapi luacs: ['1000002000000']
+  b_lua_to_cs_call1 luacs: ['500001500000']
+  b_lua_to_cs_call1 msA: ['500001500000']
+  b_lua_to_cs_call1 msB: ['500001500000']
+  b_lua_to_cs_call1 ws: ['500001500000']
+  c_create_default luacs: ['ok']
+  c_create_default msA: ['ok']
+  c_create_default msB: ['ok']
+  c_create_default ws: ['ok']
+  closure_create_call luacs: ['500000500000']
+  closure_create_call msA: ['500000500000']
+  closure_create_call msB: ['500000500000']
+  closure_create_call ws: ['500000500000']
+  coroutine_switch luacs: ['125000250000']
+  coroutine_switch msA: ['125000250000']
+  coroutine_switch msB: ['125000250000']
+  coroutine_switch ws: ['125000250000']
+  empty_loop luacs: ['void']
+  empty_loop msA: ['void']
+  empty_loop msB: ['void']
+  empty_loop ws: ['void']
+  fib_recursive luacs: ['2880000']
+  fib_recursive msA: ['2880000']
+  fib_recursive msB: ['2880000']
+  fib_recursive ws: ['2880000']
+  float_math luacs: ['0.004500']
+  float_math msA: ['0.004500']
+  float_math msB: ['0.004500']
+  float_math ws: ['0.004500']
+  function_call luacs: ['1000000']
+  function_call msA: ['1000000']
+  function_call msB: ['1000000']
+  function_call ws: ['1000000']
+  gc_small_tables luacs: ['125000750000']
+  gc_small_tables msA: ['125000750000']
+  gc_small_tables msB: ['125000750000']
+  gc_small_tables ws: ['125000750000']
+  i_clr_method_call msA: ['7100000']
+  i_clr_method_call msB: ['7100000']
+  i_clr_method_call ws: ['7100000']
+  i_clr_prop_get msA: ['2500000']
+  i_clr_prop_get msB: ['2500000']
+  i_clr_prop_get ws: ['2500000']
+  int_math luacs: ['967568']
+  int_math msA: ['967568']
+  int_math msB: ['967568']
+  int_math ws: ['967568']
+  method_call luacs: ['7100000']
+  method_call msA: ['7100000']
+  method_call msB: ['7100000']
+  method_call ws: ['7100000']
+  oop_inherit luacs: ['3000000']
+  oop_inherit msA: ['3000000']
+  oop_inherit msB: ['3000000']
+  oop_inherit ws: ['3000000']
+  string_concat luacs: ['item499968']
+  string_concat msA: ['item499968']
+  string_concat msB: ['item499968']
+  string_concat ws: ['item499968']
+  string_format luacs: ['499968:x']
+  string_format msA: ['499968:x']
+  string_format msB: ['499968:x']
+  string_format ws: ['499968:x']
+  string_pattern luacs: ['2500000']
+  string_pattern msA: ['2500000']
+  string_pattern msB: ['2500000']
+  string_pattern ws: ['2500000']
+  table_array_insert luacs: ['1000000']
+  table_array_insert msA: ['1000000']
+  table_array_insert msB: ['1000000']
+  table_array_insert ws: ['1000000']
+  table_array_read luacs: ['512370976']
+  table_array_read msA: ['512370976']
+  table_array_read msB: ['512370976']
+  table_array_read ws: ['512370976']
+  table_concat luacs: ['4300000']
+  table_concat msA: ['4300000']
+  table_concat msB: ['4300000']
+  table_concat ws: ['4300000']
+  table_hash_set_get luacs: ['500000500000']
+  table_hash_set_get msA: ['500000500000']
+  table_hash_set_get msB: ['500000500000']
+  table_hash_set_get ws: ['500000500000']
+  table_sort_52 luacs: ['960000']
+  table_sort_52 msA: ['960000']
+  table_sort_52 msB: ['960000']
+  table_sort_52 ws: ['960000']
+Check failures: []
+Errors: []

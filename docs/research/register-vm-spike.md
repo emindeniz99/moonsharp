@@ -115,7 +115,7 @@ differential tests and the `spikeoff` benchmark column use.
 Workloads: `empty_loop`, `int_math`, `float_math`, `function_call`, `fib_recursive` with the sources and
 iteration counts of `src/DevTools/Benchmarks/LuaWorkloads.cs` (fib at 4,000 instead of 20,000 iterations per
 round), ns per inner iteration; `numeric-loop` and `nbody` from Lua-CSharp's `ComparisonWorkloads.cs`, ns per
-execution of the retained chunk. The harness lives in the session scratchpad (`regvm/bench/Program.cs`).
+execution of the retained chunk. The harness is `bench/` in [src/DevTools/Research/RegisterVm](../../src/DevTools/Research/RegisterVm/README.md).
 
 ### Results
 
@@ -157,7 +157,7 @@ finds 1.4-1.5x and 2.6-2.7x [C for each run; the runtime difference explains the
 ### NativeAOT and Unity Mono
 
 The coordinator asked for the runtimes the first runs did not cover. Same seven workloads, one engine per
-process (`regvm/b1/src/Program.cs` in the session scratchpad), built outside the lock:
+process (`b1/` in [src/DevTools/Research/RegisterVm](../../src/DevTools/Research/RegisterVm/README.md)), built outside the lock:
 
 - **NativeAOT**: `dotnet publish -p:PublishAot=true` for linux-x64 (.NET SDK 10.0.402, net8.0, clang 18),
   one executable per build: `next` `48fca10`, the spike at `2a1e221` (same VM code as `6e8c79b` plus compile
@@ -197,7 +197,7 @@ Unity Mono 6.13, same layout, no Lua-CSharp:
 | numeric-loop (µs) | 791 | 769 | 455 | 751 |
 | nbody (µs) | 2,605 | 2,586 | 1,159 | 2,534 |
 
-Ratios to `next`, median of per-round ratios (interquartile range in the scratchpad's `regvm/b1/result.txt`):
+Ratios to `next`, median of per-round ratios (interquartile range in `RegisterVm/b1/result.txt`):
 
 | Workload | AOT A/A | AOT spike | AOT spikeoff | AOT spike / Lua-CSharp | Mono A/A | Mono spike | Mono spikeoff |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -398,9 +398,11 @@ speed and size). Not run yet: it needs the Unity secrets. Steps to start it are 
   commits, so the two players differ only by the prototype.
 - **Checked without Unity** [C]: the test bed with the spike and with the baseline compiles with Unity 2021.3's
   and 6000.0's own compiler and reference assemblies (editor and player defines, the source generator as an
-  analyzer); 2022.3 was not available locally. `EmbeddedTestRunner` on the spike: 1,070 OK, 1 failed (the
+  analyzer; `unity-compile.sh` in
+  [src/DevTools/Research/UnityLocal](../../src/DevTools/Research/UnityLocal/README.md)); 2022.3 was not available locally. `EmbeddedTestRunner` on the spike: 1,070 OK, 1 failed (the
   debugger gap above), 4 skipped. Five interleaved rounds of the same pipeline on this machine
-  (`workloads-tsv` per process, `bench-summary.sh` over the files), spike / baseline, median with range:
+  (`workloads-tsv` per process, `bench-summary.sh` over the files; `rounds.sh` in the same folder), spike /
+  baseline, median with range:
 
   | Workload | .NET 8 | A/A | Unity Mono 6.13 | A/A |
   |---|---:|---:|---:|---:|
@@ -429,5 +431,5 @@ dotnet build -c Release src/TestRunners/DotNetCoreTestRunner
 (cd src/TestRunners/DotNetCoreTestRunner/bin/Release/net8.0 && dotnet DotNetCoreTestRunner.dll /unit)
 ```
 
-The benchmark harness, the instruction-count probe and the coverage probe are in the session scratchpad
-(`regvm/bench`, `regvm/t1`), not in this repository.
+The benchmark harnesses, the instruction-count probe and the coverage probe are in
+[src/DevTools/Research/RegisterVm](../../src/DevTools/Research/RegisterVm/README.md) (`bench/`, `b1/`, `t1/`), with the commands.

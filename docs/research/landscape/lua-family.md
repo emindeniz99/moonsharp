@@ -157,7 +157,7 @@ This engine was researched in depth elsewhere; fit points only.
   - Its releases are build-config refreshes (`2.1.16_android_16kb`, `v2.1.16_with_ohos`). It
     has 278 open issues and 12 open PRs ([releases](https://github.com/Tencent/xLua/releases)). [C]
   - It is in maintenance mode. [U]
-- **xLua-NG.** This independent fork lives at `/home/user/xlua-ng` (HEAD 3042ef6, 2026-10-28).
+- **xLua-NG.** This independent fork is https://github.com/emindeniz99/xlua-ng (read at 3042ef6, 2026-10-28).
   - Its README: Lua 5.5.1 by default (5.4.9, 5.3.6, LuaJIT 2.1), lossless 64-bit integers,
     a Roslyn source generator, presets, Unity 2021.3 to 6000.6, IL2CPP and Mono, WebGL
     (Lua 5.5.1 only), and .NET/Mono outside Unity. [C]

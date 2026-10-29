@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Standalone: not part of any solution. Compiles an interpreter source tree into the program.
+       MoonSharpSrc: the src/MoonSharp.Interpreter folder of an upstream fbd0367 checkout, patched or not. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><Optimize>true</Optimize><Nullable>disable</Nullable>
+    <NoWarn>$(NoWarn);CS0618;CS1591;CS0168;CS0219;CS0414;CS0649;CS0169;CS8632;SYSLIB0050;SYSLIB0051</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems><TreatWarningsAsErrors>false</TreatWarningsAsErrors><LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs;Alias.cs" />
+    <Compile Condition="'$(MoonSharpSrc)' != ''" Include="$(MoonSharpSrc)/**/*.cs" Exclude="$(MoonSharpSrc)/obj/**;$(MoonSharpSrc)/bin/**" />
+  </ItemGroup>
+  <Target Name="RequireMoonSharpSrc" BeforeTargets="CoreCompile" Condition="'$(MoonSharpSrc)' == ''">
+    <Error Text="Pass -p:MoonSharpSrc=&lt;fbd0367 checkout&gt;/src/MoonSharp.Interpreter (see README.md)." />
+  </Target>
+</Project>

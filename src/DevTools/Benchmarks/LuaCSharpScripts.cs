@@ -1,7 +1,7 @@
 // Lua benchmark scripts copied from Lua-CSharp (https://github.com/nuskey8/Lua-CSharp, commit
-// a8d84c7c5e858a6118e2a9747f08856f5224793a): the "numeric-loop" source from
-// sandbox/Benchmark/ComparisonWorkloads.cs and sandbox/Benchmark/n-body.lua, unchanged. Only the Lua
-// scripts are copied, under Lua-CSharp's licence:
+// a8d84c7c5e858a6118e2a9747f08856f5224793a): the "numeric-loop" source and the repeated block of the
+// "control-flow" source from sandbox/Benchmark/ComparisonWorkloads.cs, and sandbox/Benchmark/n-body.lua,
+// unchanged. Only the Lua scripts are copied, under Lua-CSharp's licence:
 //
 // MIT License
 //
@@ -31,6 +31,13 @@ namespace MoonSharp.Benchmarks
 	{
 		// ComparisonWorkloads.cs, "numeric-loop"; returns 200010000.
 		internal const string NumericLoop = "local s=0; for i=1,20000 do s=s+i end; return s";
+
+		// ComparisonWorkloads.cs, "control-flow": "local total=0;" + 40 copies of this block + "return total".
+		// Used by src/DevTools/Research/CompileBisect.
+		internal const string ControlFlowBlock =
+			"do local function choose(value) if not value or value==false then return nil elseif value==true then return 1 else return value end end; "
+			+ "local value=choose(2); repeat value=value-1 until value==0; while value<2 do value=value+1; if value==1 then goto skip end; total=total+value; ::skip:: end; "
+			+ "for index=1,2 do if index==2 then break end; total=total+index end end;";
 
 		// n-body.lua. ComparisonWorkloads.cs runs it as NBody.Replace("or 1000", "or 100") + "\nreturn energy(bodies,nbody)".
 		internal const string NBody = @"sun = {}

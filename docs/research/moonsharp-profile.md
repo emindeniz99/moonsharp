@@ -1,8 +1,9 @@
 # MoonSharp profile: where time and allocations go
 
 Date: 2026-10-28. Profiled code: MoonSharp `fbd03678d5c0f731d731d099211c7f4a3a1ae8b7` (upstream master,
-https://github.com/moonsharp-devs/moonsharp/tree/fbd03678d5c0f731d731d099211c7f4a3a1ae8b7), in a separate worktree
-(`scratchpad/ext/ms-profile`); `/home/user/moonsharp` was not modified. Fork master has since moved to
+https://github.com/moonsharp-devs/moonsharp/tree/fbd03678d5c0f731d731d099211c7f4a3a1ae8b7), in a separate worktree; the
+fork's checkout was not modified. The tools are in
+[src/DevTools/Research/Profile](../../src/DevTools/Research/Profile/README.md), with the commands. Fork master has since moved to
 `58fa6bb` (int64, grow-on-demand stacks); `Processor_InstructionLoop.cs` line numbers are identical there, only
 `FastStack.cs` line numbers moved.
 
@@ -16,7 +17,7 @@ Evidence markers: [C] confirmed by measurement or by reading the code, [I] infer
   Other agents ran benchmarks and NativeAOT builds on the same machine during this work, so absolute
   timings carry about +-10% noise. **Bytes per iteration are exact and deterministic** and are the primary
   evidence; CPU shares come from sampling and are relative.
-- Driver: `scratchpad/profile/app/Program.cs`, a console app referencing the interpreter csproj. Workload
+- Driver: `Profile/app/Program.cs`, a console app referencing the interpreter csproj. Workload
   sources are copied verbatim from `src/DevTools/Benchmarks/LuaWorkloads.cs` on branch
   `chore/devtools-benchmarks` (same sources as xLua-NG `Test/Native/flag_bench.c`). Added:
   - `clr_interop`: Lua calls `obj:Add(i, 2)` (instance method, 2 int args) and reads `obj.Value` (int
@@ -28,7 +29,7 @@ Evidence markers: [C] confirmed by measurement or by reading the code, [I] infer
   seconds under `dotnet-trace`).
 - CPU + allocation stacks: `dotnet-trace 10.0.750501 collect --profile dotnet-sampled-thread-time --providers
   Microsoft-Windows-DotNETRuntime:0x100003801D:5`, 10 s per workload, one at a time. Analysed with a small
-  TraceEvent 3.1.21 tool (`scratchpad/profile/analyzer/Program.cs`): self and inclusive sample shares,
+  TraceEvent 3.1.21 tool (`Profile/analyzer/Program.cs`): self and inclusive sample shares,
   caller->callee edges, **source line of the first MoonSharp frame** (IL-to-native maps + portable PDB), and
   allocation-tick bytes per (type, allocating MoonSharp frame and line).
 - Caveat on line attribution: the JIT inlines most `Exec*` helpers into `Processing_Loop`, so an inlined
@@ -36,9 +37,9 @@ Evidence markers: [C] confirmed by measurement or by reading the code, [I] infer
   OpCode.Local` and includes the inlined `AsReadOnly()` clone). `:0` is code without a sequence point (the
   switch jump table, loop back-edge, prolog).
 - Every run had a `timeout`; one profile or benchmark process at a time (benchmarks under the shared
-  `scratchpad/bench.lock`).
-- Raw outputs: `scratchpad/profile/traces/*.analysis.txt`, `bench-baseline.md`, `alloc-types.txt`,
-  `ab-run1.md`, `ab-run2.md`; per-workload tables in `scratchpad/profile/per-workload.md`.
+  benchmark lock).
+- Raw outputs (traces, analyses, `bench-baseline.md`, `alloc-types.txt`, `ab-run1.md`, `ab-run2.md`) and
+  the full per-workload tables were not kept; `run-all.sh` and `summarize.py` regenerate them.
 
 ## 2. Baseline numbers (fbd0367)
 
@@ -102,7 +103,7 @@ read of `a` 48 = ~552.
 
 ## 4. Where the CPU goes
 
-Top self methods and source lines per workload (full lists in `scratchpad/profile/per-workload.md`):
+Top self methods and source lines per workload (the full lists were not kept; `summarize.py` prints them from new traces):
 
 | Workload | Dispatch + fetch (`:0`, `:30`, `:37`) | Other hot lines / methods (self share) |
 |---|---:|---|
@@ -193,7 +194,7 @@ The fix (`Emit_Swap(0,1)` + `Less`/`LessEq`, no `Not`) is also faster, so it bel
 ## 7. Prototype A/B (scratch only, not a proposed patch)
 
 To check that the shares translate into time, five cheap changes were applied cumulatively in a second
-scratch worktree (`scratchpad/ext/ms-proto`, patch in `scratchpad/profile/proto-ABCDE.patch`, 428 lines):
+scratch worktree (patch in [Profile/proto-ABCDE.patch](../../src/DevTools/Research/Profile/proto-ABCDE.patch), 428 lines, on `fbd0367`):
 
 - **A** cached booleans (`DynValue.FromBoolean` returns the read-only `True`/`False`) + `>`/`>=` as swapped `<`/`<=`;
 - **C** table: reuse the existing key on update, skip the `Get` before `Set` when the table has no metatable;
@@ -459,7 +460,7 @@ library come from KopiLua, MIT). Everything here is MoonSharp-native work; no ou
 
 ## 11. Notes for whoever repeats this
 
-- The shared `scratchpad/bench.lock` was held for more than 10 minutes by an orphaned MSBuild node
+- The shared benchmark lock was held for more than 10 minutes by an orphaned MSBuild node
   (`dotnet ... MSBuild.dll /nodemode:1 /nodeReuse:true`, parent PID 1): a `flock bench.lock dotnet build ...`
   let the reusable build node inherit the locked file descriptor, so the lock outlived the build and every
   queued benchmark waited. `flock -o` (close the descriptor before running the command) or
@@ -467,9 +468,10 @@ library come from KopiLua, MIT). Everything here is MoonSharp-native work; no ou
   without the lock for that reason.
 - `dotnet-trace`'s profile union (`dotnet-common` + `gc-verbose`) kept level 4 and dropped the verbose
   `GCAllocationTick` events; pass `--providers Microsoft-Windows-DotNETRuntime:0x100003801D:5` explicitly.
-- Tools and scripts: `scratchpad/profile/app` (driver), `analyzer` (TraceEvent report), `run-all.sh`
-  (trace + analyse each workload), `categorize.py`, `summarize.py`, `abtable.py`, `ab.sh`,
-  `build-proto.sh`; `scratchpad/tools/dotnet-trace`.
+- Tools and scripts, in [src/DevTools/Research/Profile](../../src/DevTools/Research/Profile/README.md):
+  `app` (driver), `analyzer` (TraceEvent report), `run-all.sh` (trace + analyse each workload),
+  `categorize.py`, `summarize.py`, `abtable.py`, `ab.sh`. `build-proto.sh` is replaced by a `dotnet build`
+  with `-p:MoonSharpProject`; `dotnet-trace` 10.0.750501 installs with `dotnet tool install`.
 
 ## Appendix A. Per-workload hot methods, lines and allocation sites
 

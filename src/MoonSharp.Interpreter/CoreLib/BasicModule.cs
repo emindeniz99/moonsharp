@@ -52,26 +52,51 @@ namespace MoonSharp.Interpreter.CoreLib
 			return DynValue.NewTupleNested(args.GetArray());
 		}
 
+		static readonly string[] s_GcOptions = { "stop", "restart", "collect", "count", "step", "setpause", "setstepmul",
+			"setmajorinc", "isrunning", "generational", "incremental" };
+
 		// collectgarbage  ([opt [, arg]])
 		// ----------------------------------------------------------------------------------------------------------------
-		// This function is mostly a stub towards the CLR GC. If mode is nil, "collect" or "restart", a GC is forced.
+		// Lua 5.2's options, results and argument errors over the CLR collector, which a script can neither stop
+		// nor tune (docs/MIGRATING.md):
+		// - "collect" (the default) asks for an optimized, non-blocking collection of every generation, which the
+		//   runtime may skip, and returns 0;
+		// - "count" returns the managed heap of the whole process (GC.GetTotalMemory), not of this Script: the KB
+		//   as a float and the bytes past the last whole KB, as Lua 5.2's two results;
+		// - "step" does nothing and returns true (a cycle ended), so loops that wait for one end;
+		// - "isrunning" returns true;
+		// - "stop", "restart", "generational" and "incremental" do nothing and return 0;
+		// - "setpause", "setstepmul" and "setmajorinc" do nothing and return 200, Lua's default for each.
 		[MoonSharpModuleMethod]
 		public static DynValue collectgarbage(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			DynValue opt = args[0];
+			string opt = args[0].IsNil() ? "collect" : args.AsType(0, "collectgarbage", DataType.String, false).String;
 
-			string mode = opt.CastToString();
+			if (Array.IndexOf(s_GcOptions, opt) < 0)
+				throw ScriptRuntimeException.BadArgument(0, "collectgarbage", "invalid option '" + opt + "'");
 
-			if (mode == null || mode == "collect" || mode == "restart")
+			// luaL_optint: Lua 5.2 reads the second argument for every option.
+			if (!args[1].IsNil())
+				args.AsType(1, "collectgarbage", DataType.Number, false);
+
+			switch (opt)
 			{
-#if ENABLE_DOTNET
-				GC.Collect();
-#else
-				GC.Collect(2, GCCollectionMode.Forced);
-#endif
+				case "collect":
+					GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized, false);
+					return DynValue.NewNumber(0);
+				case "count":
+					long bytes = GC.GetTotalMemory(false);
+					return DynValue.NewTuple(DynValue.NewNumber(bytes / 1024.0), DynValue.NewNumber(bytes % 1024));
+				case "step":
+				case "isrunning":
+					return DynValue.True;
+				case "setpause":
+				case "setstepmul":
+				case "setmajorinc":
+					return DynValue.NewNumber(200);
+				default:
+					return DynValue.NewNumber(0);
 			}
-
-			return DynValue.Nil;
 		}
 
 		// error (message [, level])

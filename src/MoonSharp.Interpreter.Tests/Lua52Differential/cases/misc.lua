@@ -13,6 +13,40 @@ return collectgarbage("isrunning")
 return type(collectgarbage("setpause", 100))
 --@@ collectgarbage invalid
 return (pcall(collectgarbage, "nooption"))
+--@@ collectgarbage invalid message
+return collectgarbage("nooption")
+--@@ collectgarbage option case
+return collectgarbage("COUNT")
+--@@ collectgarbage number option
+return collectgarbage(1)
+--@@ collectgarbage table option
+return collectgarbage({})
+--@@ collectgarbage boolean option
+return collectgarbage(true)
+--@@ collectgarbage nil option
+return collectgarbage(nil)
+--@@ collectgarbage bad second argument
+return collectgarbage("count", "x")
+--@@ collectgarbage bad second argument with default option
+return collectgarbage(nil, {})
+--@@ collectgarbage option checked before second argument
+return collectgarbage("x", {})
+--@@ collectgarbage numeric string second argument
+return select("#", collectgarbage("count", "10")), collectgarbage("collect", 2.7)
+--@@ collectgarbage count remainder
+local kb, b = collectgarbage("count") return kb > 0, b == math.floor(b), b >= 0 and b < 1024
+--@@ collectgarbage count is kb
+local kb, b = collectgarbage("count") return (kb * 1024 - b) % 1024
+--@@ collectgarbage stop and restart
+return collectgarbage("stop"), collectgarbage("restart"), collectgarbage("isrunning")
+--@@ collectgarbage generational and incremental
+return collectgarbage("generational"), collectgarbage("incremental")
+--@@ collectgarbage tuning results
+return type(collectgarbage("setstepmul", 200)), type(collectgarbage("setmajorinc", 200)), type(collectgarbage("setpause", 200))
+--@@ collectgarbage step loop ends
+local n = 0 repeat n = n + 1 until collectgarbage("step") or n > 100000 return n <= 100000
+--@@ collectgarbage results count
+return select("#", collectgarbage()), select("#", collectgarbage("step")), select("#", collectgarbage("isrunning")), select("#", collectgarbage("setpause", 200))
 --@@ type no arg
 return (pcall(type))
 --@@ type values

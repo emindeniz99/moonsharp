@@ -73,11 +73,8 @@ like(math.log(47), '^3%.85', "function log")
 like(math.log(47, 2), '^5%.554', "function log (base 2)")
 like(math.log(47, 10), '^1%.672', "function log (base 10)")
 
-if (platform and platform.compat) or jit then
-    like(math.log10(47), '^1%.672', "function log10")
-else
-    is(math.log10, nil, "function log10 (removed)")
-end
+-- MoonSharp : math.log10 exists, as in Lua 5.2's default build (LUA_COMPAT_ALL)
+like(math.log10(47), '^1%.672', "function log10")
 
 error_like(function () math.max() end,
            "^[^:]+:%d+: bad argument #1 to 'max' %(number expected, got no value%)",

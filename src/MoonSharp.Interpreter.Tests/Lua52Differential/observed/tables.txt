@@ -17,35 +17,35 @@ insert pos 0	ERR	"bad argument #2 to 'insert' (position out of bounds)"
 insert pos float	OK	3	9 1 2
 insert pos string	ERR	"bad argument #2 to 'table.insert' (number expected, got string)"
 insert nil value	OK	2	2 nil
-insert pos nil value	OK	4	3 1 2 1
+insert pos nil value	OK	4	0 nil 1 2
 insert too many	ERR	"wrong number of arguments to 'insert'"
-insert too few	OK	1	0
+insert too few	ERR	"wrong number of arguments to 'insert'"
 insert returns nothing	OK	1	1
 insert __len	OK	2	"x" nil
 insert __newindex ignored	OK	2	0 "x"
 remove last	OK	2	3 2
 remove first	OK	4	1 2 3 nil
 remove empty	OK	1	nil
-remove empty pos 1	ERR	"bad argument #1 to 'remove' (position out of bounds)"
+remove empty pos 1	OK	1	nil
 remove empty pos 0	OK	1	nil
-remove n+1	ERR	"bad argument #1 to 'remove' (position out of bounds)"
+remove n+1	OK	1	nil
 remove n+2	ERR	"bad argument #1 to 'remove' (position out of bounds)"
 remove pos 0 nonempty	ERR	"bad argument #1 to 'remove' (position out of bounds)"
 remove negative	ERR	"bad argument #1 to 'remove' (position out of bounds)"
 remove float pos	OK	3	1 2 3
-remove extra arg	ERR	"wrong number of arguments to 'remove'"
+remove extra arg	OK	2	1 1
 remove result count empty	OK	1	1
-remove queue idiom	ERR	"bad argument #1 to 'remove' (position out of bounds)"
+remove queue idiom	OK	3	"a" nil 0
 unpack basic	OK	3	1 2 3
 unpack range	OK	2	2 3
 unpack empty range	OK	1	0
-unpack i > j + 1	CRASH	System.OverflowException
-unpack i much larger	CRASH	System.OverflowException
+unpack i > j + 1	OK	1	0
+unpack i much larger	OK	1	0
 unpack negative	OK	3	"a" "b" "c"
 unpack floats	OK	2	1 2
 unpack nil holes	OK	1	1
-unpack too many	OK	2	true 10000000
-unpack huge	CRASH	System.OverflowException
+unpack too many	OK	2	false "=c:(1,24-68): too many results to unpack"
+unpack huge	OK	0	
 unpack global alias	OK	2	false 7
 unpack __index ignored	OK	2	nil nil
 pack	OK	5	3 1 nil 3 1
@@ -63,7 +63,16 @@ sort one element	OK	1	1
 sort calls per element	OK	3	false 1 100
 sort __len	OK	4	1 2 3 0
 sort returns nothing	OK	1	1
-maxn	OK	1	nil
+maxn	OK	1	10
+maxn empty	OK	1	0
+maxn negative and string keys	OK	1	0
+maxn fractional	OK	2	4503599627370496p-53 6755399441055744p-52
+maxn after removal	OK	1	2
+maxn hash above array	OK	1	100
+maxn raw	OK	1	0
+maxn large keys	OK	2	4503599627370496p1 inf
+maxn no argument	ERR	"bad argument #1 to 'maxn' (table expected, got no value)"
+maxn non table	ERR	"bad argument #1 to 'maxn' (table expected, got string)"
 length holes constructor	OK	5	0 1 2 0 0
 length holes assignment	OK	1	2
 length after nil end	OK	1	2

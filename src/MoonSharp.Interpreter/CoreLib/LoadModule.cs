@@ -158,7 +158,22 @@ namespace MoonSharp.Interpreter.CoreLib
 			return load_impl(executionContext, args, GetSafeDefaultEnv(executionContext));
 		}
 
+		// loadstring (string [, chunkname [, mode [, env]]])
+		// ----------------------------------------------------------------
+		// Lua 5.1's name for load. Lua 5.2's default build (LUA_COMPAT_ALL) keeps it as the same function, readers
+		// included, so it is load under another name; only the name in its argument errors differs.
+		[MoonSharpModuleMethod]
+		public static DynValue loadstring(ScriptExecutionContext executionContext, CallbackArguments args)
+		{
+			return load_impl(executionContext, args, null, "loadstring");
+		}
+
 		public static DynValue load_impl(ScriptExecutionContext executionContext, CallbackArguments args, Table defaultEnv)
+		{
+			return load_impl(executionContext, args, defaultEnv, "load");
+		}
+
+		private static DynValue load_impl(ScriptExecutionContext executionContext, CallbackArguments args, Table defaultEnv, string funcName)
 		{
 			try
 			{
@@ -207,12 +222,12 @@ namespace MoonSharp.Interpreter.CoreLib
 				}
 				else
 				{
-					args.AsType(0, "load", DataType.Function, false);
+					args.AsType(0, funcName, DataType.Function, false);
 					return DynValue.Nil;
 				}
 
-				DynValue source = args.AsType(1, "load", DataType.String, true);
-				DynValue mode = args.AsType(2, "load", DataType.String, true);
+				DynValue source = args.AsType(1, funcName, DataType.String, true);
+				DynValue mode = args.AsType(2, funcName, DataType.String, true);
 
 				// Lua 5.2's checkmode: "b" binary only, "t" text only, "bt" (the default) both.
 				string kind = script.StartsWith(StringModule.BASE64_DUMP_HEADER) ? "binary" : "text";

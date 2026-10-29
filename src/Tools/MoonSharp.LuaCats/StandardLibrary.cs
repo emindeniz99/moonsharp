@@ -37,9 +37,10 @@ namespace MoonSharp.LuaCats
 
 		static readonly Dictionary<string, string> s_Functions = new Dictionary<string, string>
 		{
-			// Global functions of Lua 5.2 and MoonSharp (loadsafe, loadfilesafe, pack, unpack).
+			// Global functions of Lua 5.2 (loadstring from its default build) and MoonSharp (loadsafe, loadfilesafe, pack,
+			// unpack).
 			{ "assert", "---@generic T\n---@param v T\n---@param message? any\n---@param ... any\n---@return T\n---@return any ...\nfunction assert(v, message, ...) end\n" },
-			{ "collectgarbage", "---@param opt? string\n---@param arg? integer\n---@return any\nfunction collectgarbage(opt, arg) end\n" },
+			{ "collectgarbage", "---@param opt? \"collect\"|\"count\"|\"step\"|\"isrunning\"|\"stop\"|\"restart\"|\"setpause\"|\"setstepmul\"|\"setmajorinc\"|\"generational\"|\"incremental\"\n---@param arg? integer\n---@return any ...\nfunction collectgarbage(opt, arg) end\n" },
 			{ "dofile", "---@param filename? string\n---@return any ...\nfunction dofile(filename) end\n" },
 			{ "error", "---@param message any\n---@param level? integer\nfunction error(message, level) end\n" },
 			{ "getmetatable", "---@param object any\n---@return table metatable\nfunction getmetatable(object) end\n" },
@@ -48,6 +49,7 @@ namespace MoonSharp.LuaCats
 			{ "loadfile", "---@param filename? string\n---@param mode? string\n---@param env? table\n---@return function?\n---@return string? error_message\nfunction loadfile(filename, mode, env) end\n" },
 			{ "loadfilesafe", "---@param filename? string\n---@param mode? string\n---@param env? table\n---@return function?\n---@return string? error_message\nfunction loadfilesafe(filename, mode, env) end\n" },
 			{ "loadsafe", "---@param chunk string|function\n---@param chunkname? string\n---@param mode? string\n---@param env? table\n---@return function?\n---@return string? error_message\nfunction loadsafe(chunk, chunkname, mode, env) end\n" },
+			{ "loadstring", "---@param chunk string|function\n---@param chunkname? string\n---@param mode? string\n---@param env? table\n---@return function?\n---@return string? error_message\nfunction loadstring(chunk, chunkname, mode, env) end\n" },
 			{ "next", "---@generic K, V\n---@param table table<K, V>\n---@param index? K\n---@return K?\n---@return V?\nfunction next(table, index) end\n" },
 			{ "pack", "---@param ... any\n---@return table\nfunction pack(...) end\n" },
 			{ "pairs", "---@generic T: table, K, V\n---@param t T\n---@return fun(table: table<K, V>, index?: K): K, V\n---@return T\nfunction pairs(t) end\n" },
@@ -69,6 +71,10 @@ namespace MoonSharp.LuaCats
 			{ "_G", "---@type table<string, any>\n_G = {}\n" },
 			{ "_VERSION", "---@type string\n_VERSION = nil\n" },
 			{ "_MOONSHARP", "---@class moonsharp.info\n---@field version string\n---@field luacompat string\n---@field platform string\n---@field is_aot boolean\n---@field is_unity boolean\n---@field is_mono boolean\n---@field is_clr4 boolean\n---@field banner string\n\n---@type moonsharp.info\n_MOONSHARP = nil\n" },
+
+			{ "math.log10", "---@param x number\n---@return number\nfunction math.log10(x) end\n" },
+
+			{ "table.maxn", "---@param table table\n---@return number\nfunction table.maxn(table) end\n" },
 
 			{ "os.clock", "---@return number\nfunction os.clock() end\n" },
 			{ "os.date", "---@param format? string\n---@param time? number\n---@return string|table\nfunction os.date(format, time) end\n" },

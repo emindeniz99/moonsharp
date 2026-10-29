@@ -5,6 +5,23 @@ collectgarbage step	OK	1	"boolean"
 collectgarbage isrunning	OK	1	true
 collectgarbage setpause	OK	1	"number"
 collectgarbage invalid	OK	1	false
+collectgarbage invalid message	ERR	"bad argument #1 to 'collectgarbage' (invalid option 'nooption')"
+collectgarbage option case	ERR	"bad argument #1 to 'collectgarbage' (invalid option 'COUNT')"
+collectgarbage number option	ERR	"bad argument #1 to 'collectgarbage' (invalid option '1')"
+collectgarbage table option	ERR	"bad argument #1 to 'collectgarbage' (string expected, got table)"
+collectgarbage boolean option	ERR	"bad argument #1 to 'collectgarbage' (string expected, got boolean)"
+collectgarbage nil option	OK	1	0
+collectgarbage bad second argument	ERR	"bad argument #2 to 'collectgarbage' (number expected, got string)"
+collectgarbage bad second argument with default option	ERR	"bad argument #2 to 'collectgarbage' (number expected, got table)"
+collectgarbage option checked before second argument	ERR	"bad argument #1 to 'collectgarbage' (invalid option 'x')"
+collectgarbage numeric string second argument	OK	2	2 0
+collectgarbage count remainder	OK	3	true true true
+collectgarbage count is kb	OK	1	0
+collectgarbage stop and restart	OK	3	0 0 true
+collectgarbage generational and incremental	OK	2	0 0
+collectgarbage tuning results	OK	3	"number" "number" "number"
+collectgarbage step loop ends	OK	1	true
+collectgarbage results count	OK	4	1 1 1 1
 type no arg	OK	1	false
 type values	OK	7	"nil" "number" "string" "table" "function" "function" "thread"
 

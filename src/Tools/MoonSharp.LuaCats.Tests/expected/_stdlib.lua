@@ -28,9 +28,9 @@ _VERSION = nil
 ---@return any ...
 function assert(v, message, ...) end
 
----@param opt? string
+---@param opt? "collect"|"count"|"step"|"isrunning"|"stop"|"restart"|"setpause"|"setstepmul"|"setmajorinc"|"generational"|"incremental"
 ---@param arg? integer
----@return any
+---@return any ...
 function collectgarbage(opt, arg) end
 
 ---@param message any
@@ -339,6 +339,10 @@ function uint64lib.shr(x, n) end
 ---@type uint64lib
 uint64 = nil
 
+---@param x number
+---@return number
+function math.log10(x) end
+
 ---@param s string
 ---@param part string
 ---@return boolean
@@ -360,4 +364,8 @@ function string.startsWith(s, prefix) end
 ---@param j? integer
 ---@return integer ...
 function string.unicode(s, i, j) end
+
+---@param table table
+---@return number
+function table.maxn(table) end
 

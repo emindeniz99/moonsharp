@@ -134,5 +134,35 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 					return table.concat({ 1 + -x^2, 2 * -x^2, tostring(true and -2^2), 2 - -2^2, tostring(2^-3^2 == 2^-9),
 						tostring(1 == not 2^2), 1 + -2^2^3, -2^-2, - -2^2 * -1 }, '|')"));
 		}
+
+
+		// Entry 3: a multiple assignment evaluated each target's table and key right before storing into it, after
+		// the earlier targets were stored. Lua 5.2, 3.3.3: "The assignment statement first evaluates all its
+		// expressions and only then are the assignments performed"; reference Lua then stores from the last target.
+		[Test]
+		public void MultipleAssignment_EvaluatesTargetsFirst()
+		{
+			Assert.AreEqual("20,nil,4|10,nil,2|nil,1|1,2,3,4|y,x|1|v,nil",
+				RunString(@"
+					local i, a = 3, {}
+					i, a[i] = i + 1, 20
+					local r1 = tostring(a[3]) .. ',' .. tostring(a[4]) .. ',' .. i
+					local c, j = {}, 1
+					c[j], j = 10, 2
+					local r2 = c[1] .. ',' .. tostring(c[2]) .. ',' .. j
+					T = {} local old = T
+					T, T.x = {}, 1
+					local r3 = tostring(T.x) .. ',' .. old.x
+					local calls, d = {}, {}
+					local function f(n) calls[#calls + 1] = n return n end
+					d[f(1)], d[f(2)] = f(3), f(4)
+					local log = {}
+					local m = setmetatable({}, { __newindex = function(t, k, v) log[#log + 1] = k rawset(t, k, v) end })
+					m.x, m.y = 1, 2
+					local z z, z = 1, 2
+					local w, k = {}, 'key'
+					w[k], k = 'v', 'other'
+					return table.concat({ r1, r2, r3, table.concat(calls, ','), table.concat(log, ','), z, w.key .. ',' .. tostring(w.other) }, '|')"));
+		}
 	}
 }

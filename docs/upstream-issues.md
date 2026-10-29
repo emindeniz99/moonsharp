@@ -18,14 +18,15 @@ again; planned work goes in [ROADMAP.md](ROADMAP.md), and fork-only changes in
 
 ## Summary
 
+Counted from the rows below on 2026-10-29.
+
 | Status | Issues | Pull requests |
 |---|---|---|
-| fixed in the fork | 25 | 9 |
-| reproduces, waits for other work | 1 | 0 |
-| needs the owner | 5 | 2 |
+| fixed in the fork | 31 | 10 |
+| needs the owner (postponed or waits for Unity CI) | 1 | 1 |
 | does not reproduce | 16 | 3 |
 | question, answered | 8 | 0 |
-| feature (not a bug) | 19 | 5 |
+| feature (not a bug) | 18 | 5 |
 | out of scope | 18 | 3 |
 | total | 92 | 22 |
 
@@ -119,7 +120,7 @@ keys 1..n (`77c8662`).
 | [#186](https://github.com/moonsharp-devs/moonsharp/issues/186) | ScriptRuntimeException: cannot convert a function to a clr type System.Action | question | fixed | A Lua function converts to `Action`, `Func<>` and other delegates with up to four parameters, cached per function (`Closure.ToDelegate`); AOT-safe through factories from the source generator. `ClosureDelegateTests` |
 | [#185](https://github.com/moonsharp-devs/moonsharp/issues/185) | loadstring() not usable | question | answered | Lua 5.2 removed `loadstring`; `load` works |
 | [#183](https://github.com/moonsharp-devs/moonsharp/issues/183) | Proxy operator overloads | feature | feature: not planned | No roadmap item |
-| [#181](https://github.com/moonsharp-devs/moonsharp/issues/181) | Non-global TypeDescriptorRegistry and ExtensionMethodsRegistry | feature | needs owner | Per-script registration would let one process run scripts with different trust levels; it changes the static `UserData` API |
+| [#181](https://github.com/moonsharp-devs/moonsharp/issues/181) | Non-global TypeDescriptorRegistry and ExtensionMethodsRegistry | feature | needs owner | Per-script registration would let one process run scripts with different trust levels; it changes the static `UserData` API. Postponed by the owner (ROADMAP decisions, 2026-10-28) |
 | [#180](https://github.com/moonsharp-devs/moonsharp/issues/180) | JsonTableConverter.JsonToTable can't handle escaped forward slash | bug | does not reproduce | Fixed upstream in 714c265, before the fork base |
 | [#175](https://github.com/moonsharp-devs/moonsharp/issues/175) | Inheritance for static objects | question | fixed | Branch `fix/interop-decisions`: base classes' statics are added, except those declared in the core library; `Issue175_DerivedTypeSeesStaticMembersOfBaseClasses`, parity probe and LuaCATS sample |
 | [#169](https://github.com/moonsharp-devs/moonsharp/issues/169) | Winrt (Windows Store App) not working with version 2.0 | bug | out of scope | Windows Store 8.1 and PCL builds are gone |
@@ -151,11 +152,11 @@ keys 1..n (`77c8662`).
 | [#354](https://github.com/moonsharp-devs/moonsharp/pull/354) | Treat a null return from a CLR callback as nil | bug | fixed | `5cf4dfb` (same change) |
 | [#347](https://github.com/moonsharp-devs/moonsharp/pull/347) | Fix debug server launch configuration | docs | out of scope | Same as #297 |
 | [#344](https://github.com/moonsharp-devs/moonsharp/pull/344) | Map generic c# functions of registered types to lua functions | feature | feature: not planned | See [upstream.md](upstream.md); maintainers prefer explicit wrappers |
-| [#336](https://github.com/moonsharp-devs/moonsharp/pull/336) | Fix for #175 (Inheritance for static methods) | bug | needs owner | Same as #175 |
+| [#336](https://github.com/moonsharp-devs/moonsharp/pull/336) | Fix for #175 (Inheritance for static methods) | bug | fixed | Same as #175, fixed on branch `fix/interop-decisions` |
 | [#334](https://github.com/moonsharp-devs/moonsharp/pull/334) | Bitwise operators and floor division operator from Lua 5.3 | feature | feature: not planned | Waits for the integer decision; targets `legacy/2.0` |
 | [#327](https://github.com/moonsharp-devs/moonsharp/pull/327) | DynValue ToString uses InvariantCulture | bug | fixed | `00c75be` on `next` (numbers print the same on every runtime); `UpstreamIssueTests.PR327_ConcatenationIgnoresTheCulture` passes |
 | [#324](https://github.com/moonsharp-devs/moonsharp/pull/324) | Fix for #198 (var args are nil when void is passed) | bug | fixed | Same as #198, fixed on branch `fix/vm-correctness` |
-| [#321](https://github.com/moonsharp-devs/moonsharp/pull/321) | Added compatibility with Unity 2017+ | bug | needs owner | `#if UNITY_5` paths are dead on Unity 2017 and later (also in the fork); enabling them needs the Unity CI matrix |
+| [#321](https://github.com/moonsharp-devs/moonsharp/pull/321) | Added compatibility with Unity 2017+ | bug | needs owner | `#if UNITY_5` paths are dead on Unity 2017 and later (also in the fork); the owner decided to replace them after the first Unity CI run, which waits for the Unity secrets |
 | [#316](https://github.com/moonsharp-devs/moonsharp/pull/316) | FIX (net6.0-ios, net6.0-wasm) | bug | does not reproduce | The fork's browser build runs the netstandard2.0 interpreter (fork [PR #8](https://github.com/emindeniz99/moonsharp/pull/8)) |
 | [#283](https://github.com/moonsharp-devs/moonsharp/pull/283) | Fix of incorrect work of the split string with the Cyrillic symbols | bug | does not reproduce | `gmatch('[^ ]+')` splits Cyrillic text |
 | [#281](https://github.com/moonsharp-devs/moonsharp/pull/281) | Enumerator based coroutine yielding | feature | feature: not planned | No roadmap item |

@@ -1,0 +1,508 @@
+math.abs(0)	OK	1	0
+math.abs(-0.0)	OK	1	0
+math.abs(1)	OK	1	1
+math.abs(-1)	OK	1	1
+math.abs(2.5)	OK	1	5629499534213120p-51
+math.abs(-2.5)	OK	1	5629499534213120p-51
+math.abs(0.5)	OK	1	4503599627370496p-53
+math.abs(-0.5)	OK	1	4503599627370496p-53
+math.abs(1e300)	OK	1	6724873095247260p944
+math.abs(1/0)	OK	1	inf
+math.abs(-1/0)	OK	1	inf
+math.abs(0/0)	OK	1	nan
+math.abs(2^53)	OK	1	4503599627370496p1
+math.abs("3.7")	OK	1	8331659310635418p-51
+math.abs("x")	ERR	"bad argument #1 to 'abs' (number expected, got string)"
+math.abs(nil)	ERR	"bad argument #1 to 'abs' (number expected, got nil)"
+math.ceil(0)	OK	1	0
+math.ceil(-0.0)	OK	1	-0
+math.ceil(1)	OK	1	1
+math.ceil(-1)	OK	1	-1
+math.ceil(2.5)	OK	1	3
+math.ceil(-2.5)	OK	1	-2
+math.ceil(0.5)	OK	1	1
+math.ceil(-0.5)	OK	1	-0
+math.ceil(1e300)	OK	1	6724873095247260p944
+math.ceil(1/0)	OK	1	inf
+math.ceil(-1/0)	OK	1	-inf
+math.ceil(0/0)	OK	1	nan
+math.ceil(2^53)	OK	1	4503599627370496p1
+math.ceil("3.7")	OK	1	4
+math.ceil("x")	ERR	"bad argument #1 to 'ceil' (number expected, got string)"
+math.ceil(nil)	ERR	"bad argument #1 to 'ceil' (number expected, got nil)"
+math.floor(0)	OK	1	0
+math.floor(-0.0)	OK	1	-0
+math.floor(1)	OK	1	1
+math.floor(-1)	OK	1	-1
+math.floor(2.5)	OK	1	2
+math.floor(-2.5)	OK	1	-3
+math.floor(0.5)	OK	1	0
+math.floor(-0.5)	OK	1	-1
+math.floor(1e300)	OK	1	6724873095247260p944
+math.floor(1/0)	OK	1	inf
+math.floor(-1/0)	OK	1	-inf
+math.floor(0/0)	OK	1	nan
+math.floor(2^53)	OK	1	4503599627370496p1
+math.floor("3.7")	OK	1	3
+math.floor("x")	ERR	"bad argument #1 to 'floor' (number expected, got string)"
+math.floor(nil)	ERR	"bad argument #1 to 'floor' (number expected, got nil)"
+math.sqrt(0)	OK	1	0
+math.sqrt(-0.0)	OK	1	-0
+math.sqrt(1)	OK	1	1
+math.sqrt(-1)	OK	1	nan
+math.sqrt(2.5)	OK	1	7120816245988179p-52
+math.sqrt(-2.5)	OK	1	nan
+math.sqrt(0.5)	OK	1	6369051672525773p-53
+math.sqrt(-0.5)	OK	1	nan
+math.sqrt(1e300)	OK	1	5503284107318959p446
+math.sqrt(1/0)	OK	1	inf
+math.sqrt(-1/0)	OK	1	nan
+math.sqrt(0/0)	OK	1	nan
+math.sqrt(2^53)	OK	1	6369051672525773p-26
+math.sqrt("3.7")	OK	1	8662846849247145p-52
+math.sqrt("x")	ERR	"bad argument #1 to 'sqrt' (number expected, got string)"
+math.sqrt(nil)	ERR	"bad argument #1 to 'sqrt' (number expected, got nil)"
+math.exp(0)	OK	1	1
+math.exp(-0.0)	OK	1	1
+math.exp(1)	OK	1	6121026514868073p-51
+math.exp(-1)	OK	1	6627126856707896p-54
+math.exp(2.5)	OK	1	6858134407733435p-49
+math.exp(-2.5)	OK	1	5914847507444773p-56
+math.exp(0.5)	OK	1	7425180500362908p-52
+math.exp(-0.5)	OK	1	5463142506141194p-53
+math.exp(1e300)	OK	1	inf
+math.exp(1/0)	OK	1	inf
+math.exp(-1/0)	OK	1	0
+math.exp(0/0)	OK	1	nan
+math.exp(2^53)	OK	1	inf
+math.exp("3.7")	OK	1	5692452026379393p-47
+math.exp("x")	ERR	"bad argument #1 to 'exp' (number expected, got string)"
+math.exp(nil)	ERR	"bad argument #1 to 'exp' (number expected, got nil)"
+math.log(0)	OK	1	-inf
+math.log(-0.0)	OK	1	-inf
+math.log(1)	OK	1	0
+math.log(-1)	OK	1	nan
+math.log(2.5)	OK	1	8253213197262968p-53
+math.log(-2.5)	OK	1	nan
+math.log(0.5)	OK	1	-6243314768165359p-53
+math.log(-0.5)	OK	1	nan
+math.log(1e300)	OK	1	6076125800857525p-43
+math.log(1/0)	OK	1	inf
+math.log(-1/0)	OK	1	nan
+math.log(0/0)	OK	1	nan
+math.log(2^53)	OK	1	5170245042386938p-47
+math.log("3.7")	OK	1	5892207199053136p-52
+math.log("x")	ERR	"bad argument #1 to 'log' (number expected, got string)"
+math.log(nil)	ERR	"bad argument #1 to 'log' (number expected, got nil)"
+math.log10(0)	ERR	"attempt to call a nil value"
+math.log10(-0.0)	ERR	"attempt to call a nil value"
+math.log10(1)	ERR	"attempt to call a nil value"
+math.log10(-1)	ERR	"attempt to call a nil value"
+math.log10(2.5)	ERR	"attempt to call a nil value"
+math.log10(-2.5)	ERR	"attempt to call a nil value"
+math.log10(0.5)	ERR	"attempt to call a nil value"
+math.log10(-0.5)	ERR	"attempt to call a nil value"
+math.log10(1e300)	ERR	"attempt to call a nil value"
+math.log10(1/0)	ERR	"attempt to call a nil value"
+math.log10(-1/0)	ERR	"attempt to call a nil value"
+math.log10(0/0)	ERR	"attempt to call a nil value"
+math.log10(2^53)	ERR	"attempt to call a nil value"
+math.log10("3.7")	ERR	"attempt to call a nil value"
+math.log10("x")	ERR	"attempt to call a nil value"
+math.log10(nil)	ERR	"attempt to call a nil value"
+math.sin(0)	OK	1	0
+math.sin(-0.0)	OK	1	-0
+math.sin(1)	OK	1	7579296827247854p-53
+math.sin(-1)	OK	1	-7579296827247854p-53
+math.sin(2.5)	OK	1	5390557850356401p-53
+math.sin(-2.5)	OK	1	-5390557850356401p-53
+math.sin(0.5)	OK	1	8636562708039152p-54
+math.sin(-0.5)	OK	1	-8636562708039152p-54
+math.sin(1e300)	OK	1	-7366825349276549p-53
+math.sin(1/0)	OK	1	nan
+math.sin(-1/0)	OK	1	nan
+math.sin(0/0)	OK	1	nan
+math.sin(2^53)	OK	1	-7646445317608838p-53
+math.sin("3.7")	OK	1	-4772339693525825p-53
+math.sin("x")	ERR	"bad argument #1 to 'sin' (number expected, got string)"
+math.sin(nil)	ERR	"bad argument #1 to 'sin' (number expected, got nil)"
+math.cos(0)	OK	1	1
+math.cos(-0.0)	OK	1	1
+math.cos(1)	OK	1	4866610526750348p-53
+math.cos(-1)	OK	1	4866610526750348p-53
+math.cos(2.5)	OK	1	-7216060176894845p-53
+math.cos(-2.5)	OK	1	-7216060176894845p-53
+math.cos(0.5)	OK	1	7904560997432656p-53
+math.cos(-0.5)	OK	1	7904560997432656p-53
+math.cos(1e300)	OK	1	-5182617358812353p-53
+math.cos(1/0)	OK	1	nan
+math.cos(-1/0)	OK	1	nan
+math.cos(0/0)	OK	1	nan
+math.cos(2^53)	OK	1	-4760410950687404p-53
+math.cos("3.7")	OK	1	-7639005973567799p-53
+math.cos("x")	ERR	"bad argument #1 to 'cos' (number expected, got string)"
+math.cos(nil)	ERR	"bad argument #1 to 'cos' (number expected, got nil)"
+math.tan(0)	OK	1	0
+math.tan(-0.0)	OK	1	-0
+math.tan(1)	OK	1	7013940848419750p-52
+math.tan(-1)	OK	1	-7013940848419750p-52
+math.tan(2.5)	OK	1	-6728578678962965p-53
+math.tan(-2.5)	OK	1	6728578678962965p-53
+math.tan(0.5)	OK	1	4920655379384138p-53
+math.tan(-0.5)	OK	1	-4920655379384138p-53
+math.tan(1e300)	OK	1	6401636393528439p-52
+math.tan(1/0)	OK	1	nan
+math.tan(-1/0)	OK	1	nan
+math.tan(0/0)	OK	1	nan
+math.tan(2^53)	OK	1	7233940229071903p-52
+math.tan("3.7")	OK	1	5627095289574740p-53
+math.tan("x")	ERR	"bad argument #1 to 'tan' (number expected, got string)"
+math.tan(nil)	ERR	"bad argument #1 to 'tan' (number expected, got nil)"
+math.asin(0)	OK	1	0
+math.asin(-0.0)	OK	1	-0
+math.asin(1)	OK	1	7074237752028440p-52
+math.asin(-1)	OK	1	-7074237752028440p-52
+math.asin(2.5)	OK	1	nan
+math.asin(-2.5)	OK	1	nan
+math.asin(0.5)	OK	1	4716158501352294p-53
+math.asin(-0.5)	OK	1	-4716158501352294p-53
+math.asin(1e300)	OK	1	nan
+math.asin(1/0)	OK	1	nan
+math.asin(-1/0)	OK	1	nan
+math.asin(0/0)	OK	1	nan
+math.asin(2^53)	OK	1	nan
+math.asin("3.7")	OK	1	nan
+math.asin("x")	ERR	"bad argument #1 to 'asin' (number expected, got string)"
+math.asin(nil)	ERR	"bad argument #1 to 'asin' (number expected, got nil)"
+math.acos(0)	OK	1	7074237752028440p-52
+math.acos(-0.0)	OK	1	7074237752028440p-52
+math.acos(1)	OK	1	0
+math.acos(-1)	OK	1	7074237752028440p-51
+math.acos(2.5)	OK	1	nan
+math.acos(-2.5)	OK	1	nan
+math.acos(0.5)	OK	1	4716158501352294p-52
+math.acos(-0.5)	OK	1	4716158501352294p-51
+math.acos(1e300)	OK	1	nan
+math.acos(1/0)	OK	1	nan
+math.acos(-1/0)	OK	1	nan
+math.acos(0/0)	OK	1	nan
+math.acos(2^53)	OK	1	nan
+math.acos("3.7")	OK	1	nan
+math.acos("x")	ERR	"bad argument #1 to 'acos' (number expected, got string)"
+math.acos(nil)	ERR	"bad argument #1 to 'acos' (number expected, got nil)"
+math.atan(0)	OK	1	0
+math.atan(-0.0)	OK	1	-0
+math.atan(1)	OK	1	7074237752028440p-53
+math.atan(-1)	OK	1	-7074237752028440p-53
+math.atan(2.5)	OK	1	5360589373853096p-52
+math.atan(-2.5)	OK	1	-5360589373853096p-52
+math.atan(0.5)	OK	1	8352332796509007p-54
+math.atan(-0.5)	OK	1	-8352332796509007p-54
+math.atan(1e300)	OK	1	7074237752028440p-52
+math.atan(1/0)	OK	1	7074237752028440p-52
+math.atan(-1/0)	OK	1	-7074237752028440p-52
+math.atan(0/0)	OK	1	nan
+math.atan(2^53)	OK	1	7074237752028440p-52
+math.atan("3.7")	OK	1	5885450824668389p-52
+math.atan("x")	ERR	"bad argument #1 to 'atan' (number expected, got string)"
+math.atan(nil)	ERR	"bad argument #1 to 'atan' (number expected, got nil)"
+math.sinh(0)	OK	1	0
+math.sinh(-0.0)	OK	1	-0
+math.sinh(1)	OK	1	5292635657779586p-52
+math.sinh(-1)	OK	1	-5292635657779586p-52
+math.sinh(2.5)	OK	1	6811924661581523p-50
+math.sinh(-2.5)	OK	1	-6811924661581523p-50
+math.sinh(0.5)	OK	1	4693609247292311p-53
+math.sinh(-0.5)	OK	1	-4693609247292311p-53
+math.sinh(1e300)	OK	1	inf
+math.sinh(1/0)	OK	1	inf
+math.sinh(-1/0)	OK	1	-inf
+math.sinh(0/0)	OK	1	nan
+math.sinh(2^53)	OK	1	inf
+math.sinh("3.7")	OK	1	5688972499360671p-48
+math.sinh("x")	ERR	"bad argument #1 to 'sinh' (number expected, got string)"
+math.sinh(nil)	ERR	"bad argument #1 to 'sinh' (number expected, got nil)"
+math.cosh(0)	OK	1	1
+math.cosh(-0.0)	OK	1	1
+math.cosh(1)	OK	1	6949417371956560p-52
+math.cosh(-1)	OK	1	6949417371956560p-52
+math.cosh(2.5)	OK	1	6904344153885347p-50
+math.cosh(-2.5)	OK	1	6904344153885347p-50
+math.cosh(0.5)	OK	1	5078375876716752p-52
+math.cosh(-0.5)	OK	1	5078375876716752p-52
+math.cosh(1e300)	OK	1	inf
+math.cosh(1/0)	OK	1	inf
+math.cosh(-1/0)	OK	1	inf
+math.cosh(0/0)	OK	1	nan
+math.cosh(2^53)	OK	1	inf
+math.cosh("3.7")	OK	1	5695931553398115p-48
+math.cosh("x")	ERR	"bad argument #1 to 'cosh' (number expected, got string)"
+math.cosh(nil)	ERR	"bad argument #1 to 'cosh' (number expected, got nil)"
+math.tanh(0)	OK	1	0
+math.tanh(-0.0)	OK	1	-0
+math.tanh(1)	OK	1	6859830313939860p-53
+math.tanh(-1)	OK	1	-6859830313939860p-53
+math.tanh(2.5)	OK	1	8886631571026370p-53
+math.tanh(-2.5)	OK	1	-8886631571026370p-53
+math.tanh(0.5)	OK	1	8324762628950771p-54
+math.tanh(-0.5)	OK	1	-8324762628950771p-54
+math.tanh(1e300)	OK	1	1
+math.tanh(1/0)	OK	1	1
+math.tanh(-1/0)	OK	1	-1
+math.tanh(0/0)	OK	1	nan
+math.tanh(2^53)	OK	1	1
+math.tanh("3.7")	OK	1	8996194630518924p-53
+math.tanh("x")	ERR	"bad argument #1 to 'tanh' (number expected, got string)"
+math.tanh(nil)	ERR	"bad argument #1 to 'tanh' (number expected, got nil)"
+math.deg(0)	OK	1	0
+math.deg(-0.0)	OK	1	-0
+math.deg(1)	OK	1	8063664102031864p-47
+math.deg(-1)	OK	1	-8063664102031864p-47
+math.deg(2.5)	OK	1	5039790063769915p-45
+math.deg(-2.5)	OK	1	-5039790063769915p-45
+math.deg(0.5)	OK	1	8063664102031864p-48
+math.deg(-0.5)	OK	1	-8063664102031864p-48
+math.deg(1e300)	OK	1	6020419470605414p950
+math.deg(1/0)	OK	1	inf
+math.deg(-1/0)	OK	1	-inf
+math.deg(0/0)	OK	1	nan
+math.deg(2^53)	OK	1	8063664102031864p6
+math.deg("3.7")	OK	1	7458889294379474p-45
+math.deg("x")	ERR	"bad argument #1 to 'deg' (number expected, got string)"
+math.deg(nil)	ERR	"bad argument #1 to 'deg' (number expected, got nil)"
+math.rad(0)	OK	1	0
+math.rad(-0.0)	OK	1	-0
+math.rad(1)	OK	1	5030569068109113p-58
+math.rad(-1)	OK	1	-5030569068109113p-58
+math.rad(2.5)	OK	1	6288211335136391p-57
+math.rad(-2.5)	OK	1	-6288211335136391p-57
+math.rad(0.5)	OK	1	5030569068109113p-59
+math.rad(-0.5)	OK	1	-5030569068109113p-59
+math.rad(1e300)	OK	1	7511755346614202p938
+math.rad(1/0)	OK	1	inf
+math.rad(-1/0)	OK	1	-inf
+math.rad(0/0)	OK	1	nan
+math.rad(2^53)	OK	1	5030569068109113p-5
+math.rad("3.7")	OK	1	4653276388000929p-56
+math.rad("x")	ERR	"bad argument #1 to 'rad' (number expected, got string)"
+math.rad(nil)	ERR	"bad argument #1 to 'rad' (number expected, got nil)"
+math.modf(0)	OK	2	0 0
+math.modf(-0.0)	OK	2	-0 0
+math.modf(1)	OK	2	1 0
+math.modf(-1)	OK	2	-1 0
+math.modf(2.5)	OK	2	2 4503599627370496p-53
+math.modf(-2.5)	OK	2	-3 4503599627370496p-53
+math.modf(0.5)	OK	2	0 4503599627370496p-53
+math.modf(-0.5)	OK	2	-1 4503599627370496p-53
+math.modf(1e300)	OK	2	6724873095247260p944 0
+math.modf(1/0)	OK	2	inf nan
+math.modf(-1/0)	OK	2	-inf nan
+math.modf(0/0)	OK	2	nan nan
+math.modf(2^53)	OK	2	4503599627370496p1 0
+math.modf("3.7")	OK	2	3 6305039478318696p-53
+math.modf("x")	ERR	"bad argument #1 to 'modf' (number expected, got string)"
+math.modf(nil)	ERR	"bad argument #1 to 'modf' (number expected, got nil)"
+math.frexp(0)	OK	2	0 0
+math.frexp(-0.0)	OK	2	0 0
+math.frexp(1)	OK	2	4503599627370496p-53 1
+math.frexp(-1)	OK	2	-4503599627370496p-53 1
+math.frexp(2.5)	OK	2	5629499534213120p-53 2
+math.frexp(-2.5)	OK	2	-5629499534213120p-53 2
+math.frexp(0.5)	OK	2	4503599627370496p-53 0
+math.frexp(-0.5)	OK	2	-4503599627370496p-53 0
+math.frexp(1e300)	OK	2	6724873095247260p-53 997
+math.frexp(1/0)	OK	2	4503599627370496p-53 1025
+math.frexp(-1/0)	OK	2	-4503599627370496p-53 1025
+math.frexp(0/0)	OK	2	-6755399441055744p-53 1025
+math.frexp(2^53)	OK	2	4503599627370496p-53 54
+math.frexp("3.7")	OK	2	8331659310635418p-53 2
+math.frexp("x")	ERR	"bad argument #1 to 'frexp' (number expected, got string)"
+math.frexp(nil)	ERR	"bad argument #1 to 'frexp' (number expected, got nil)"
+math.fmod(7, 3)	OK	1	1
+math.fmod(-7, 3)	OK	1	-1
+math.fmod(7, -3)	OK	1	1
+math.fmod(-7, -3)	OK	1	-1
+math.fmod(5.5, 2)	OK	1	-4503599627370496p-53
+math.fmod(-5.5, 2)	OK	1	4503599627370496p-53
+math.fmod(1, 0)	OK	1	nan
+math.fmod(0, 0)	OK	1	nan
+math.fmod(-1, 0)	OK	1	nan
+math.fmod(1/0, 2)	OK	1	nan
+math.fmod(2, 1/0)	OK	1	2
+math.fmod(0/0, 1)	OK	1	nan
+math.fmod(7, 0.5)	OK	1	0
+math.fmod(2^53, 3)	OK	1	-1
+math.fmod("7", "3")	OK	1	1
+math.fmod(1, nil)	ERR	"bad argument #2 to 'fmod' (number expected, got nil)"
+math.pow(7, 3)	OK	1	343
+math.pow(-7, 3)	OK	1	-343
+math.pow(7, -3)	OK	1	6722574370885405p-61
+math.pow(-7, -3)	OK	1	-6722574370885405p-61
+math.pow(5.5, 2)	OK	1	8514618045497344p-48
+math.pow(-5.5, 2)	OK	1	8514618045497344p-48
+math.pow(1, 0)	OK	1	1
+math.pow(0, 0)	OK	1	1
+math.pow(-1, 0)	OK	1	1
+math.pow(1/0, 2)	OK	1	inf
+math.pow(2, 1/0)	OK	1	inf
+math.pow(0/0, 1)	OK	1	nan
+math.pow(7, 0.5)	OK	1	5957702309312746p-51
+math.pow(2^53, 3)	OK	1	4503599627370496p107
+math.pow("7", "3")	OK	1	343
+math.pow(1, nil)	ERR	"bad argument #2 to 'pow' (number expected, got nil)"
+math.atan2(7, 3)	OK	1	5250767254189564p-52
+math.atan2(-7, 3)	OK	1	-5250767254189564p-52
+math.atan2(7, -3)	OK	1	8897708249867316p-52
+math.atan2(-7, -3)	OK	1	-8897708249867316p-52
+math.atan2(5.5, 2)	OK	1	5503512790250323p-52
+math.atan2(-5.5, 2)	OK	1	-5503512790250323p-52
+math.atan2(1, 0)	OK	1	7074237752028440p-52
+math.atan2(0, 0)	OK	1	0
+math.atan2(-1, 0)	OK	1	-7074237752028440p-52
+math.atan2(1/0, 2)	OK	1	7074237752028440p-52
+math.atan2(2, 1/0)	OK	1	0
+math.atan2(0/0, 1)	OK	1	nan
+math.atan2(7, 0.5)	OK	1	6753097480192672p-52
+math.atan2(2^53, 3)	OK	1	7074237752028439p-52
+math.atan2("7", "3")	OK	1	5250767254189564p-52
+math.atan2(1, nil)	ERR	"bad argument #2 to 'atan2' (number expected, got nil)"
+math.ldexp(7, 3)	OK	1	56
+math.ldexp(-7, 3)	OK	1	-56
+math.ldexp(7, -3)	OK	1	7881299347898368p-53
+math.ldexp(-7, -3)	OK	1	-7881299347898368p-53
+math.ldexp(5.5, 2)	OK	1	22
+math.ldexp(-5.5, 2)	OK	1	-22
+math.ldexp(1, 0)	OK	1	1
+math.ldexp(0, 0)	OK	1	0
+math.ldexp(-1, 0)	OK	1	-1
+math.ldexp(1/0, 2)	OK	1	inf
+math.ldexp(2, 1/0)	OK	1	inf
+math.ldexp(0/0, 1)	OK	1	nan
+math.ldexp(7, 0.5)	OK	1	5572920213460051p-49
+math.ldexp(2^53, 3)	OK	1	4503599627370496p4
+math.ldexp("7", "3")	OK	1	56
+math.ldexp(1, nil)	ERR	"bad argument #2 to 'ldexp' (number expected, got nil)"
+math.max(7, 3)	OK	1	7
+math.max(-7, 3)	OK	1	3
+math.max(7, -3)	OK	1	7
+math.max(-7, -3)	OK	1	-3
+math.max(5.5, 2)	OK	1	6192449487634432p-50
+math.max(-5.5, 2)	OK	1	2
+math.max(1, 0)	OK	1	1
+math.max(0, 0)	OK	1	0
+math.max(-1, 0)	OK	1	0
+math.max(1/0, 2)	OK	1	inf
+math.max(2, 1/0)	OK	1	inf
+math.max(0/0, 1)	OK	1	nan
+math.max(7, 0.5)	OK	1	7
+math.max(2^53, 3)	OK	1	4503599627370496p1
+math.max("7", "3")	OK	1	7
+math.max(1, nil)	ERR	"bad argument #2 to 'max' (number expected, got nil)"
+math.min(7, 3)	OK	1	3
+math.min(-7, 3)	OK	1	-7
+math.min(7, -3)	OK	1	-3
+math.min(-7, -3)	OK	1	-7
+math.min(5.5, 2)	OK	1	2
+math.min(-5.5, 2)	OK	1	-6192449487634432p-50
+math.min(1, 0)	OK	1	0
+math.min(0, 0)	OK	1	0
+math.min(-1, 0)	OK	1	-1
+math.min(1/0, 2)	OK	1	2
+math.min(2, 1/0)	OK	1	2
+math.min(0/0, 1)	OK	1	nan
+math.min(7, 0.5)	OK	1	4503599627370496p-53
+math.min(2^53, 3)	OK	1	3
+math.min("7", "3")	OK	1	3
+math.min(1, nil)	ERR	"bad argument #2 to 'min' (number expected, got nil)"
+math.log(7, 3)	OK	1	7976972688705701p-52
+math.log(-7, 3)	OK	1	nan
+math.log(7, -3)	OK	1	nan
+math.log(-7, -3)	OK	1	nan
+math.log(5.5, 2)	OK	1	5538147660619074p-51
+math.log(-5.5, 2)	OK	1	nan
+math.log(1, 0)	OK	1	-0
+math.log(0, 0)	OK	1	nan
+math.log(-1, 0)	OK	1	nan
+math.log(1/0, 2)	OK	1	inf
+math.log(2, 1/0)	OK	1	nan
+math.log(0/0, 1)	OK	1	nan
+math.log(7, 0.5)	OK	1	-6321601290437677p-51
+math.log(2^53, 3)	OK	1	4706159848853526p-47
+math.log("7", "3")	OK	1	7976972688705701p-52
+math.log(1, nil)	OK	1	0
+% 7, 3	OK	1	1
+^ 7, 3	OK	1	343
+/ 7, 3	OK	1	5254199565265579p-51
+% -7, 3	OK	1	2
+^ -7, 3	OK	1	-343
+/ -7, 3	OK	1	-5254199565265579p-51
+% 7, -3	OK	1	-2
+^ 7, -3	OK	1	6722574370885405p-61
+/ 7, -3	OK	1	-5254199565265579p-51
+% -7, -3	OK	1	-1
+^ -7, -3	OK	1	-6722574370885405p-61
+/ -7, -3	OK	1	5254199565265579p-51
+% 5.5, 2	OK	1	6755399441055744p-52
+^ 5.5, 2	OK	1	8514618045497344p-48
+/ 5.5, 2	OK	1	6192449487634432p-51
+% -5.5, 2	OK	1	4503599627370496p-53
+^ -5.5, 2	OK	1	8514618045497344p-48
+/ -5.5, 2	OK	1	-6192449487634432p-51
+% 1, 0	OK	1	nan
+^ 1, 0	OK	1	1
+/ 1, 0	OK	1	inf
+% 0, 0	OK	1	nan
+^ 0, 0	OK	1	1
+/ 0, 0	OK	1	nan
+% -1, 0	OK	1	nan
+^ -1, 0	OK	1	1
+/ -1, 0	OK	1	-inf
+% 1/0, 2	OK	1	nan
+^ 1/0, 2	OK	1	inf
+/ 1/0, 2	OK	1	inf
+% 2, 1/0	OK	1	nan
+^ 2, 1/0	OK	1	inf
+/ 2, 1/0	OK	1	0
+% 0/0, 1	OK	1	nan
+^ 0/0, 1	OK	1	nan
+/ 0/0, 1	OK	1	nan
+% 7, 0.5	OK	1	0
+^ 7, 0.5	OK	1	5957702309312746p-51
+/ 7, 0.5	OK	1	14
+% 2^53, 3	OK	1	2
+^ 2^53, 3	OK	1	4503599627370496p107
+/ 2^53, 3	OK	1	6004799503160661p-1
+% "7", "3"	OK	1	1
+^ "7", "3"	OK	1	343
+/ "7", "3"	OK	1	5254199565265579p-51
+% 1, nil	ERR	"attempt to perform arithmetic on a nil value"
+^ 1, nil	ERR	"attempt to perform arithmetic on a nil value"
+/ 1, nil	ERR	"attempt to perform arithmetic on a nil value"
+max none	ERR	"bad argument #1 to 'max' (number expected, got no value)"
+min none	ERR	"bad argument #1 to 'min' (number expected, got no value)"
+max mixed nan	OK	2	nan nan
+min one	OK	1	4
+max many	OK	1	5348024557502464p-49
+huge	OK	4	9007199254740991p971 -9007199254740991p971 false true
+pi	OK	1	7074237752028440p-51
+random range bad	OK	1	true
+random zero	OK	1	true
+random float arg	OK	1	true
+random too many	OK	1	true
+random unit	OK	1	true
+randomseed none	ERR	"bad argument #1 to 'randomseed' (number expected, got no value)"
+tointeger absent	OK	4	nil nil nil nil
+deprecated math present	OK	3	"function" "function" "function"
+floor -0	OK	2	-inf -inf
+modf negative	OK	2	-4 5404319552844592p-54
+modf inf	OK	2	inf nan
+unary minus zero	OK	2	-inf -inf
+number literal hex float	OK	4	16 4503599627370496p-53 21 16
+number literal big	OK	3	4503599627370496p12 inf 4503599627370496p1
+integer division by zero	OK	3	nan nan nan
+for near 2^53	OK	1	4
+for float step	OK	1	11
+for step zero	OK	1	0
+for string bounds	OK	1	3
+for bad bound	ERR	"'for' limit must be a number"
+for nil step	ERR	"'for' step must be a number"

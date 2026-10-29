@@ -16,8 +16,9 @@ namespace EmbeddedTestRunner
 			Script.GlobalOptions.Platform = new LimitedPlatformAccessor();
 
 			var scripts = new Dictionary<string, string>();
-			foreach (string file in Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "TestMore"), "*", SearchOption.AllDirectories))
-				scripts.Add(Path.GetFileName(file), File.ReadAllText(file));
+			foreach (string dir in new[] { "TestMore", "Lua52Differential" })
+				foreach (string file in Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, dir), "*", SearchOption.AllDirectories))
+					scripts.Add(Path.GetFileName(file), File.ReadAllText(file));
 
 			using (TextWriter results = args.Length > 0 ? new StreamWriter(args[0]) : TextWriter.Null)
 				return SuiteReport.Run(scripts, results, Console.WriteLine);

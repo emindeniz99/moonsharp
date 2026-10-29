@@ -4,7 +4,8 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 {
 	/// <summary>
 	/// Multiple assignment through a __newindex metamethod. See issue #236 -- only the
-	/// first value used to reach the metamethod, the rest arrived as Void.
+	/// first value used to reach the metamethod, the rest arrived as Void. The stores run from the
+	/// last target to the first, as in Lua 5.2 (the order lua5.2 logs).
 	/// </summary>
 	[TestFixture]
 	public class NewIndexAssignmentTests
@@ -36,32 +37,32 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void TwoValues()
 		{
-			Assert.AreEqual("A=1;B=2;", Log("T.A, T.B = 1, 2"));
+			Assert.AreEqual("B=2;A=1;", Log("T.A, T.B = 1, 2"));
 		}
 
 		[Test]
 		public void ThreeValues()
 		{
-			Assert.AreEqual("A=1;B=2;C=3;", Log("T.A, T.B, T.C = 1, 2, 3"));
+			Assert.AreEqual("C=3;B=2;A=1;", Log("T.A, T.B, T.C = 1, 2, 3"));
 		}
 
 		[Test]
 		public void MoreTargetsThanValues()
 		{
 			// Lua pads the missing values with nil.
-			Assert.AreEqual("A=1;B=nil;C=nil;", Log("T.A, T.B, T.C = 1"));
+			Assert.AreEqual("C=nil;B=nil;A=1;", Log("T.A, T.B, T.C = 1"));
 		}
 
 		[Test]
 		public void MoreValuesThanTargets()
 		{
-			Assert.AreEqual("A=1;B=2;", Log("T.A, T.B = 1, 2, 3"));
+			Assert.AreEqual("B=2;A=1;", Log("T.A, T.B = 1, 2, 3"));
 		}
 
 		[Test]
 		public void ComputedKeys()
 		{
-			Assert.AreEqual("A=1;B=2;", Log("local x, y = 'A', 'B' T[x], T[y] = 1, 2"));
+			Assert.AreEqual("B=2;A=1;", Log("local x, y = 'A', 'B' T[x], T[y] = 1, 2"));
 		}
 
 		[Test]
@@ -73,7 +74,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void ValuesFromAFunctionCall()
 		{
-			Assert.AreEqual("A=1;B=2;", Log("local function f() return 1, 2 end T.A, T.B = f()"));
+			Assert.AreEqual("B=2;A=1;", Log("local function f() return 1, 2 end T.A, T.B = f()"));
 		}
 
 		[Test]

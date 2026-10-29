@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -19,10 +19,10 @@ namespace MoonSharp.Benchmarks
 		{
 			public string Name;
 			public Type ScriptType;
-			public MethodInfo DoString, Call, CreateCoroutine;
+			public MethodInfo DoString, LoadString, Call, CreateCoroutine;
 			public object Script;
 
-			public object SoftSandbox;
+			public object SoftSandbox, NoModules;
 
 			public object NewScript() => Activator.CreateInstance(ScriptType);
 			public object NewScript(object modules) => Activator.CreateInstance(ScriptType, modules);
@@ -75,6 +75,13 @@ namespace MoonSharp.Benchmarks
 				{
 					object body = b.Run("return function() coroutine.yield(1) end");
 					return () => b.CreateCoroutine.Invoke(b.Script, new[] { body });
+				}},
+				// Compile time: the call workloads' sources and a few multiple assignments, into a fresh Script each
+				// time (a Script keeps every chunk it compiles).
+				new Workload { Name = "CompileChunks", Iterations = 200, Prepare = b =>
+				{
+					var loadArgs = new object[] { CompileSource, null, null };
+					return () => b.LoadString.Invoke(b.NewScript(b.NoModules), loadArgs);
 				}},
 				new Workload { Name = "CallEligibility", Iterations = 20000, Prepare = b =>
 				{
@@ -137,6 +144,16 @@ namespace MoonSharp.Benchmarks
 			return 0;
 		}
 
+		static readonly string CompileSource = string.Join("\n", new[]
+		{
+			Workloads.Eligibility, Workloads.Fib, Workloads.SumLoop, Workloads.TableWork, Workloads.Concat,
+			Workloads.StringFormat, Workloads.StringFormatMix, Workloads.StringPattern, Workloads.Gsub,
+		}.Select((src, i) => "local function chunk" + i + "() " + src + " end")) + @"
+local t, i, a, b = {}, 1, 2, 3
+i, t[i], t.x, t[a + b] = i + 1, a or b, -a^2, b and -i
+local x, y = t[1] or 0, not t.x
+return t, x, y";
+
 		static Workload CallWorkload(string name, string source, int arg, int iterations, int scale = 1)
 		{
 			return new Workload
@@ -168,8 +185,10 @@ namespace MoonSharp.Benchmarks
 				ScriptType = script,
 				DoString = script.GetMethod("DoString", new[] { typeof(string), table, typeof(string) }),
 				Call = script.GetMethod("Call", new[] { dynValue, typeof(object[]) }),
+				LoadString = script.GetMethod("LoadString", new[] { typeof(string), table, typeof(string) }),
 				CreateCoroutine = script.GetMethod("CreateCoroutine", new[] { dynValue }),
 				SoftSandbox = Enum.Parse(asm.GetType("MoonSharp.Interpreter.CoreModules", true), "Preset_SoftSandbox"),
+				NoModules = Enum.Parse(asm.GetType("MoonSharp.Interpreter.CoreModules", true), "None"),
 			};
 
 			b.Script = b.NewScript();

@@ -49,6 +49,29 @@ namespace MoonSharp.Benchmarks
 			};
 		}
 
+		// A whole chunk, loaded once and executed n times, as Lua-CSharp's suite runs it: one iteration is one execution.
+		static Case Chunk(string name, long iterations, string source, string check, string note)
+		{
+			return new Case
+			{
+				Name = name,
+				Iterations = iterations,
+				Check = check,
+				Note = note,
+				Prepare = script =>
+				{
+					DynValue chunk = script.LoadString(source);
+					return n =>
+					{
+						DynValue result = DynValue.Void;
+						for (long i = 0; i < n; i++)
+							result = script.Call(chunk);
+						return result.ToPrintString();
+					};
+				},
+			};
+		}
+
 		static Case Host(string name, long iterations, string check, string note, Func<Script, Func<long, string>> prepare)
 		{
 			return new Case { Name = name, Iterations = iterations, Check = check, Note = note, Prepare = prepare };
@@ -85,6 +108,10 @@ namespace MoonSharp.Benchmarks
 			// Lua-CSharp's calls-varargs case as a loop, and '...' passed on (MoonSharp-only).
 			Lua("calls_varargs", 1000 * K, "local function f(a, ...) local b, c = ... return a + b + c end\nreturn function(n) local s = 0 for i = 1, n do s = s + f(i, 2, 3) end return s end", "500005500000", "Lua-CSharp's calls-varargs"),
 			Lua("varargs_forward", 1000 * K, "local function g(...) return select('#', ...) + math.max(...) end\nlocal function f(...) return g(...) end\nreturn function(n) local s = 0 for i = 1, n do s = s + f(1, 2, 3) end return s end", "6000000", "MoonSharp-only; '...' passed on to Lua and library functions"),
+
+			// Two cases of Lua-CSharp's own suite (LuaCSharpScripts.cs), as its ComparisonWorkloads.cs runs them.
+			Chunk("numeric_loop", 500, LuaCSharpScripts.NumericLoop, "200010000", "Lua-CSharp suite; one iteration = one chunk execution"),
+			Chunk("nbody", 100, LuaCSharpScripts.NBody.Replace("or 1000", "or 100") + "\nreturn energy(bodies,nbody)", "-0.1690507623824094", "Lua-CSharp suite, 100 steps; one iteration = one chunk execution"),
 
 			// ---- host boundary and interop (not in flag_bench) ----
 

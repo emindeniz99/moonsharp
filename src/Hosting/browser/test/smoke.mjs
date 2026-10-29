@@ -1,5 +1,7 @@
 // Headless browser smoke test: in each browser, every fixture suite runs in the page and is checked
 // against known-failures/browser-<browser>.json, and an eligibility call runs through a Web Worker.
+// The page runs with a Turkish locale (the interpreter must not depend on the culture) and a fixed time
+// zone, which os.date must follow (the runtime keeps its time zone data: InvariantTimezone stays off).
 // usage: node test/smoke.mjs <published wwwroot> <fixturesDir> [chromium] [firefox] [webkit]
 import fs from "node:fs";
 import path from "node:path";
@@ -32,7 +34,8 @@ console.log(failed === 0 ? "browser smoke: all passed" : `browser smoke: ${faile
 process.exit(failed === 0 ? 0 : 1);
 
 async function smoke(browser, host) {
-  const page = await browser.newPage();
+  const context = await browser.newContext({ locale: "tr-TR", timezoneId: "Asia/Tokyo" });
+  const page = await context.newPage();
   const transferred = [];
   page.on("response", async r => {
     try { transferred.push({ url: r.url(), bytes: (await r.body()).length }); } catch { }
@@ -74,6 +77,13 @@ async function smoke(browser, host) {
   console.log(`${workerOk ? "pass" : "FAIL"}  ${host} web worker / eligibility, 2^53+1 rejection, instruction limit`);
   if (!workerOk) { failed++; console.log(JSON.stringify(viaWorker)); }
 
+  // Local time is the browser's zone (UTC+9, no daylight saving time); "!" asks for UTC.
+  const clock = await page.evaluate(() => window.moonsharp.runtime.createContext()
+    .run("clock.lua", "return { os.date('%Y-%m-%d %H:%M', 0), os.date('!%Y-%m-%d %H:%M', 0) }"));
+  const clockOk = clock.ok && clock.value[0] === "1970-01-01 09:00" && clock.value[1] === "1970-01-01 00:00";
+  console.log(`${clockOk ? "pass" : "FAIL"}  ${host} os.date follows the browser's time zone`);
+  if (!clockOk) { failed++; console.log(JSON.stringify(clock)); }
+
   // Cached invocation cost, including JSON marshaling between JS and .NET.
   const perf = await page.evaluate(async () => {
     const { runtime } = window.moonsharp;
@@ -95,7 +105,7 @@ async function smoke(browser, host) {
   const framework = transferred.filter(t => t.url.includes("/_framework/")).reduce((s, t) => s + t.bytes, 0);
   console.log(JSON.stringify({ host, engine: report.version, browser: browser.version(), startupMs, transferredBytes: bytes,
     frameworkBytes: framework, loadEligibilityMs: +perf.loadMs.toFixed(2), invokeUs: +perf.perCallUs.toFixed(2) }));
-  await page.close();
+  await context.close();
 }
 
 /**

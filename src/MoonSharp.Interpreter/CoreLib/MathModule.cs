@@ -148,7 +148,9 @@ namespace MoonSharp.Interpreter.CoreLib
 		[MoonSharpModuleMethod]
 		public static DynValue fmod(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			return exec2(args, "fmod", (d1, d2) => Math.IEEERemainder(d1, d2));
+			// C's fmod, as Lua 5.2: the remainder of the truncated quotient, with the sign of the dividend. C#'s %
+			// on doubles is fmod; Math.IEEERemainder rounds the quotient to nearest (fmod(7, 4) gave -1, not 3).
+			return exec2(args, "fmod", (d1, d2) => d1 % d2);
 		}
 
 		[MoonSharpModuleMethod]
@@ -237,8 +239,16 @@ namespace MoonSharp.Interpreter.CoreLib
 		[MoonSharpModuleMethod]
 		public static DynValue modf(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			DynValue arg = args.AsType(0, "modf", DataType.Number, false);
-			return DynValue.NewTuple(DynValue.NewNumber(Math.Floor(arg.Number)), DynValue.NewNumber(arg.Number - Math.Floor(arg.Number)));
+			// C's modf, as Lua 5.2: the integral part truncates toward zero (modf(-3.7) is -3, -0.7), and the
+			// fraction keeps the sign of the argument, with 0 for an infinity (-0 for a negative one).
+			double d = args.AsType(0, "modf", DataType.Number, false).Number;
+			double ip = Math.Truncate(d);
+			double fp = double.IsInfinity(d) ? 0.0 : d - ip;
+
+			if (fp == 0 && (d < 0 || (d == 0 && 1 / d < 0)))
+				fp = -0.0;
+
+			return DynValue.NewTuple(DynValue.NewNumber(ip), DynValue.NewNumber(fp));
 		}
 
 

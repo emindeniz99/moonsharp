@@ -113,16 +113,17 @@ namespace MoonSharp.Interpreter.Tree
 				lcontext.Lexer.Next();
 				e = SubExpr(lcontext, false);
 
-				// check for power operator -- it be damned forever and ever for being higher priority than unary ops
+				// '^' binds tighter than a unary operator wherever the operator stands: -x^2 is -(x^2), and so are
+				// the operands in 1 + -x^2 and 2^-x^2 (Lua 5.2's UNARY_PRIORITY is below '^' on both sides).
 				Token unaryOp = T;
 				T = lcontext.Lexer.Current;
 
-				if (isPrimary && T.Type == TokenType.Op_Pwr)
+				if (T.Type == TokenType.Op_Pwr)
 				{
 					List<Expression> powerChain = new List<Expression>();
 					powerChain.Add(e);
 
-					while (isPrimary && T.Type == TokenType.Op_Pwr)
+					while (T.Type == TokenType.Op_Pwr)
 					{
 						lcontext.Lexer.Next();
 						powerChain.Add(SubExpr(lcontext, false));

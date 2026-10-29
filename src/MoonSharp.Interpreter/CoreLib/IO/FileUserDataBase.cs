@@ -13,22 +13,52 @@ namespace MoonSharp.Interpreter.CoreLib.IO
 	{
 		public DynValue lines(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			List<DynValue> readLines = new List<DynValue>();
+			return LinesIterator(args, 0, false);
+		}
 
-			DynValue readValue = null;
+		/// <summary>
+		/// The iterator of file:lines and io.lines, as Lua 5.2's io_readline: each call reads with the formats
+		/// in <paramref name="args"/> from <paramref name="firstFormat"/> on (a line without any), and returns
+		/// nothing at the end of the file, closing it if <paramref name="closeAtEnd"/>. It reads as it goes, so
+		/// a file that does not end (or a "*a" format, which never returns nil) does not fill the memory.
+		/// </summary>
+		internal DynValue LinesIterator(CallbackArguments args, int firstFormat, bool closeAtEnd)
+		{
+			var formats = new List<DynValue>();
 
-			do
+			for (int i = firstFormat; i < args.Count; i++)
+				formats.Add(args[i]);
+
+			return DynValue.NewCallback((ctx, a) =>
 			{
-				readValue = read(executionContext, args);
-				readLines.Add(readValue);
+				if (!isopen())
+					throw new ScriptRuntimeException("file is already closed");
 
-			} while (readValue.IsNotNil());
+				DynValue r = read(ctx, new CallbackArguments(formats, false));
+				DynValue first = r.Type == DataType.Tuple ? (r.Tuple.Length > 0 ? r.Tuple[0] : DynValue.Nil) : r;
 
-			return DynValue.FromObject(executionContext.GetScript(), readLines.Select(s => s));
+				if (first.IsNotNil())
+					return r;
+
+				if (closeAtEnd)
+					Close();
+
+				return DynValue.Void;
+			}, "lines");
+		}
+
+		// What C's stdio gives for a read from a file opened only for writing, or the reverse: EBADF.
+		static DynValue BadFileDescriptor()
+		{
+			return DynValue.NewTuple(DynValue.Nil, DynValue.NewString("Bad file descriptor"), DynValue.NewNumber(9));
 		}
 
 		public DynValue read(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
+			// The reader of a write-only file is null: a NullReferenceException ended the host.
+			if (isopen() && !CanRead)
+				return BadFileDescriptor();
+
 			if (args.Count == 0)
 			{
 				string str = ReadLine();
@@ -52,9 +82,10 @@ namespace MoonSharp.Interpreter.CoreLib.IO
 						if (Eof())
 							return DynValue.Nil;
 
-						int howmany = (int)args[i].Number;
+						double howmany = args[i].Number;
 
-						string str = ReadBuffer(howmany);
+						// Lua 5.2 reads up to (size_t)n characters: a negative count reads the rest of the file.
+						string str = howmany >= 0 && howmany <= int.MaxValue ? ReadBuffer((int)howmany) : ReadToEnd();
 						v = DynValue.NewString(str);
 					}
 					else 
@@ -110,6 +141,9 @@ namespace MoonSharp.Interpreter.CoreLib.IO
 
 		public DynValue write(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
+			if (isopen() && !CanWrite)
+				return BadFileDescriptor();
+
 			try
 			{
 				for (int i = 0; i < args.Count; i++)
@@ -209,10 +243,12 @@ namespace MoonSharp.Interpreter.CoreLib.IO
 
 
 		protected internal abstract bool isopen();
+		protected abstract bool CanRead { get; }
+		protected abstract bool CanWrite { get; }
 		protected abstract string Close();
 
 		public abstract bool flush();
-		public abstract long seek(string whence, long offset = 0);
+		public abstract DynValue seek(string whence, long offset = 0);
 		public abstract bool setvbuf(string mode);
 
 		public override string ToString()

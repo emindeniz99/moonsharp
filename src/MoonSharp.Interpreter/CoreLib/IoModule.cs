@@ -181,7 +181,7 @@ namespace MoonSharp.Interpreter.CoreLib
 			if (args[0].Type == DataType.String || args[0].Type == DataType.Number)
 			{
 				string fileName = args[0].CastToString();
-				inp = Open(executionContext, fileName, GetUTF8Encoding(), defaultFiles == StandardFileType.StdIn ? "r" : "w");
+				inp = OpenOrRaise(executionContext, fileName, defaultFiles == StandardFileType.StdIn ? "r" : "w");
 			}
 			else
 			{
@@ -198,35 +198,46 @@ namespace MoonSharp.Interpreter.CoreLib
 			return new System.Text.UTF8Encoding(false); 
 		}
 
+		// io.lines ([filename, ...]): an iterator over the file's lines (or the given read formats) that closes the
+		// file at its end; without a file name, over the default input, which stays open.
 		[MoonSharpModuleMethod]
 		public static DynValue lines(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			string filename = args.AsType(0, "lines", DataType.String, false).String;
+			if (args.Count == 0 || args[0].IsNil())
+				return GetDefaultFile(executionContext, StandardFileType.StdIn).LinesIterator(args, 1, false);
 
+			string filename = args.AsType(0, "lines", DataType.String, false).String;
+			return OpenOrRaise(executionContext, filename, "r").LinesIterator(args, 1, true);
+		}
+
+		// What io.input, io.output and io.lines raise when a file does not open, as Lua 5.2's opencheckfile.
+		private static FileUserDataBase OpenOrRaise(ScriptExecutionContext executionContext, string filename, string mode)
+		{
 			try
 			{
-				List<DynValue> readLines = new List<DynValue>();
-
-				using (var stream = Script.GlobalOptions.Platform.IO_OpenFile(executionContext.GetScript(), filename, null, "r"))
-				{
-					using (var reader = new System.IO.StreamReader(stream))
-					{
-						while (!reader.EndOfStream)
-						{
-							string line = reader.ReadLine();
-							readLines.Add(DynValue.NewString(line));
-						}
-					}
-				}
-
-				readLines.Add(DynValue.Nil);
-
-				return DynValue.FromObject(executionContext.GetScript(), readLines.Select(s => s));
+				return Open(executionContext, filename, GetUTF8Encoding(), mode);
 			}
-			catch (Exception ex)
+			catch (Exception ex) when (!(ex is InterpreterException))
 			{
-				throw new ScriptRuntimeException(IoExceptionToLuaMessage(ex, filename));
+				throw new ScriptRuntimeException("cannot open file '{0}' ({1})", filename, IoErrorText(ex));
 			}
+		}
+
+		// Lua 5.2's l_checkmode: one of r, w, a, then an optional '+', then only 'b's.
+		private static bool IsValidMode(string mode)
+		{
+			int i = 0;
+
+			if (mode.Length == 0 || "rwa".IndexOf(mode[i++]) < 0)
+				return false;
+
+			if (i < mode.Length && mode[i] == '+')
+				i++;
+
+			while (i < mode.Length && mode[i] == 'b')
+				i++;
+
+			return i == mode.Length;
 		}
 
 		[MoonSharpModuleMethod]
@@ -238,14 +249,7 @@ namespace MoonSharp.Interpreter.CoreLib
 
 			string mode = vmode.IsNil() ? "r" : vmode.String;
 
-			string invalidChars = mode.Replace("+", "")
-				.Replace("r", "")
-				.Replace("a", "")
-				.Replace("w", "")
-				.Replace("b", "")
-				.Replace("t", "");
-
-			if (invalidChars.Length > 0)
+			if (!IsValidMode(mode))
 				throw ScriptRuntimeException.BadArgument(1, "open", "invalid mode");
 
 
@@ -288,8 +292,19 @@ namespace MoonSharp.Interpreter.CoreLib
 
 		public static string IoExceptionToLuaMessage(Exception ex, string filename)
 		{
-			if (ex is System.IO.FileNotFoundException)
-				return string.Format("{0}: No such file or directory", filename);
+			return filename + ": " + IoErrorText(ex);
+		}
+
+		/// <summary>
+		/// The text C's strerror gives for what a file name can go wrong with; other exceptions keep their message.
+		/// </summary>
+		internal static string IoErrorText(Exception ex)
+		{
+			// An empty or malformed name is a name no file has.
+			if (ex is FileNotFoundException || ex is DirectoryNotFoundException || ex is ArgumentException)
+				return "No such file or directory";
+			else if (ex is UnauthorizedAccessException)
+				return "Permission denied";
 			else
 				return ex.Message;
 		}

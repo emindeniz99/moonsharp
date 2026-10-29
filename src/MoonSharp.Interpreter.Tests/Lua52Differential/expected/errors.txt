@@ -1,0 +1,56 @@
+error string	ERR	"boom"
+error level 0	ERR	"boom"
+error level 2 has position	OK	2	true "boom"
+error level 3	OK	1	true
+error level 1 position	OK	1	"boom"
+error number value	OK	3	false "string" "42"
+error number with level	OK	2	"string" "c:1: 42"
+error table value	OK	2	false true
+error table from function	OK	2	"table" 7
+error nil	OK	2	false nil
+error explicit nil	OK	2	false nil
+error boolean	OK	2	false false
+error with __tostring object	OK	1	"table"
+error rethrow keeps object	OK	1	true
+error string coerced number keeps type	OK	1	"string"
+pcall nil	OK	2	false "attempt to call a nil value"
+pcall no args	ERR	"bad argument #1 to 'pcall' (value expected)"
+pcall number	OK	2	false "attempt to call a number value"
+pcall result count	OK	1	4
+pcall passes args	OK	5	true 3 1 nil 3
+pcall nested	OK	3	true false "x"
+pcall callable table	OK	2	true 42
+xpcall basic	OK	2	false "handled: string"
+xpcall no handler	ERR	"bad argument #2 to 'xpcall' (value expected)"
+xpcall handler nil	OK	2	false "error in error handling"
+xpcall args	OK	2	true 5
+xpcall handler gets table	OK	2	false true
+xpcall handler error	OK	2	false "error in error handling"
+xpcall handler result count	OK	1	2
+xpcall traceback handler	OK	3	false "string" true
+assert false	ERR	"assertion failed!"
+assert nil message	ERR	"msg"
+assert table message	OK	1	false
+assert number message	OK	2	"string" "42"
+assert returns all	OK	3	1 2 3
+assert no args	ERR	"assertion failed!"
+runtime error call nil global	OK	1	"c:1: attempt to call global 'undefined_fn' (a nil value)"
+runtime error call nil field	OK	1	"c:1: attempt to call field 'x' (a nil value)"
+runtime error call nil method	OK	1	"c:1: attempt to call method 'x' (a nil value)"
+runtime error index nil local	OK	1	"c:1: attempt to index local 'a' (a nil value)"
+runtime error arith nil upvalue	OK	1	"c:1: attempt to perform arithmetic on upvalue 'u' (a nil value)"
+runtime error compare	OK	1	"c:1: attempt to compare two table values"
+runtime error compare mixed	OK	1	"c:1: attempt to compare number with string"
+runtime error concat	OK	1	"c:1: attempt to concatenate a table value"
+runtime error concat nil	OK	1	"c:1: attempt to concatenate local 'x' (a nil value)"
+runtime error length	OK	1	"c:1: attempt to get length of a number value"
+bad argument message	OK	2	false "bad argument #1 to 'string.rep' (string expected, got no value)"
+bad argument method self	OK	2	false "c:1: bad argument #1 to 'rep' (string expected, got nil)"
+bad argument method call	OK	1	"c:1: bad argument #1 to 'rep' (number expected, got table)"
+stack overflow message	OK	2	false true
+error in __index	OK	1	"c:1: idx"
+error in __tostring via tostring	OK	2	false "c:1: ts"
+chunkname in message	OK	1	"mychunk:1: x"
+default load chunkname in message	OK	1	"[string \34error('x')\34]:1: x"
+syntax error message from load	OK	2	nil "src:1: unexpected symbol near '='"
+syntax error default chunkname	OK	2	nil "[string \34x = = 1\34]:1: unexpected symbol near '='"

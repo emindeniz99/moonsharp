@@ -1,0 +1,94 @@
+concat numbers	OK	1	"1,2.5,1e+15,9.007199254741e+15,-0,0.33333333333333"
+concat sep number	OK	1	"a1b"
+concat float indices	OK	1	"a,b"
+concat string indices	OK	1	"b,c"
+concat i > j	OK	1	""
+concat bad value	ERR	"invalid value (table) at index 2 in table for 'concat'"
+concat bad value message position	ERR	"invalid value (boolean) at index 3 in table for 'concat'"
+concat nil hole	ERR	"invalid value (nil) at index 2 in table for 'concat'"
+concat negative range	OK	1	"x,y,z"
+concat __index ignored	ERR	"invalid value (nil) at index 1 in table for 'concat'"
+concat no table	ERR	"bad argument #1 to 'concat' (table expected, got string)"
+insert append	OK	4	1 2 3 3
+insert pos	OK	3	0 1 2
+insert pos n+1	OK	1	9
+insert pos n+2	ERR	"bad argument #2 to 'insert' (position out of bounds)"
+insert pos 0	ERR	"bad argument #2 to 'insert' (position out of bounds)"
+insert pos float	OK	3	9 1 2
+insert pos string	OK	3	9 1 2
+insert nil value	OK	2	2 nil
+insert pos nil value	OK	4	3 nil 1 2
+insert too many	ERR	"wrong number of arguments to 'insert'"
+insert too few	ERR	"wrong number of arguments to 'insert'"
+insert returns nothing	OK	1	0
+insert __len	OK	2	"x" nil
+insert __newindex ignored	OK	2	0 "x"
+remove last	OK	2	3 2
+remove first	OK	4	1 2 3 nil
+remove empty	OK	1	nil
+remove empty pos 1	OK	1	nil
+remove empty pos 0	OK	1	nil
+remove n+1	OK	1	nil
+remove n+2	ERR	"bad argument #1 to 'remove' (position out of bounds)"
+remove pos 0 nonempty	ERR	"bad argument #1 to 'remove' (position out of bounds)"
+remove negative	ERR	"bad argument #1 to 'remove' (position out of bounds)"
+remove float pos	OK	3	1 2 3
+remove extra arg	OK	2	1 1
+remove result count empty	OK	1	1
+remove queue idiom	OK	3	"a" nil 0
+unpack basic	OK	3	1 2 3
+unpack range	OK	2	2 3
+unpack empty range	OK	1	0
+unpack i > j + 1	OK	1	0
+unpack i much larger	OK	1	0
+unpack negative	OK	3	"a" "b" "c"
+unpack floats	OK	2	1 2
+unpack nil holes	OK	1	3
+unpack too many	OK	2	false "c:1: too many results to unpack"
+unpack huge	OK	0	
+unpack global alias	OK	2	true 7
+unpack __index ignored	OK	2	nil nil
+pack	OK	5	3 1 nil 3 3
+pack none	OK	3	0 "n" 0
+sort numbers	OK	1	"1,2,3,5,8,9"
+sort strings	OK	1	"10,9,A,B,a,b"
+sort desc comparator	OK	1	"8,5,2,1"
+sort mixed types	ERR	"attempt to compare string with number"
+sort with nil hole	ERR	"attempt to compare nil with number"
+sort __lt	OK	3	1 3 4
+sort comparator non-boolean	OK	1	"1,2,3"
+sort comparator error	ERR	"cmp"
+sort bad comparator type	ERR	"bad argument #2 to 'sort' (function expected, got number)"
+sort one element	OK	1	1
+sort calls per element	OK	3	true 1 100
+sort __len	OK	4	1 2 3 0
+sort returns nothing	OK	1	0
+maxn	OK	1	10
+length holes constructor	OK	5	3 3 2 3 2
+length holes assignment	OK	1	4
+length after nil end	OK	1	2
+length after nil middle	OK	1	4
+length varargs with nil	OK	2	3 3
+length __len table	OK	1	7
+length __len returns string	OK	1	"x"
+rawlen	OK	3	2 3 false
+next result count end	OK	1	1
+next result count	OK	1	2
+next after last	OK	1	1
+next invalid key	ERR	"invalid key to 'next'"
+pairs result count	OK	1	3
+ipairs result count	OK	1	3
+ipairs stops at nil	OK	1	2
+ipairs __index	OK	1	0
+ipairs first values	OK	5	"function" "table" 0 1 "a"
+ipairs step result count	OK	1	1
+pairs __pairs result count	OK	1	3
+pairs __pairs	OK	1	"1one"
+ipairs __ipairs	OK	1	2
+pairs non-table	ERR	"bad argument #1 to 'pairs' (table expected, got number)"
+ipairs non-table	ERR	"bad argument #1 to 'ipairs' (table expected, got nil)"
+modify during traversal	OK	1	nil
+float keys normalised	OK	3	"a" 2 "b"
+nan key	OK	2	false "c:1: table index is NaN"
+nil key	ERR	"table index is nil"
+nil key read	OK	1	nil

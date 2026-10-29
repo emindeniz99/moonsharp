@@ -10,7 +10,9 @@ const types = {
   ".lua": "text/plain; charset=utf-8", ".dat": "application/octet-stream", ".map": "application/json",
 };
 
-export function serve(root, fixtures, port = 0) {
+// With brotli: true, a file that has a .br file next to it is sent compressed when the browser accepts br,
+// as a production server would (the budget's slow-4G emulation needs the real transfer size).
+export function serve(root, fixtures, port = 0, { brotli = false } = {}) {
   const server = http.createServer((req, res) => {
     const url = decodeURIComponent(new URL(req.url, "http://x").pathname);
     const [base, rel] = url.startsWith("/fixtures/") ? [fixtures, url.slice("/fixtures/".length)] : [root, url.slice(1) || "index.html"];
@@ -21,8 +23,11 @@ export function serve(root, fixtures, port = 0) {
       return;
     }
 
-    res.writeHead(200, { "content-type": types[path.extname(file)] ?? "application/octet-stream" });
-    fs.createReadStream(file).pipe(res);
+    const headers = { "content-type": types[path.extname(file)] ?? "application/octet-stream" };
+    const compressed = brotli && /\bbr\b/.test(req.headers["accept-encoding"] ?? "") && fs.existsSync(file + ".br");
+    if (compressed) headers["content-encoding"] = "br";
+    res.writeHead(200, headers);
+    fs.createReadStream(compressed ? file + ".br" : file).pipe(res);
   });
 
   return new Promise(resolve => server.listen(port, "127.0.0.1", () => resolve(server)));

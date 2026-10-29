@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using MoonSharp.Benchmarks;
 using MoonSharp.Interpreter;
 using MoonSharp.Interpreter.Loaders;
 using MoonSharp.Interpreter.Tests;
@@ -11,12 +12,20 @@ namespace MoonSharp.UnityTestBed
 	/// <summary>
 	/// Runs the MoonSharp test suite inside Unity and writes the results file that CI compares
 	/// with the .NET run (src/TestRunners/EmbeddedTestRunner). Used by the Editor entry point
-	/// (Editor/BatchRunner.cs) and by the player, which runs it on start and quits.
+	/// (Editor/BatchRunner.cs) and by the player, which runs it on start and quits; with
+	/// -moonsharpBench the player runs the Lua workloads instead.
 	/// </summary>
 	public static class TestBed
 	{
 		/// <summary>Command-line argument naming the results file.</summary>
 		public const string ResultsArg = "-moonsharpResults";
+
+		/// <summary>Command-line argument naming the benchmark results file.</summary>
+		public const string BenchArg = "-moonsharpBench";
+
+		// Timed runs per workload, after one warm-up run. CI runs the player several times and takes
+		// the median of the processes (.github/workflows/unity.yml).
+		const int BenchRuns = 5;
 
 		/// <returns>The process exit code: 0 when every test and check passed.</returns>
 		public static int Run()
@@ -52,6 +61,21 @@ namespace MoonSharp.UnityTestBed
 			}
 		}
 
+		/// <summary>
+		/// Runs the workloads of the register VM measurement (src/DevTools/Benchmarks/WorkloadTsv.cs, copied
+		/// in by sync.sh) and writes one row per workload to <paramref name="path"/>.
+		/// </summary>
+		/// <returns>The process exit code: 0 when every workload returned its check value.</returns>
+		public static int RunBenchmarks(string path)
+		{
+			Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
+			Debug.Log("MoonSharp benchmarks: Unity " + Application.unityVersion + ", platform "
+				+ Script.GlobalOptions.Platform.GetPlatformName() + ", results in " + path);
+
+			using (var results = new StreamWriter(path))
+				return WorkloadTsv.Run(results, BenchRuns, WorkloadTsv.RegisterVmCases, Debug.Log);
+		}
+
 		static int Check(TextWriter results, string name, bool ok, string message)
 		{
 			results.WriteLine("{0}\t{1}\t{2}", ok ? "OK" : "FAIL", name, message);
@@ -79,7 +103,8 @@ namespace MoonSharp.UnityTestBed
 			int code = 2;
 			try
 			{
-				code = TestBed.Run();
+				string bench = TestBed.GetArg(TestBed.BenchArg);
+				code = bench != null ? TestBed.RunBenchmarks(bench) : TestBed.Run();
 			}
 			catch (Exception ex)
 			{

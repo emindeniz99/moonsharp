@@ -1700,16 +1700,35 @@ namespace MoonSharp.Interpreter.Execution.VM
 				return instructionPtr;
 			}
 
-			// then attempt metatables for tables
-			if ((l.Type == DataType.Table) && (GetMetatable(l) != null) && (GetMetatable(l) == GetMetatable(r)))
+			// then attempt metatables for tables: Lua 5.2's get_equalTM takes __eq from the same metatable, or from
+			// two whose __eq fields are the same value (classes that copy one __eq into each metatable).
+			if (l.Type == DataType.Table)
 			{
-				int ip = Internal_InvokeBinaryMetaMethod(l, r, "__eq", MetaEq, instructionPtr);
-				if (ip >= 0) return ip;
+				Table ml = GetMetatable(l);
+				Table mr = ml != null ? GetMetatable(r) : null;
+
+				if (mr != null && (ml == mr || SameEqHandler(ml, mr)))
+				{
+					int ip = Internal_InvokeBinaryMetaMethod(l, r, "__eq", MetaEq, instructionPtr);
+					if (ip >= 0) return ip;
+				}
 			}
 
 			// else perform standard comparison
 			m_ValueStack.Push(LuaValue.FromBoolean(LuaValue.RawEquals(ref r, ref l)));
 			return instructionPtr;
+		}
+
+		private static bool SameEqHandler(Table ml, Table mr)
+		{
+			DynValue a = ml.RawGet("__eq");
+			DynValue b = mr.RawGet("__eq");
+
+			if (a == null || b == null || a.IsNil())
+				return false;
+
+			LuaValue la = a.ToLuaValue(), lb = b.ToLuaValue();
+			return LuaValue.RawEquals(ref la, ref lb);
 		}
 
 		private int ExecLess(Instruction i, int instructionPtr)

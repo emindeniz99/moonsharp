@@ -1,0 +1,49 @@
+__le falls back to __lt	OK	3	true false false
+__le own	OK	2	true true
+__lt result truncated to boolean	OK	2	true true
+__lt different metatables same function	OK	1	true
+__lt different functions	OK	2	true true
+__lt table and number	OK	2	true true
+__eq same metatable	OK	1	true
+__eq different metatables same function	OK	1	true
+__eq different functions	OK	1	false
+__eq only one side	OK	1	false
+__eq table vs number	OK	1	false
+__eq not called for same object	OK	2	true 0
+__eq result truncated	OK	2	true false
+__concat table right	OK	3	"C:stringtable" "C:numbertable" "C:tablenumber"
+__concat both tables	OK	1	"both"
+__concat chain	OK	1	"abTc"
+__concat on number via string metatable absent	OK	2	false "c:1: attempt to concatenate a nil value"
+__len on table	OK	1	42
+__len on strings not used	OK	1	3
+__len extra results	OK	1	1
+__unm	OK	1	"table"
+__unm second operand	OK	1	true
+__add left number	OK	1	"numbertable"
+__add string number coercion before meta	OK	1	"string"
+__div __mod __pow	OK	3	"d" "m" "p"
+__index function	OK	1	"x!"
+__index chain	OK	1	1
+__index rawget bypass	OK	1	nil
+__newindex table	OK	2	nil 1
+__newindex existing key	OK	2	2 0
+__call	OK	1	5
+__call result count	OK	1	3
+__call nested	OK	1	false
+__tostring	OK	1	"obj"
+__metatable protects	OK	3	"locked" false "cannot change a protected metatable"
+__metatable false	OK	1	false
+string metatable	OK	1	true
+setmetatable nil removes	OK	1	nil
+setmetatable bad	OK	1	false
+setmetatable non table	OK	1	false
+setmetatable returns table	OK	1	true
+getmetatable number	OK	1	nil
+__gc absent	OK	1	true
+__mode weak keys	OK	1	true
+__mode weak values	OK	1	true
+rawequal	OK	4	false true true false
+rawset returns table	OK	2	true 1
+rawset bad key	OK	2	false "table index is nil"
+rawget non table	OK	1	false

@@ -1,0 +1,31 @@
+load string	OK	1	2
+load env	OK	1	5
+load env number	OK	1	5
+load env nil explicit	OK	2	false "=e:(1,0-8): attempt to index a nil value"
+load mode b on text	OK	2	nil "attempt to load a text chunk (mode is 'b')"
+load mode x	OK	2	nil "attempt to load a text chunk (mode is 'x')"
+load mode t on binary	OK	2	nil "attempt to load a binary chunk (mode is 't')"
+load binary	OK	1	7
+load reader pieces	OK	1	42
+load reader empty string ends	OK	1	5
+load reader error	OK	2	nil "=c:(1,28-34): rd"
+load reader bad type	OK	2	nil "reader function must return a string"
+load reader nil first	OK	2	"function" 0
+load syntax error result count	OK	1	2
+load non string	OK	3	true nil "=(load):(1,0-2): unexpected symbol near '42'"
+load chunk varargs	OK	2	1 2
+loadstring present	OK	1	"nil"
+loadstring works	OK	1	nil
+setfenv absent	OK	2	nil nil
+module absent	OK	1	"nil"
+_ENV local	OK	1	9
+_ENV upvalue global write	OK	2	1 nil
+_G identity	OK	2	false true
+_VERSION	OK	1	"MoonSharp 3.0.0.0"
+string.dump of C function	OK	2	false "bad argument #1 to 'dump' (function expected, got function)"
+string.dump with upvalues	OK	2	false "function arg has upvalues other than _ENV"
+dofile missing	OK	2	false "cannot open this-file-does-not-exist.lua: No such file or directory"
+loadfile missing	OK	2	nil "cannot open this-file-does-not-exist.lua: No such file or directory"
+require missing	OK	2	false "string"
+package fields	OK	7	"string" "string" "table" "table" "table" "string" "function"
+package.loaded entries	OK	3	true true true

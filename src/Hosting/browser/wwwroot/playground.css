@@ -24,6 +24,7 @@ textarea { min-height: 300px; resize: vertical; }
 textarea.short { min-height: 90px; }
 button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); cursor: pointer; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+button:disabled { cursor: progress; opacity: 0.6; }
 pre { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px; overflow: auto; white-space: pre-wrap; word-break: break-word; min-height: 2em; margin: 0; }
 .status.ok { color: var(--ok); } .status.bad { color: var(--bad); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }

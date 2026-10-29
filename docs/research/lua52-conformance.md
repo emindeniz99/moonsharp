@@ -377,9 +377,10 @@ negative numbers on .NET 9+ and likely ARM64 (24), error message positions that 
 `goto continue` before a `local` at the end of a loop body (4), `__eq` across class metatables (35),
 `dofile`/`loadfile` of a missing file (31), `debug.getinfo` (32).
 
-Fixes that touch neither the call path nor `Table` and can start now: 4, 5, 9, `bit32` (24),
-`load` (30), the parser fix (3 in the table, entry 2) if the VM agent agrees, `goto` (4), `package.loaded`
-(20).
+Fixes that touch neither the call path nor `Table` and can start now (entry numbers):
+`collectgarbage` (10), `loadstring` once the owner decides (29), `math.fmod`/`modf` (21, 22), `bit32`
+(24), `load` (30), `package.loaded` (20), and the parser and `goto` fixes (2, 4) if the VM agent agrees,
+since they sit in the compiler.
 
 ## What this survey does not cover
 

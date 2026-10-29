@@ -20,7 +20,7 @@ namespace MoonSharp.Interpreter.CoreLib
 			int64Table.Set("min", LuaInt64.NewDynValue(long.MinValue));
 
 			Table meta = new Table(globalTable.OwnerScript);
-			meta.Set("__call", DynValue.NewCallback(call, "int64"));
+			meta.Set("__call", CallbackFunction.NewInternal(call, "int64"));
 			int64Table.MetaTable = meta;
 		}
 
@@ -178,7 +178,7 @@ namespace MoonSharp.Interpreter.CoreLib
 			uint64Table.Set("max", LuaUInt64.NewDynValue(ulong.MaxValue));
 
 			Table meta = new Table(globalTable.OwnerScript);
-			meta.Set("__call", DynValue.NewCallback(call, "uint64"));
+			meta.Set("__call", CallbackFunction.NewInternal(call, "uint64"));
 			uint64Table.MetaTable = meta;
 		}
 

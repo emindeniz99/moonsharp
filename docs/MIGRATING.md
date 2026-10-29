@@ -1406,22 +1406,41 @@ values read from tables by reference, or that test `RawGet` against
 **Affected:** scripts that relied on the old errors or on `table.insert(t, pos, nil)`
 appending.
 
-## C# function calls reuse their context and argument object
+## C# function calls reuse their argument object; host callbacks get their own context
 
 **Before:** every call from Lua to a C# function created a new
 `ScriptExecutionContext` and a new `CallbackArguments`; outside the standard
 library it also copied the arguments into a new `DynValue[]`.
 
 **After:** the processor keeps one `ScriptExecutionContext` per call depth and
-lends it to every C# function called at that depth. Standard library
-functions, userdata methods (reflection and generated descriptors) and
-delegates converted by MoonSharp also get a reused `CallbackArguments` that
-reads the arguments in place on the value stack. A CLR method with a
-`CallbackArguments` parameter gets a copy, which it may keep.
+lends it only to C# functions that never hand it to host code:
 
-Host callbacks (`DynValue.NewCallback`, `new CallbackFunction(...)`) still get
-a `CallbackArguments` of their own, which they may keep. A host callback that
-does not keep it can say so:
+- standard library functions and MoonSharp's own callbacks: the iterators of
+  `pairs`, `ipairs`, `string.gmatch`, `io.lines` and CLR enumerables,
+  `coroutine.wrap`'s function, `package.searchers`, the comparison and length
+  operators of userdata, enum flag helpers, int64 constructors and event
+  `add`/`remove`;
+- userdata methods (reflection, hardwired and source-generated descriptors),
+  extension methods and delegates converted by MoonSharp, when the CLR method
+  takes neither a `ScriptExecutionContext` nor a `CallbackArguments`
+  parameter.
+
+Every other C# function gets a new context on every call and may keep it:
+host callbacks (`DynValue.NewCallback`, `new CallbackFunction(...)`, with or
+without `UsesArgumentsOnlyDuringCall`), CLR methods with a
+`ScriptExecutionContext` or `CallbackArguments` parameter,
+`ObjectCallbackMemberDescriptor` members, and descriptor classes of your own
+derived from `FunctionMemberDescriptorBase` or `MethodMemberDescriptor`. A
+context kept after its call reports that call's `CallingLocation` and
+`AdditionalData`, as in MoonSharp 2.0.
+
+Standard library functions, userdata methods and delegates converted by
+MoonSharp also get a reused `CallbackArguments` that reads the arguments in
+place on the value stack. A CLR method with a `CallbackArguments` parameter
+gets a copy, which it may keep.
+
+Host callbacks still get a `CallbackArguments` of their own, which they may
+keep. A host callback that does not keep it can say so:
 
 ```csharp
 script.Globals["add"] = new CallbackFunction(
@@ -1430,18 +1449,22 @@ script.Globals["add"] = new CallbackFunction(
 ```
 
 Such a callback must not read its `CallbackArguments` after it returns; it
-reads the value stack, which later calls overwrite.
+reads the value stack, which later calls overwrite. The flag is about the
+arguments only: the callback still gets a context of its own.
 
 Bytes per call (`AllocationBudgetTests`): `string.format` 216 to 120, a host
-callback with one argument 192 to 144 (80 with
-`UsesArgumentsOnlyDuringCall`), a userdata method call and a property read
-through reflection 424 to 256, `coroutine.wrap` plus `coroutine.yield` 248 to
-72.
+callback with one argument 192 (128 with `UsesArgumentsOnlyDuringCall`), a
+userdata method call and a property read through reflection 424 to 256,
+`coroutine.wrap` plus `coroutine.yield` 248 to 72.
 
-**Affected:** hosts that keep a `ScriptExecutionContext` after their callback
-returned and read its `CallingLocation` or `AdditionalData` later: they now
-see the latest call at the same depth. `GetScript`, `Call`,
-`GetCallingCoroutine` and the metatable helpers work as before.
+A descriptor class of your own derived from `FunctionMemberDescriptorBase`
+can set the protected `ExecuteKeepsNoContext` when its `Execute` hands the
+context only to a `ScriptExecutionContext` parameter of the member; its calls
+then share the reused context too. Generated descriptors set it.
+
+**Affected:** no behaviour changes for host code: every context it can
+receive is its own, as in MoonSharp 2.0. Host callbacks allocate that context
+again on every call.
 
 ## C# functions can read arguments and return numbers without a DynValue
 
@@ -1456,7 +1479,8 @@ New, opt-in API for callbacks that run often:
   callback's result to the VM without a `DynValue` when Lua called the
   callback. Use them only as the return value of the callback the context was
   passed to (`return ctx.Return(x);`): the `DynValue` they return is a
-  placeholder for the value kept in the context. Called from C# (for example
+  placeholder for the value, which the coroutine keeps until the callback
+  returns and the next `Return` replaces. Called from C# (for example
   through `Script.Call` or `CallbackFunction.Invoke`), the callback's result is
   an ordinary `DynValue`.
 
@@ -1466,10 +1490,10 @@ script.Globals["add"] = new CallbackFunction(
     { UsesArgumentsOnlyDuringCall = true };
 ```
 
-This callback allocates nothing per call; written with `args[0].Number` and
-`DynValue.NewNumber` it allocates 240 bytes per call with two large numbers on
-`next` before this change, 192 after the reuse of contexts (above) and 120 with
-`UsesArgumentsOnlyDuringCall`.
+This callback allocates only its own context per call (48 bytes; see above);
+written with `args[0].Number` and `DynValue.NewNumber` it allocates 240 bytes
+per call with two large numbers on `next` before this change, 240 now (168
+with `UsesArgumentsOnlyDuringCall`).
 
 **Affected:** nobody; existing callbacks behave as before.
 
@@ -1501,6 +1525,17 @@ do not change.
 
 **Affected:** host callbacks that read `AdditionalData` and are called through
 `pcall`, `xpcall` or `ScriptExecutionContext.Call`.
+
+## The browser package has an AOT build in its own folder
+
+`src/Hosting/browser` now ships a second, ahead-of-time compiled build next to
+the default interpreter build (docs/hosting.md, "Two browser builds"). The
+default is unchanged: `dotnet publish -c Release` still writes the page to
+`bin/Release/net10.0/publish/wwwroot`. A publish with
+`-p:RunAOTCompilation=true` used to write to the same folder and now writes to
+`bin/Release-aot/net10.0/publish/wwwroot` (and `obj/Release-aot`). Affected:
+scripts that published the package with that switch and read the result from
+the old folder.
 
 ## `collectgarbage` follows Lua 5.2's options and results
 

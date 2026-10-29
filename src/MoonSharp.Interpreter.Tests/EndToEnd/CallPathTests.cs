@@ -567,6 +567,27 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			}
 		}
 			[Test]
+		public void CallPath_ReturnNestsAcrossCallsAndCoroutines()
+		{
+			// Return keeps the result in one slot per coroutine, which the VM empties as the callback returns:
+			// a callback that calls Lua (and through it other callbacks using Return) before its own Return, and
+			// coroutine.wrap handing over a value that a callback inside the coroutine gave with Return, each
+			// get their own result.
+			Script script = new Script();
+			script.Globals["add"] = new CallbackFunction((ctx, args) => ctx.Return(args.NumberAt(0) + args.NumberAt(1)), "add");
+			script.Globals["outer"] = new CallbackFunction((ctx, args) => ctx.Return(ctx.Call(args[0]).Number + 100), "outer");
+
+			DynValue r = script.DoString(@"
+				local co = coroutine.wrap(function() coroutine.yield(add(1, 2)) return outer(function() return add(3, 4) end) end)
+				return outer(function() return add(1, 2) end), co(), co(), add(5, 6)");
+
+			Assert.AreEqual(103, r.Tuple[0].Number);
+			Assert.AreEqual(3, r.Tuple[1].Number);
+			Assert.AreEqual(107, r.Tuple[2].Number);
+			Assert.AreEqual(11, r.Tuple[3].Number);
+		}
+
+		[Test]
 		public void CallPath_CSharpFunctionsCalledByPcallSeeTheirOwnAdditionalData()
 		{
 			// pcall and ScriptExecutionContext.Call ran a C# function with the caller's context, so
@@ -582,6 +603,97 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual("mine", r.Tuple[0].String);
 			Assert.AreEqual("mine", r.Tuple[1].String);
 			Assert.AreEqual("mine", r.Tuple[2].String);
+		}
+
+		[Test]
+		public void CallPath_HostCallbacksMayKeepTheirContext()
+		{
+			// A host callback may keep its context and read it after it returned (a coroutine, a timer or an
+			// async continuation does). The processor reuses one context per call depth for MoonSharp's own
+			// functions only, so a later call at the same depth, of a host callback or of the library, does
+			// not change what the kept context reports.
+			Script script = new Script();
+			var kept = new System.Collections.Generic.List<ScriptExecutionContext>();
+			script.Globals["first"] = new CallbackFunction((ctx, args) => { kept.Add(ctx); return DynValue.Nil; }, "first") { AdditionalData = "first" };
+			script.Globals["second"] = new CallbackFunction((ctx, args) => { kept.Add(ctx); return DynValue.Nil; }, "second")
+				{ AdditionalData = "second", UsesArgumentsOnlyDuringCall = true };
+
+			script.DoString("first()\nsecond()\nlocal s = tostring(1)\nfirst()");
+
+			Assert.AreEqual(3, kept.Count);
+			Assert.AreEqual("first", kept[0].AdditionalData);
+			Assert.AreEqual(1, kept[0].CallingLocation.FromLine);
+			Assert.AreEqual("second", kept[1].AdditionalData);
+			Assert.AreEqual(2, kept[1].CallingLocation.FromLine);
+			Assert.AreEqual(4, kept[2].CallingLocation.FromLine);
+			Assert.AreNotSame(kept[0], kept[2]);
+		}
+
+		[MoonSharpUserData]
+		public class ContextKeeper
+		{
+			public System.Collections.Generic.List<ScriptExecutionContext> Kept = new System.Collections.Generic.List<ScriptExecutionContext>();
+
+			public int Keep(ScriptExecutionContext ctx, int x)
+			{
+				Kept.Add(ctx);
+				return x;
+			}
+
+			public int Plain(int x) { return x; }
+
+			public DynValue Twice(ScriptExecutionContext ctx, int x) { return ctx.Return(x * 2); }
+		}
+
+		[Test]
+		public void CallPath_UserDataMethodsMayKeepTheirContext_Reflection()
+		{
+			UserDataMethodsMayKeepTheirContext("reflection");
+		}
+
+		[Test]
+		public void CallPath_UserDataMethodsMayKeepTheirContext_Generated()
+		{
+			UserDataMethodsMayKeepTheirContext("generated");
+		}
+
+		[Test]
+		public void CallPath_ConvertedDelegatesMayKeepTheirContext()
+		{
+			UserDataMethodsMayKeepTheirContext("delegate");
+		}
+
+		static void UserDataMethodsMayKeepTheirContext(string path)
+		{
+			// A CLR method with a ScriptExecutionContext parameter is host code that may keep the context, like
+			// a host callback; methods without one share the context the processor reuses. Return in such a
+			// method gives an ordinary DynValue: its context is not the one the processor reads results from.
+			using (new RegistrySnapshot(typeof(ContextKeeper)))
+			{
+				if (path == "generated")
+					UserData.RegisterType(MoonSharp.Generated.GeneratedUserData.CreateDescriptor(typeof(ContextKeeper)));
+				else
+					UserData.RegisterType<ContextKeeper>(InteropAccessMode.Reflection);
+
+				Script script = new Script();
+				var keeper = new ContextKeeper();
+				script.Globals["k"] = keeper;
+
+				string first = "local a = k:Keep(1)";
+
+				if (path == "delegate")
+				{
+					script.Globals["keep"] = (System.Func<ScriptExecutionContext, int, int>)keeper.Keep;
+					first = "local a = keep(1)";
+				}
+
+				// Every call at the same depth, so a reused context would move on to line 3.
+				DynValue r = script.DoString(first + "\nlocal b = k:Plain(2) + #tostring(3)\nlocal c = k:Twice(4)\nreturn a + b + c");
+
+				Assert.AreEqual(12, r.Number);
+				Assert.AreEqual(1, keeper.Kept.Count);
+				Assert.AreEqual(1, keeper.Kept[0].CallingLocation.FromLine);
+			}
 		}
 	}
 }

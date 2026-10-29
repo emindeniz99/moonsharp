@@ -1,5 +1,5 @@
 {
-  "description": "First-load budget for the browser package (docs/hosting.md, 'Browser budget'). test/budget.mjs measures the published page and fails when a measurement exceeds its entry in 'enforced'.",
+  "description": "First-load budget for the browser package (docs/hosting.md, 'Browser budget'). test/budget.mjs measures one published build and fails when a measurement exceeds that build's entry in 'enforced': 'interpreter' for the default build (bin/Release), 'aot' for the AOT build (bin/Release-aot).",
   "target": {
     "firstLoadMs": 5000,
     "decision": "docs/ROADMAP.md, 2026-10-28: first load under 5 s on a mid-range phone over slow 4G",
@@ -14,8 +14,15 @@
     "derivedBudget": "with a 500 ms desktop start (2 s on the phone) and 0.9 s of round trips, 2.1 s of transfer is left: 440,000 brotli bytes"
   },
   "enforced": {
-    "brotliBytes": 1140000,
-    "desktopStartMs": 1500,
-    "reason": "The target is out of reach for .NET WebAssembly under these assumptions: the relinked dotnet.native.wasm alone is 450 KB brotli, 2.2 s at 1.6 Mbit/s, and the whole download 1,095,488 bytes, 5.2 s. Until the owner chooses another network assumption or another runtime, CI holds the measured state of 2026-10-29 (1,095,488 bytes, down from 1,774,807 on 2026-10-28) with a 4% margin, so the download cannot grow unnoticed. The desktop start did not change measurably (0.29-0.34 s here, median of 5, on a quiet machine; 0.67-1.11 s at load average 6-8 on 2026-10-28), so its budget stays at 1,500 ms until CI runners have a record."
+    "interpreter": {
+      "brotliBytes": 1140000,
+      "desktopStartMs": 1500,
+      "reason": "The target is out of reach for .NET WebAssembly under these assumptions: the relinked dotnet.native.wasm alone is 450 KB brotli, 2.2 s at 1.6 Mbit/s, and the whole download 1,095,488 bytes, 5.2 s. Until the owner chooses another network assumption or another runtime, CI holds the measured state of 2026-10-29 (1,095,488 bytes, down from 1,774,807 on 2026-10-28) with a 4% margin, so the download cannot grow unnoticed. The desktop start did not change measurably (0.29-0.34 s here, median of 5, on a quiet machine; 0.67-1.11 s at load average 6-8 on 2026-10-28), so its budget stays at 1,500 ms until CI runners have a record."
+    },
+    "aot": {
+      "brotliBytes": 2290000,
+      "desktopStartMs": 1500,
+      "reason": "The AOT build is for pages that run heavy scripts and accept a slower first visit (docs/ROADMAP.md, 2026-10-29). Measured on 2026-10-29 at next bd08ce6: 2,199,293 bytes brotli (dotnet.native.wasm 1,688,390), the same in two clean publishes; CI holds it with a 4% margin, as for the interpreter build. The desktop start was 251 ms, median of 5 (238-265), faster than the interpreter build's 287 ms on the same machine, so it gets the same 1,500 ms budget until CI runners have a record."
+    }
   }
 }

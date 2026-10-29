@@ -5,6 +5,14 @@ namespace MoonSharp.Interpreter.Interop.StandardDescriptors.HardwiredDescriptors
 {
 	public abstract class HardwiredMethodMemberDescriptor : FunctionMemberDescriptorBase
 	{
+		/// <summary>
+		/// The generated Invoke sees the context only as a ScriptExecutionContext parameter.
+		/// </summary>
+		protected HardwiredMethodMemberDescriptor()
+		{
+			ExecuteKeepsNoContext = true;
+		}
+
 		public override DynValue Execute(Script script, object obj, ScriptExecutionContext context, CallbackArguments args)
 		{
 			this.CheckAccess(MemberDescriptorAccess.CanExecute, obj);

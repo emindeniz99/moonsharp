@@ -29,7 +29,7 @@ namespace MoonSharp.Interpreter.CoreLib.IO
 			for (int i = firstFormat; i < args.Count; i++)
 				formats.Add(args[i]);
 
-			return DynValue.NewCallback((ctx, a) =>
+			return CallbackFunction.NewInternal((ctx, a) =>
 			{
 				if (!isopen())
 					throw new ScriptRuntimeException("file is already closed");

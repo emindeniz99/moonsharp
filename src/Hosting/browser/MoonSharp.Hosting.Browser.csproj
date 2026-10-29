@@ -23,6 +23,17 @@
         <WasmNativeDebugSymbols>false</WasmNativeDebugSymbols>
     </PropertyGroup>
 
+    <!-- The AOT build, for pages that run heavy scripts (docs/hosting.md, "Two browser builds"):
+         `dotnet publish -c Release -p:RunAOTCompilation=true` compiles the IL to WebAssembly ahead of
+         time. Its own bin and obj folders keep it apart from the default interpreter build, so one
+         publish does not overwrite or reuse the other's files: the page is in
+         bin/Release-aot/net10.0/publish/wwwroot instead of bin/Release/net10.0/publish/wwwroot, with
+         the same file names outside _framework. -->
+    <PropertyGroup Condition="'$(RunAOTCompilation)' == 'true'">
+        <OutputPath>bin\$(Configuration)-aot\</OutputPath>
+        <IntermediateOutputPath>obj\$(Configuration)-aot\</IntermediateOutputPath>
+    </PropertyGroup>
+
     <PropertyGroup>
         <!-- No code generation at run time: the interpreter's CLR interop uses reflection instead of
              compiled expression trees, and its ILLink.Substitutions.xml then lets the trimmer drop

@@ -103,6 +103,7 @@ namespace MoonSharp.Interpreter
 						// A new CallbackFunction per Script: its AdditionalData and identity belong to the Script.
 						DynValue cb = DynValue.NewCallback(m.Callback, m.Name);
 						cb.Callback.ReadsArgumentsInPlace = m.IsLibrary;
+						cb.Callback.ReusesContext = m.IsLibrary;
 						cb.Callback.BuiltinId = m.BuiltinId;
 						table.Set(m.Name, cb);
 						break;
@@ -322,7 +323,7 @@ namespace MoonSharp.Interpreter
 			SourceCode source = script.AddFunctionSource(code, name);
 			DynValue compiled = null;
 
-			table.Set(name, DynValue.NewCallback((context, args) =>
+			table.Set(name, CallbackFunction.NewInternal((context, args) =>
 			{
 				if (compiled == null)
 					compiled = script.CompileFunctionSource(source, table);

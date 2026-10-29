@@ -431,7 +431,7 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 				ext.SetExtensionMethodsSnapshot(UserData.GetExtensionMethodsChangeVersion(), methods);
 				m_Members.Add(indexName, ext);
 				m_MembersVersion++;
-				return DynValue.NewCallback(ext.GetCallback(script, obj));
+				return CallbackFunction.NewInternal(ext.GetCallback(script, obj));
 			}
 
 			return null;
@@ -746,7 +746,7 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 			IComparable comp = obj as IComparable;
 			if (comp != null)
 			{
-				return DynValue.NewCallback(
+				return CallbackFunction.NewInternal(
 					(context, args) =>
 						DynValue.NewBoolean(PerformComparison(obj, args[0].ToObject(), args[1].ToObject()) <= 0));
 			}
@@ -759,7 +759,7 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 			IComparable comp = obj as IComparable;
 			if (comp != null)
 			{
-				return DynValue.NewCallback(
+				return CallbackFunction.NewInternal(
 					(context, args) =>
 						DynValue.NewBoolean(PerformComparison(obj, args[0].ToObject(), args[1].ToObject()) < 0));
 			}
@@ -783,7 +783,7 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 
 		private DynValue MultiDispatchEqual(Script script, object obj)
 		{
-			return DynValue.NewCallback(
+			return CallbackFunction.NewInternal(
 				(context, args) => DynValue.NewBoolean(CheckEquality(obj, args[0].ToObject(), args[1].ToObject())));
 		}
 

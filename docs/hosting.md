@@ -568,17 +568,112 @@ changes with the MoonSharp version.
   there, or run it in the Web Worker (`WorkerClient.createContext(options)`).
   The playground uses a 5 s time limit.
 
+## Two browser builds
+
+The browser package comes in two builds with the same TypeScript API and the
+same file names outside `_framework` (owner decision, ROADMAP.md, 2026-10-29):
+
+| Build | Command (in `src/Hosting/browser`) | Published page | For |
+|---|---|---|---|
+| Interpreter (default) | `dotnet publish -c Release` | `bin/Release/net10.0/publish/wwwroot` | most pages: short rules and client logic, where the first load matters most |
+| AOT | `dotnet publish -c Release -p:RunAOTCompilation=true` | `bin/Release-aot/net10.0/publish/wwwroot` | pages that run heavy scripts after loading and accept a slower first visit |
+
+Run `npm ci` and `npx tsc -p tsconfig.json` first; both builds need the
+`wasm-tools` workload ("Browser budget" below). `RunAOTCompilation` is the
+SDK's own switch, so no project-specific name is needed. With it, the project
+uses `bin/Release-aot` and `obj/Release-aot`, so the two builds never share
+intermediate files and can be published one after the other in any order. Two
+clean publishes of each gave identical files. Here the interpreter publish
+takes about 30 s and the AOT publish about 75 s.
+
+Choose by measurement: if a page's own scripts run long enough that 2.6-6x
+faster Lua saves more time than the extra 1.07 MB of download costs on its
+users' network, take the AOT build. On slow 4G the extra download costs about
+5 s on a first visit (the cache serves later visits); on a fast connection
+it is a fraction of a second.
+
+To switch, a page points at the other build:
+
+- serve the other `wwwroot` folder (nothing in the page changes), or
+- keep the page and point the API at the other build's files:
+  `createMoonSharp("<aot wwwroot>/_framework")` on the main thread, and
+  `WorkerClient.start("<aot wwwroot>/js/worker.js")` for the Web Worker (the
+  worker loads `../_framework` relative to its own script). Both were checked
+  in Chromium with the AOT folder served under the interpreter build's page.
+
+One page should start one runtime; loading both builds into the same page was
+not tested.
+
+Measured on 2026-10-29 at `next` `bd08ce6` on a 4-core VM at load average
+1-2, SDK 10.0.402 with workload set 10.0.402, headless Chromium 153
+(`test/budget.mjs`, median of 5 cold loads):
+
+| | Interpreter | AOT |
+|---|---|---|
+| Bytes, brotli (19 files before the runtime is ready) | 1,126,768 | 2,199,293 |
+| Bytes, raw | 3,573,326 | 9,378,041 |
+| Desktop start | 287-298 ms | 249-251 ms |
+| Chromium emulating slow 4G and a 4x slower CPU | 6.6-6.7 s | 11.8-11.9 s |
+| Phone model (6 round trips, bytes at 1.6 Mbit/s, 4x start) | 7.4 s | 12.4 s |
+| CI budget, bytes brotli (`budget.json`) | 1,140,000 | 2,290,000 |
+
+Once its files are there, the AOT build starts about 40 ms faster on the
+desktop. On slow 4G the download dominates.
+
+Bytes brotli per file (file names without their fingerprint):
+
+| File | Interpreter | AOT |
+|---|---|---|
+| `dotnet.native.wasm` | 449,680 | 1,688,390 |
+| `System.Private.CoreLib.wasm` | 374,631 | 271,512 |
+| `MoonSharp.Interpreter.wasm` | 133,379 | 84,327 |
+| `dotnet.runtime.js` | 47,847 | 47,847 |
+| `dotnet.native.js` | 25,648 | 25,920 |
+| `System.Runtime.Numerics.wasm` | 25,161 | 17,151 |
+| `System.Runtime.InteropServices.JavaScript.wasm` | 15,819 | 12,519 |
+| `System.Linq.wasm` | 14,827 | 14,662 |
+| `dotnet.js` | 11,810 | 11,785 |
+| `MoonSharp.Hosting.wasm` | 8,699 | 6,772 |
+| `System.Console.wasm` | 6,390 | 5,881 |
+| `MoonSharp.Hosting.Browser.wasm` | 3,789 | 3,439 |
+| `System.Collections.wasm` | 3,011 | 3,011 |
+| page: `index.html`, `playground.css`, `js/*.js` | 6,077 | 6,077 |
+| **Total** | **1,126,768** | **2,199,293** |
+
+The assemblies of the AOT build keep their raw size, but the SDK strips the
+IL of compiled methods (`WasmStripILAfterAOT`, on by default), so they
+compress better.
+
+Script speed, the same page and harness, median of 5 runs after a warm-up, ms
+(µs for the invoke). The Lua sources are the `fib_recursive`,
+`string_pattern` and `table_hash_set_get` cases of
+`src/DevTools/Benchmarks/LuaWorkloads.cs` with smaller counts, run through
+`createContext().run()`; the invoke is the smoke test's cached
+`eligibility` call with JSON arguments:
+
+| Workload | Chromium 153 interpreter | AOT | Firefox 155 interpreter | AOT | WebKit 26.6 interpreter | AOT |
+|---|---|---|---|---|---|---|
+| `fib_recursive`, 2,000 × fib(12) | 648 | 214 (3.0x) | 1,179 | 278 (4.2x) | 576 | 194 (3.0x) |
+| `string_pattern`, 10,000 | 292 | 64 (4.6x) | 505 | 83 (6.1x) | 306 | 56 (5.5x) |
+| `table_hash_set_get`, 100,000 | 143 | 53 (2.7x) | 196 | 74 (2.6x) | 125 | 47 (2.7x) |
+| Cached `invoke` with JSON, µs per call | 27.8 | 8.6 (3.2x) | 49.6 | 11.8 (4.2x) | 26.4 | 7.9 (3.4x) |
+
+CI (`hosting.yml`) publishes both builds and runs the whole corpus, the Web
+Worker check and the time zone check on each in Chromium, Firefox and WebKit,
+then the first-load budget for each with its own entry in `budget.json`.
+
 ## Browser budget
 
 The owner's target: the first load takes under 5 s on a mid-range phone over
 slow 4G (ROADMAP.md, decisions). On 2026-10-29 the owner accepted the load of
 the day for now and asked for a native relink before measuring again.
 `src/Hosting/browser/budget.json` turns the target into numbers, and
-`test/budget.mjs` measures the published page in headless Chromium with an
-empty cache (CI runs it last in `hosting.yml` and writes the table to the job
-summary):
+`test/budget.mjs` measures one published build in headless Chromium with an
+empty cache (`node test/budget.mjs <wwwroot> ../fixtures interpreter|aot`; CI
+runs it last in `hosting.yml` for both builds and writes the tables to the job
+summary). Each build has its own enforced entry in `budget.json`:
 
-- **Bytes**: every file the page fetches before the runtime is ready (18 files),
+- **Bytes**: every file the page fetches before the runtime is ready (19 files),
   counted as the `.br` file `dotnet publish` writes next to it, which is what a
   production server sends. Enforced.
 - **Desktop start**: navigation to a usable runtime (`window.moonsharp`), median
@@ -659,7 +754,7 @@ Rejected:
 
 - **`InvariantTimezone`** (−67 KB) drops the time zone data, and `os.date`
   without `!` then returns UTC instead of the browser's local time. That
-  changes what scripts see, so it needs the owner. The smoke test now runs in
+  changes what scripts see; the owner keeps it off (ROADMAP.md, 2026-10-29). The smoke test now runs in
   the Asia/Tokyo zone and fails with it on.
 - **`WasmEnableSIMD=false`** (−23.5 KB, and older Safari versions would run the
   page). Chromium showed no difference, Firefox ran string-keyed table work
@@ -684,7 +779,7 @@ Rejected:
   SDK item still gave 2,329,849 bytes (CoreLib must be compiled), so it was
   not pursued.
 
-### AOT: for the owner
+### AOT: first measurement
 
 `RunAOTCompilation=true` compiles the IL to WebAssembly ahead of time. Lua
 workloads from `src/DevTools/Benchmarks/LuaWorkloads.cs` with smaller counts,
@@ -703,20 +798,21 @@ median of 5 after a warm-up, Chromium 153, ms:
 | `closure_create_call`, 100,000 | 108–112 | 103–110 | 30–31 |
 | Cached `invoke` with JSON, µs per call | 37–40 | 39–42 | 9.3–10.1 |
 
-AOT runs Lua 1.7–5.6× faster and doubles the download (2.69 MB, 14.9 s
-emulated against 7.8 s for the same build without AOT). It suits pages that run
-long scripts after loading and do not mind a slow first visit; the playground
-and short rules suit the interpreter. Not shipped: the choice is the owner's.
+AOT ran Lua 1.7–5.6× faster and doubled the download (2.69 MB, 14.9 s
+emulated against 7.8 s for the same build without AOT). That AOT build was the
+relinked runtime with `RunAOTCompilation=true` and no other option; with
+`DynamicCodeSupport=false` and `WasmNativeDebugSymbols=false` it is 2.20 MB.
+The owner chose to ship it as a second build; the current numbers are in "Two
+browser builds" above.
 
 ### The 5 s target
 
-It stays out of reach under slow 4G. The shipped download alone takes 5.2 s at
+It stays out of reach under slow 4G. The interpreter build's download alone takes 5.2 s at
 1.6 Mbit/s; within 5 s the model leaves 440 KB brotli for everything with a
 0.5 s desktop start, and the relinked `dotnet.native.wasm` is 450 KB by itself.
 CI enforces the measured state with a 4% margin (1,140,000 bytes) and keeps the
 desktop start budget at 1,500 ms until CI runners have a record. The levers
-that remain need the owner: `InvariantTimezone` (−67 KB, local time becomes
-UTC), AOT (faster scripts, larger download), a faster network assumption, a
+that remain need the owner: a faster network assumption, a
 cached runtime for repeat visits, or a smaller engine for the web.
 
 ## Status
@@ -731,6 +827,7 @@ Measured on 2026-10-28 on a 4-core Intel Xeon 2.1 GHz cloud VM, Ubuntu 24.04.
 | Shared fixtures, .NET 8 CLI | 24/24 under `C.UTF-8`, `tr_TR`, `de_DE` and invariant globalization |
 | Shared fixtures, headless Chromium 153 (Playwright 1.63), main thread | 24/24 |
 | Web Worker path, Chromium, Firefox and WebKit | pass (eligibility call, 2^53 + 1 rejected, instruction limit) |
+| Conformance corpus, 248 cases (2026-10-29, branch `feat/browser-aot-build`): interpreter and AOT builds, each in Chromium 153, Firefox 155 and WebKit 26.6 with a `tr-TR` locale and the Asia/Tokyo zone, plus the Web Worker and time zone checks | 248/248 on each; both checks pass |
 | Shared fixtures, Java 21 through the worker | 24/24, plus 6 worker behaviour tests |
 | Shared fixtures, Java 21, in process through CoreCLR 8.0.33 (hostfxr + JNI) | 24/24, plus 10 in-process behaviour tests |
 | Shared fixtures, Java 21, in process through NativeAOT (.NET 8) | 24/24, plus 10 in-process behaviour tests |

@@ -40,17 +40,17 @@ namespace MoonSharp.Interpreter.CoreLib
 
 			Table pkg = package.Table;
 			DynValue searchers = DynValue.NewTable(script);
-			searchers.Table.Set(1, DynValue.NewCallback((context, args) => SearchPreload(pkg, args), "searcher_preload"));
-			searchers.Table.Set(2, DynValue.NewCallback(SearchLoader, "searcher_loader"));
+			searchers.Table.Set(1, CallbackFunction.NewInternal((context, args) => SearchPreload(pkg, args), "searcher_preload"));
+			searchers.Table.Set(2, CallbackFunction.NewInternal(SearchLoader, "searcher_loader"));
 			package.Table.Set("searchers", searchers);
 			// The Lua 5.1 name, which Lua 5.2 keeps for compatibility.
 			package.Table.Set("loaders", searchers);
 
 			// No C libraries: an empty cpath, and loadlib answers as a Lua 5.2 built without them does.
 			package.Table.Set("cpath", DynValue.NewString(""));
-			package.Table.Set("loadlib", DynValue.NewCallback((context, args) => DynValue.NewTuple(DynValue.Nil,
+			package.Table.Set("loadlib", CallbackFunction.NewInternal((context, args) => DynValue.NewTuple(DynValue.Nil,
 				DynValue.NewString("dynamic libraries not enabled; check your Lua installation"), DynValue.NewString("absent")), "loadlib"));
-			package.Table.Set("searchpath", DynValue.NewCallback(SearchPath, "searchpath"));
+			package.Table.Set("searchpath", CallbackFunction.NewInternal(SearchPath, "searchpath"));
 
 			// As in Lua 5.2, package.loaded holds _G and package too (the libraries add themselves as they register).
 			DynValue loaded = pkg.RawGet("loaded");

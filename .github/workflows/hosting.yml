@@ -72,6 +72,12 @@ jobs:
           dotnet src/Hosting/MoonSharp.Hosting.Cli/bin/Release/net8.0/moonsharp-host.dll test --bytecode src/Hosting/fixtures | tee fixtures.log
           grep '^dotnet-bytecode: ' fixtures.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
 
+      # The browser package relinks dotnet.native.wasm (WasmBuildNative), which needs Emscripten from
+      # the wasm-tools workload. 10.0.402 is the workload set of the SDK pinned in mise.toml; change
+      # both together.
+      - name: Install the wasm-tools workload
+        run: dotnet workload install wasm-tools --version 10.0.402
+
       - name: Build browser package
         working-directory: src/Hosting/browser
         run: |

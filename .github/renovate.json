@@ -3,13 +3,14 @@
   "description": [
     "Dependency update pull requests. Runs once the Renovate GitHub app is installed on the repository (docs/ROADMAP.md, 'Needs the owner').",
     "Covers GitHub Actions (SHA pins), the jdx/mise-action 'version:' inputs, mise.toml, the npm packages of the browser package and the VS Code extension, NuGet and Maven.",
-    "Updated by hand: the Unity Mono download in the Dockerfile and lua-language-server in tools/luals/install.sh (both checked against a SHA-256), the Unity editor images in unity.yml (pinned by digest), the wasm-tools workload version in hosting.yml, and the Unity package manifests."
+    "Updated by hand: the Unity Mono download in the Dockerfile and lua-language-server in tools/luals/install.sh (both checked against a SHA-256), the Unity editor images in unity.yml (pinned by digest), the wasm-tools workload version in hosting.yml, and the Unity package manifests.",
+    "Not updated: the research harnesses in src/DevTools/Research, which pin the versions their published measurements used."
   ],
   "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
   "ignorePresets": [":semanticPrefixFixDepsChoreOthers"],
   "enabledManagers": ["github-actions", "mise", "npm", "nuget", "maven", "custom.regex"],
   "baseBranchPatterns": ["next"],
-  "ignorePaths": ["**/node_modules/**", "src/Xamarin/**", "src/Tutorial/**", "src/Unity/**"],
+  "ignorePaths": ["**/node_modules/**", "src/Xamarin/**", "src/Tutorial/**", "src/Unity/**", "src/DevTools/Research/**"],
   "dependencyDashboard": true,
   "minimumReleaseAge": "7 days",
   "internalChecksFilter": "strict",

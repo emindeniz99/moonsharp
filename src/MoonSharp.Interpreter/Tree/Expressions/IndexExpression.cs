@@ -56,8 +56,42 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 
 		public void CompileAssignment(ByteCode bc, int stackofs, int tupleidx)
 		{
+			CompileTarget(bc);
+			EmitIndexSet(bc, stackofs, tupleidx);
+		}
+
+		/// <summary>
+		/// Pushes the table, and the key unless it is a name or a literal; returns how many values that is. A
+		/// multiple assignment evaluates every target this way before its values (Lua 5.2, 3.3.3).
+		/// </summary>
+		internal int CompileTarget(ByteCode bc)
+		{
 			CompileSuffixBase(bc, m_BaseExp);
 
+			if (m_Name != null || m_IndexExp is LiteralExpression)
+				return 1;
+
+			m_IndexExp.Compile(bc);
+			return 2;
+		}
+
+		/// <summary>
+		/// Stores into the target <see cref="CompileTarget"/> pushed, now <paramref name="depth"/> values below the
+		/// top of the stack: copies its table (and key) to the top, then sets as an ordinary assignment does.
+		/// </summary>
+		internal void CompileAssignmentFromTarget(ByteCode bc, int depth, int stackofs, int tupleidx)
+		{
+			int slots = (m_Name != null || m_IndexExp is LiteralExpression) ? 1 : 2;
+
+			// Each copy pushes one value, so the second slot is the same distance down as the first.
+			for (int i = 0; i < slots; i++)
+				bc.Emit_Copy(depth + slots - 1);
+
+			EmitIndexSet(bc, stackofs, tupleidx);
+		}
+
+		void EmitIndexSet(ByteCode bc, int stackofs, int tupleidx)
+		{
 			if (m_Name != null)
 			{
 				bc.Emit_IndexSet(stackofs, tupleidx, DynValue.NewString(m_Name), isNameIndex: true);
@@ -69,7 +103,6 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 			}
 			else
 			{
-				m_IndexExp.Compile(bc);
 				bc.Emit_IndexSet(stackofs, tupleidx, isExpList: (m_IndexExp is ExprListExpression));
 			}
 		}

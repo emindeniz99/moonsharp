@@ -15,6 +15,7 @@ namespace MoonSharp.Interpreter.CoreLib
 	{
 		static DateTime Time0 = DateTime.UtcNow;
 		static DateTime Epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+		const double MinUnixTime = -62135596800.0 + 86400.0, MaxUnixTime = 253402300799.0 - 86400.0;
 
 		private static DynValue GetUnixTime(DateTime dateTime, DateTime? epoch = null)
 		{
@@ -61,13 +62,21 @@ namespace MoonSharp.Interpreter.CoreLib
 			{
 				DynValue vt = args.AsType(0, "time", DataType.Table, true);
 				if (vt.Type == DataType.Table)
-					date = ParseTimeTable(vt.Table);
+				{
+					DateTime? parsed = ParseTimeTable(vt.Table);
+
+					// A date DateTime cannot hold: nil, as Lua 5.2 returns when mktime fails.
+					if (parsed == null)
+						return DynValue.Nil;
+
+					date = parsed.Value;
+				}
 			}
 
 			return GetUnixTime(date);
 		}
 
-		static DateTime ParseTimeTable(Table t)
+		static DateTime? ParseTimeTable(Table t)
 		{
 			int sec = GetTimeTableField(t, "sec") ?? 0;
 			int min = GetTimeTableField(t, "min") ?? 0;
@@ -85,7 +94,20 @@ namespace MoonSharp.Interpreter.CoreLib
 			if (year == null)
 				throw new ScriptRuntimeException("field 'year' missing in date table");
 
-			return new DateTime(year.Value, month.Value, day.Value, hour, min, sec);
+			if (year == int.MinValue || month == int.MinValue || day == int.MinValue || hour == int.MinValue || min == int.MinValue || sec == int.MinValue)
+				return null;
+
+			// Fields outside their usual range move into the next ones, as with C's mktime: month 13 is January
+			// of the next year, day 0 the last day of the month before.
+			try
+			{
+				return new DateTime(year.Value, 1, 1).AddMonths(month.Value - 1).AddDays(day.Value - 1)
+					.AddHours(hour).AddMinutes(min).AddSeconds(sec);
+			}
+			catch (ArgumentOutOfRangeException)
+			{
+				return null;
+			}
 		}
 
 
@@ -94,8 +116,9 @@ namespace MoonSharp.Interpreter.CoreLib
 			DynValue v = t.Get(key);
 			double? d = v.CastToNumber();
 
+			// int.MinValue marks a value no int holds (and NaN), whatever the runtime's conversion gives.
 			if (d.HasValue)
-				return (int)d.Value;
+				return d.Value > int.MinValue && d.Value <= int.MaxValue ? (int)d.Value : int.MinValue;
 
 			return null;
 		}
@@ -111,7 +134,16 @@ namespace MoonSharp.Interpreter.CoreLib
 			string format = (vformat.IsNil()) ? "%c" : vformat.String;
 
 			if (vtime.IsNotNil())
-				reference = FromUnixTime(vtime.Number);
+			{
+				double t = vtime.Number;
+
+				// Not a time DateTime holds, with a day to spare for the time zone (or NaN): nil, as Lua 5.2
+				// returns for a time gmtime and localtime cannot convert.
+				if (!(t >= MinUnixTime && t <= MaxUnixTime))
+					return DynValue.Nil;
+
+				reference = FromUnixTime(t);
+			}
 
 			bool isDst = false;
 

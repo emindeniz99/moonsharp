@@ -13,9 +13,9 @@ error boolean	OK	2	false "bad argument #1 to 'error' (string expected, got boole
 error with __tostring object	OK	1	"string"
 error rethrow keeps object	OK	1	false
 error string coerced number keeps type	OK	1	"string"
-pcall nil	OK	2	false "attempt to pcall a non-function"
-pcall no args	CRASH	System.OverflowException
-pcall number	OK	2	false "attempt to pcall a non-function"
+pcall nil	OK	2	false "attempt to call a nil value"
+pcall no args	ERR	"bad argument #1 to 'pcall' (value expected)"
+pcall number	OK	2	false "attempt to call a number value"
 pcall result count	OK	1	4
 pcall passes args	OK	5	true 3 1 nil 3
 pcall nested	OK	3	true false "x"

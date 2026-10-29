@@ -11,234 +11,190 @@ namespace MoonSharp.Interpreter.CoreLib
 	[MoonSharpModule(Namespace = "bit32")]
 	public class Bit32Module
 	{
-		static readonly uint[] MASKS = new uint[] { 
-									 0x1, 0x3, 0x7, 0xF,
-									 0x1F, 0x3F, 0x7F, 0xFF,
-									 0x1FF, 0x3FF, 0x7FF, 0xFFF,
-									 0x1FFF, 0x3FFF, 0x7FFF, 0xFFFF,
-									 0x1FFFF, 0x3FFFF, 0x7FFFF, 0xFFFFF,
-									 0x1FFFFF, 0x3FFFFF, 0x7FFFFF, 0xFFFFFF,
-									 0x1FFFFFF, 0x3FFFFFF, 0x7FFFFFF, 0xFFFFFFF,
-									 0x1FFFFFFF, 0x3FFFFFFF, 0x7FFFFFFF, 0xFFFFFFFF, };
+		const double TwoPow32 = 4294967296.0;
+		const double TwoPow63 = 9223372036854775808.0;
 
-		static uint ToUInt32(DynValue v)
+		/// <summary>
+		/// luaL_checkunsigned as Lua 5.2 does it on IEEE machines: rounded to the nearest integer (halves to even)
+		/// and taken modulo 2^32, so -1 is 0xFFFFFFFF and 1.5 is 2. A double outside the uint range is never
+		/// cast directly: .NET 9 and ARM64 saturate such casts to 0, .NET 8 on x64 wraps them. NaN and the
+		/// infinities give 0, as Lua 5.2 on x86-64.
+		/// </summary>
+		static uint CheckUnsigned(CallbackArguments args, int argNum, string funcName)
 		{
-			double d = v.Number;
-			d = Math.IEEERemainder(d, Math.Pow(2.0, 32.0));
-			return (uint)d;
-		}
+			double d = args.AsType(argNum, funcName, DataType.Number, false).Number;
 
-		static int ToInt32(DynValue v)
-		{
-			double d = v.Number;
-			d = Math.IEEERemainder(d, Math.Pow(2.0, 32.0));
-			return (int)d;
-		}
-
-		static uint NBitMask(int bits)
-		{
-
-			if (bits <= 0)
+			if (double.IsNaN(d) || double.IsInfinity(d))
 				return 0;
-			if (bits >= 32)
-				return MASKS[31];
 
-			return MASKS[bits - 1];
+			double r = Math.Round(d, MidpointRounding.ToEven);
+			// Exact: r is an integer and the result lies in [0, 2^32).
+			return (uint)(r - Math.Floor(r / TwoPow32) * TwoPow32);
 		}
 
-		public static uint Bitwise(string funcName, CallbackArguments args, Func<uint, uint, uint> accumFunc)
+		/// <summary>
+		/// luaL_checkint as Lua 5.2 does it on x86-64: truncated to a 64-bit integer, then its low 32 bits; a
+		/// number outside the 64-bit range (or NaN) gives 0.
+		/// </summary>
+		static int CheckInt(CallbackArguments args, int argNum, string funcName)
 		{
-			uint accum = ToUInt32(args.AsType(0, funcName, DataType.Number, false));
+			return ToInt(args.AsType(argNum, funcName, DataType.Number, false).Number);
+		}
 
-			for (int i = 1; i < args.Count; i++)
-			{
-				uint vv = ToUInt32(args.AsType(i, funcName, DataType.Number, false));
-				accum = accumFunc(accum, vv);
-			}
+		static int ToInt(double d)
+		{
+			return d >= -TwoPow63 && d < TwoPow63 ? unchecked((int)(long)d) : 0;
+		}
 
-			return accum;
+		/// <summary>The low <paramref name="width"/> bits set, for 1 to 32.</summary>
+		static uint Mask(int width)
+		{
+			return (uint)((1UL << width) - 1);
+		}
+
+		static uint Fold(CallbackArguments args, string funcName, uint start, Func<uint, uint, uint> op)
+		{
+			uint r = start;
+
+			for (int i = 0; i < args.Count; i++)
+				r = op(r, CheckUnsigned(args, i, funcName));
+
+			return r;
+		}
+
+		/// <summary>Lua 5.2's fieldargs: a field position and width (1 by default) that fit in 32 bits.</summary>
+		static int FieldArgs(CallbackArguments args, int fieldArg, string funcName, out int width)
+		{
+			int f = CheckInt(args, fieldArg, funcName);
+			DynValue w = args[fieldArg + 1];
+			width = w.IsNil() ? 1 : CheckInt(args, fieldArg + 1, funcName);
+
+			if (f < 0)
+				throw ScriptRuntimeException.BadArgument(fieldArg, funcName, "field cannot be negative");
+
+			if (width <= 0)
+				throw ScriptRuntimeException.BadArgument(fieldArg + 1, funcName, "width must be positive");
+
+			if ((long)f + width > 32)
+				throw new ScriptRuntimeException("trying to access non-existent bits");
+
+			return f;
+		}
+
+		/// <summary>Lua 5.2's b_shift: left for a positive count, right for a negative one, 0 from 32 bits on.</summary>
+		static DynValue Shift(uint r, long i)
+		{
+			if (i < 0)
+				r = -i >= 32 ? 0 : r >> (int)-i;
+			else
+				r = i >= 32 ? 0 : r << (int)i;
+
+			return DynValue.NewNumber(r);
+		}
+
+		static DynValue Rotate(uint r, int i)
+		{
+			i &= 31;
+
+			if (i != 0)
+				r = (r << i) | (r >> (32 - i));
+
+			return DynValue.NewNumber(r);
 		}
 
 
 		[MoonSharpModuleMethod]
 		public static DynValue extract(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			DynValue v_v = args.AsType(0, "extract", DataType.Number);
-			uint v = ToUInt32(v_v);
+			uint r = CheckUnsigned(args, 0, "extract");
+			int width;
+			int f = FieldArgs(args, 1, "extract", out width);
 
-			DynValue v_pos = args.AsType(1, "extract", DataType.Number);
-			DynValue v_width = args.AsType(2, "extract", DataType.Number, true);
-
-			int pos = (int)v_pos.Number;
-			int width = (v_width).IsNilOrNan() ? 1 : (int)v_width.Number;
-
-			ValidatePosWidth("extract", 2, pos, width);
-
-			uint res = (v >> pos) & NBitMask(width);
-			return DynValue.NewNumber(res);
+			return DynValue.NewNumber((r >> f) & Mask(width));
 		}
 
 
 		[MoonSharpModuleMethod]
 		public static DynValue replace(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			DynValue v_v = args.AsType(0, "replace", DataType.Number);
-			uint v = ToUInt32(v_v);
+			uint r = CheckUnsigned(args, 0, "replace");
+			uint v = CheckUnsigned(args, 1, "replace");
+			int width;
+			int f = FieldArgs(args, 2, "replace", out width);
+			uint m = Mask(width);
 
-			DynValue v_u = args.AsType(1, "replace", DataType.Number);
-			uint u = ToUInt32(v_u);
-			DynValue v_pos = args.AsType(2, "replace", DataType.Number);
-			DynValue v_width = args.AsType(3, "replace", DataType.Number, true);
-
-			int pos = (int)v_pos.Number;
-			int width = (v_width).IsNilOrNan() ? 1 : (int)v_width.Number;
-
-			ValidatePosWidth("replace", 3, pos, width);
-
-			uint mask = NBitMask(width) << pos;
-			v = v & (~mask);
-			u = u & (mask);
-			v = v | u;
-
-			return DynValue.NewNumber(v);
-		}
-
-
-		private static void ValidatePosWidth(string func, int argPos, int pos, int width)
-		{
-			if (pos > 31 || (pos + width) > 31)
-				throw new ScriptRuntimeException("trying to access non-existent bits");
-
-			if (pos < 0)
-				throw new ScriptRuntimeException("bad argument #{1} to '{0}' (field cannot be negative)", func, argPos);
-
-			if (width <= 0)
-				throw new ScriptRuntimeException("bad argument #{1} to '{0}' (width must be positive)", func, argPos+1);
+			return DynValue.NewNumber((r & ~(m << f)) | ((v & m) << f));
 		}
 
 
 		[MoonSharpModuleMethod]
 		public static DynValue arshift(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			DynValue v_v = args.AsType(0, "arshift", DataType.Number);
-			int v = ToInt32(v_v);
+			uint r = CheckUnsigned(args, 0, "arshift");
+			int i = CheckInt(args, 1, "arshift");
 
-			DynValue v_a = args.AsType(1, "arshift", DataType.Number);
+			if (i < 0 || (r & 0x80000000u) == 0)
+				return Shift(r, -(long)i);
 
-			int a = (int)v_a.Number;
-
-			if (a < 0)
-				v = v << -a;
-			else
-				v = v >> a;
-
-			return DynValue.NewNumber(v);
+			// The sign bit fills from the left; the result stays an unsigned number, as in Lua 5.2.
+			return DynValue.NewNumber(i >= 32 ? 0xFFFFFFFFu : (r >> i) | ~(0xFFFFFFFFu >> i));
 		}
 
 
 		[MoonSharpModuleMethod]
 		public static DynValue rshift(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			DynValue v_v = args.AsType(0, "rshift", DataType.Number);
-			uint v = ToUInt32(v_v);
-
-			DynValue v_a = args.AsType(1, "rshift", DataType.Number);
-
-			int a = (int)v_a.Number;
-
-			if (a < 0)
-				v = v << -a;
-			else
-				v = v >> a;
-
-			return DynValue.NewNumber(v);
+			return Shift(CheckUnsigned(args, 0, "rshift"), -(long)CheckInt(args, 1, "rshift"));
 		}
 
 
 		[MoonSharpModuleMethod]
 		public static DynValue lshift(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			DynValue v_v = args.AsType(0, "lshift", DataType.Number);
-			uint v = ToUInt32(v_v);
-
-			DynValue v_a = args.AsType(1, "lshift", DataType.Number);
-
-			int a = (int)v_a.Number;
-
-			if (a < 0)
-				v = v >> -a;
-			else
-				v = v << a;
-
-			return DynValue.NewNumber(v);
+			return Shift(CheckUnsigned(args, 0, "lshift"), CheckInt(args, 1, "lshift"));
 		}
 
+		// With no arguments band is all ones and bor and bxor are 0, as in Lua 5.2.
 		[MoonSharpModuleMethod]
 		public static DynValue band(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			return DynValue.NewNumber(Bitwise("band", args, (x, y) => x & y));
+			return DynValue.NewNumber(Fold(args, "band", 0xFFFFFFFFu, (x, y) => x & y));
 		}
 
 		[MoonSharpModuleMethod]
 		public static DynValue btest(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			return DynValue.NewBoolean(0 != Bitwise("btest", args, (x, y) => x & y));
+			return DynValue.NewBoolean(0 != Fold(args, "btest", 0xFFFFFFFFu, (x, y) => x & y));
 		}
 
 		[MoonSharpModuleMethod]
 		public static DynValue bor(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			return DynValue.NewNumber(Bitwise("bor", args, (x, y) => x | y));
+			return DynValue.NewNumber(Fold(args, "bor", 0, (x, y) => x | y));
 		}
 
 		[MoonSharpModuleMethod]
 		public static DynValue bnot(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			DynValue v_v = args.AsType(0, "bnot", DataType.Number);
-			uint v = ToUInt32(v_v);
-			return DynValue.NewNumber(~v);
+			return DynValue.NewNumber(~CheckUnsigned(args, 0, "bnot"));
 		}
 
 		[MoonSharpModuleMethod]
 		public static DynValue bxor(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			return DynValue.NewNumber(Bitwise("bxor", args, (x, y) => x ^ y));
+			return DynValue.NewNumber(Fold(args, "bxor", 0, (x, y) => x ^ y));
 		}
 
 		[MoonSharpModuleMethod]
 		public static DynValue lrotate(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			DynValue v_v = args.AsType(0, "lrotate", DataType.Number);
-			uint v = ToUInt32(v_v);
-
-			DynValue v_a = args.AsType(1, "lrotate", DataType.Number);
-
-			int a = ((int)v_a.Number) % 32;
-
-			if (a < 0)
-				v = (v >> (-a)) | (v << (32 + a));
-			else
-				v = (v << a) | (v >> (32 - a));
-
-			return DynValue.NewNumber(v);
+			return Rotate(CheckUnsigned(args, 0, "lrotate"), CheckInt(args, 1, "lrotate"));
 		}
 
 		[MoonSharpModuleMethod]
 		public static DynValue rrotate(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			DynValue v_v = args.AsType(0, "rrotate", DataType.Number);
-			uint v = ToUInt32(v_v);
-
-			DynValue v_a = args.AsType(1, "rrotate", DataType.Number);
-
-			int a = ((int)v_a.Number) % 32;
-
-			if (a < 0)
-				v = (v << (-a)) | (v >> (32 + a));
-			else
-				v = (v >> a) | (v << (32 - a));
-
-			return DynValue.NewNumber(v);
+			return Rotate(CheckUnsigned(args, 0, "rrotate"), -CheckInt(args, 1, "rrotate"));
 		}
 
 	}

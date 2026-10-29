@@ -293,6 +293,12 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 		}
 
 
+		// A call or '...', which give all their values unless something cuts them to one.
+		static bool IsMultiValue(Expression e)
+		{
+			return e is FunctionCallExpression || (e is SymbolRefExpression && ((SymbolRefExpression)e).IsVarArgs);
+		}
+
 		// An operator chain such as 1+1+...+1 or a..b..c parses in a loop into a tree as deep as the chain.
 		// Compile and Eval walk such trees with this explicit stack instead of recursing, so a chain of
 		// any length needs no native stack.
@@ -328,10 +334,14 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 
 					if (!p.LeftDone)
 					{
-						if (p.Node.m_Operator == Operator.Or)
-							p.Jump = bc.Emit_Jump(OpCode.JtOrPop, -1);
-						else if (p.Node.m_Operator == Operator.And)
-							p.Jump = bc.Emit_Jump(OpCode.JfOrPop, -1);
+						if (p.Node.m_Operator == Operator.Or || p.Node.m_Operator == Operator.And)
+						{
+							// and/or give one value: (f() or x) is the first result of f, as in (f()).
+							if (IsMultiValue(p.Node.m_Exp1))
+								bc.Emit_Scalar();
+
+							p.Jump = bc.Emit_Jump(p.Node.m_Operator == Operator.Or ? OpCode.JtOrPop : OpCode.JfOrPop, -1);
+						}
 
 						p.LeftDone = true;
 						pending.Push(p);
@@ -348,6 +358,10 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 		{
 			if (jump != null)
 			{
+				// x or f() keeps one result of f too, and nil when f returns none.
+				if (IsMultiValue(m_Exp2))
+					bc.Emit_Scalar();
+
 				jump.NumVal = bc.GetJumpPointForNextInstruction();
 				return;
 			}

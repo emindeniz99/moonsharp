@@ -130,6 +130,8 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual(3, res.Number);
 		}
 
+		// A label at the end of a block is outside the scope of the block's locals (Lua 5.2), so the jump
+		// into the scope of x needs a statement after the label.
 		[Test]
 		[ExpectedException(typeof(SyntaxErrorException))]
 		public void Goto_VarInScope()
@@ -138,6 +140,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				goto f
 				local x
 				::f::
+				return x
 				";
 
 			DynValue res = Script.RunString(script);

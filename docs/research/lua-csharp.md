@@ -3,10 +3,9 @@
 Date: 2026-10-28. Reviewer: research subagent (read-only; nothing in the clone was built or run).
 
 - Repo: https://github.com/nuskey8/Lua-CSharp
-- Commit read: `a8d84c7c5e858a6118e2a9747f08856f5224793a` (2026-10-27, "Merge pull request #388"), shallow clone depth 50 at
-  `/tmp/claude-0/-home-user/49abf7c9-632c-52bb-859e-20c0836e18dc/scratchpad/ext/lua-csharp`
+- Commit read: `a8d84c7c5e858a6118e2a9747f08856f5224793a` (2026-10-27, "Merge pull request #388"), read from a shallow clone (depth 50; not kept)
 - Permalink base: `https://github.com/nuskey8/Lua-CSharp/blob/a8d84c7c5e858a6118e2a9747f08856f5224793a/` (abbreviated `LC/` below)
-- MoonSharp compared against: upstream `fbd03678d5c0f731d731d099211c7f4a3a1ae8b7` (the interpreter sources in `/home/user/moonsharp` are identical to it). Permalink base `https://github.com/emindeniz99/moonsharp/blob/fbd03678d5c0f731d731d099211c7f4a3a1ae8b7/` (abbreviated `MS/`).
+- MoonSharp compared against: upstream `fbd03678d5c0f731d731d099211c7f4a3a1ae8b7` (the fork's interpreter sources at the time were identical to it). Permalink base `https://github.com/emindeniz99/moonsharp/blob/fbd03678d5c0f731d731d099211c7f4a3a1ae8b7/` (abbreviated `MS/`).
 - Package version in tree: 0.5.8 (`Directory.Build.props`). Targets `net10.0; net8.0; net6.0; netstandard2.1`, `LangVersion 13`, `AllowUnsafeBlocks=true` ([LC/src/Lua/Lua.csproj#L3-L7](https://github.com/nuskey8/Lua-CSharp/blob/a8d84c7c5e858a6118e2a9747f08856f5224793a/src/Lua/Lua.csproj#L3-L7)); the netstandard2.1 build takes a package dependency on `System.Runtime.CompilerServices.Unsafe 6.0.0` (same file, L25-L27).
 
 Evidence tags: [C] confirmed by reading the source at the SHA; [S] secondary (issue text, README, commit message); [U] unconfirmed estimate.

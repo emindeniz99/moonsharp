@@ -11,10 +11,10 @@ Marks: **[C]** confirmed from source or by measurement here, **[S]** inferred fr
 | Fork | `SmilingCatEntertainment/moonsharp-unityenhanced` @ `3be1cdb8da5435da30a5780c3991f406066310c6` (HEAD, 2023-09-18) |
 | Fork's only code commit | `7c332c20c5524ee0cc208d572de3992bd5f6ea43` "Rollup/Merge all of my local changes" (2023-05-17), 795 files, +19,831/−86,348 lines. https://github.com/SmilingCatEntertainment/moonsharp-unityenhanced/commit/7c332c20c5524ee0cc208d572de3992bd5f6ea43 |
 | Fork base | `533e8b0f227bd2f975fb088a08869bf900dddd6c` (upstream "Merge pull request #273", 2021-11-14). That commit lives on upstream branch `legacy/2.0`; it is **not** an ancestor of current upstream master. |
-| Upstream compared | `moonsharp-devs/moonsharp` @ `fbd03678d5c0f731d731d099211c7f4a3a1ae8b7` (our `/home/user/moonsharp` master) |
+| Upstream compared | `moonsharp-devs/moonsharp` @ `fbd03678d5c0f731d731d099211c7f4a3a1ae8b7` (the fork's master at the time) |
 | Our fork state assumed | growable VM stacks + stack-error recovery already landed (`a700bca` "perf(vm): allocate VM stacks on demand", `c5192c8`), so stack sizing is not re-proposed |
 
-Method: `git diff 533e8b0 3be1cdb -- src/MoonSharp.Interpreter` (the 55 core files; the `_Projects/` duplicates and the Unity copy under `src/Unity/MoonSharp/Assets/Plugins/MoonSharp/Interpreter` were checked and are byte-identical to `src/MoonSharp.Interpreter` for DynValue, Processor, Processor_InstructionLoop and Coroutine), then every changed hot path was checked against upstream `fbd0367`. No fork code was built or run. Upstream code was built in the scratchpad for the measurements in §4.
+Method: `git diff 533e8b0 3be1cdb -- src/MoonSharp.Interpreter` (the 55 core files; the `_Projects/` duplicates and the Unity copy under `src/Unity/MoonSharp/Assets/Plugins/MoonSharp/Interpreter` were checked and are byte-identical to `src/MoonSharp.Interpreter` for DynValue, Processor, Processor_InstructionLoop and Coroutine), then every changed hot path was checked against upstream `fbd0367`. No fork code was built or run. Upstream code was built from source for the measurements in §4.
 
 Upstream code at a glance: the rollup commit was made from a local tree that predates most fixes merged on `legacy/2.0` after 2.0.0. So the fork is "2.0.0 plus perf changes", and diffing it against its own base shows those fixes as **reverted** (§3.3). Anything taken from it has to be re-applied on today's code, not cherry-picked.
 
@@ -84,9 +84,9 @@ Also in the fork: `Processor.AssignGenericSymbol` stores `new DynValueAccessor(v
 
 ## 4. Measurements made for this report
 
-Upstream `fbd0367` interpreter built from source in the scratchpad (net8.0, Release; a `global using` alias resolves the `ReferenceEqualityComparer` ambiguity on net5+, the same thing the fork fixes in `EventMemberDescriptor.cs`). 4-core x64 VM, .NET 8.0.33, best of 7 runs of 1,000,000 iterations each, `GC.GetAllocatedBytesForCurrentThread`. Two full runs; the table shows run 2 (run 1 within ±8%).
+Upstream `fbd0367` interpreter compiled from source into the measuring program ([src/DevTools/Research/UnityEnhancedPoc](../../src/DevTools/Research/UnityEnhancedPoc/README.md), which has the commands; net8.0, Release; a `global using` alias resolves the `ReferenceEqualityComparer` ambiguity on net5+, the same thing the fork fixes in `EventMemberDescriptor.cs`). 4-core x64 VM, .NET 8.0.33, best of 7 runs of 1,000,000 iterations each, `GC.GetAllocatedBytesForCurrentThread`. Two full runs; the table shows run 2 (run 1 within ±8%).
 
-**Experiment A: "immutable values + cells only for captured locals"**, a 30-line proof of concept of idea 1 applied to a scratch copy (not to our repo): local reads push the slot's value without cloning unless the slot is a cell; `AssignLocal` replaces the slot reference unless it is a cell; capturing a local in a closure turns its slot into a cell; `ExecArgs` stops cloning; `ExecIncr` allocates a fresh number. Upvalue reads still clone (the full design removes that too).
+**Experiment A: "immutable values + cells only for captured locals"**, a 30-line proof of concept of idea 1 applied to a copy of upstream `fbd0367` (not to our repo; `poc.patch` in the same folder): local reads push the slot's value without cloning unless the slot is a cell; `AssignLocal` replaces the slot reference unless it is a cell; capturing a local in a closure turns its slot into a cell; `ExecArgs` stops cloning; `ExecIncr` allocates a fresh number. Upvalue reads still clone (the full design removes that too).
 
 | Workload | upstream ns/iter | upstream B/iter | PoC ns/iter | PoC B/iter |
 |---|---|---|---|---|

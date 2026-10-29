@@ -8,12 +8,12 @@ from an earlier measurement in this session (stated where it came from).
 
 | Engine | Exact source | How it was built |
 |---|---|---|
-| MoonSharp fork (main column) | `emindeniz99/moonsharp` origin/master `731b924dd7490882c9cee8e5aba62051f0d92a52` (2026-10-28 15:34 UTC) | its own `MoonSharp.Interpreter.csproj`, `-c Release -f netstandard2.0`, from a detached scratch worktree `scratchpad/ms-fork-731b924` |
-| MoonSharp fork, earlier | origin/master `0c0e5d4` | same, worktree `scratchpad/ms-fork-0c0e5d4` (measured before master moved; §4) |
-| MoonSharp upstream | `fbd03678d5c0f731d731d099211c7f4a3a1ae8b7` | same, worktree `scratchpad/ms-up-fbd0367` |
-| WattleScript | `WattleScript/wattlescript` `8feb3c6540005f9dbe4a9e2572bc372f8adfa2b3` (HEAD, BSD-3) | own `bench-other/wslib/wslib.csproj`: compiles only `src/WattleScript.Interpreter/**/*.cs`, netstandard2.0, LangVersion 8 (as its own csproj), Release. None of its scripts, tools or sample projects were run |
-| WattleScript history | 9 older commits of the same clone (§6) | `git archive` of the interpreter folder + the same kind of own csproj (`bench-other/hist/<sha>/`) |
-| Lua-CSharp | NuGet `LuaCSharp` 0.5.8 | **[R]** not rebuilt: `scratchpad/luacs-bench/results/default`, 7 rounds, same workload sources |
+| MoonSharp fork (main column) | `emindeniz99/moonsharp` origin/master `731b924dd7490882c9cee8e5aba62051f0d92a52` (2026-10-28 15:34 UTC) | its own `MoonSharp.Interpreter.csproj`, `-c Release -f netstandard2.0`, from a detached worktree |
+| MoonSharp fork, earlier | origin/master `0c0e5d4` | same (measured before master moved; §4) |
+| MoonSharp upstream | `fbd03678d5c0f731d731d099211c7f4a3a1ae8b7` | same |
+| WattleScript | `WattleScript/wattlescript` `8feb3c6540005f9dbe4a9e2572bc372f8adfa2b3` (HEAD, BSD-3) | own `OtherEngines/wslib/wslib.csproj`: compiles only `src/WattleScript.Interpreter/**/*.cs`, netstandard2.0, LangVersion 8 (as its own csproj), Release. None of its scripts, tools or sample projects were run |
+| WattleScript history | 9 older commits of the same clone (§6) | `git archive` of the interpreter folder + the same `wslib.csproj` with `-p:InterpreterSrc` |
+| Lua-CSharp | NuGet `LuaCSharp` 0.5.8 | **[R]** not rebuilt: the default series of [lua-csharp-measured.md](lua-csharp-measured.md), 7 rounds, same workload sources |
 
 - Runtime: .NET 8.0.33 (CoreCLR, JIT, tiered PGO on by default), workstation concurrent GC, `InvariantGlobalization`.
   Harness exes target net8.0; all engine DLLs are netstandard2.0. SDK 10.0.403.
@@ -21,8 +21,8 @@ from an earlier measurement in this session (stated where it came from).
   Other agents worked on the machine throughout; their timing runs are serialised by the shared
   `bench.lock`, their builds are not. The 1-minute load average logged at each process start ranged
   from 1.0 to 20.4.
-- Harness: `scratchpad/bench-other/Program.cs` (one source, compiled per engine; namespace switch by
-  `#if WATTLE`). It replaces the earlier draft in that folder, which had its own case list.
+- Harness: `Program.cs` in [src/DevTools/Research/OtherEngines](../../src/DevTools/Research/OtherEngines/README.md) (one source, compiled per engine; namespace switch by
+  `#if WATTLE`), with the build and run commands. It replaced an earlier draft with its own case list.
   - 18 pure-Lua workloads: sources and iteration counts copied verbatim from the fork's
     `src/DevTools/Benchmarks/LuaWorkloads.cs`. Copied at 0c0e5d4; the 18 Lua cases are byte-identical
     at 731b924, which only adds host cases (§8).
@@ -36,9 +36,10 @@ from an earlier measurement in this session (stated where it came from).
   rounds**. Allocated bytes per iteration = `GC.GetAllocatedBytesForCurrentThread()` delta around the
   timed call (median of rounds; the global counter agreed). Round order: `msA, ws, msB` (731b924 set)
   and `msA, ws, msup, msB` (0c0e5d4 set). Each round ran under
-  `flock scratchpad/bench.lock timeout 3600 round.sh`, each process under `timeout 900`. Scripts:
-  `round.sh`, `rounds.sh`, `rounds-from.sh`, `aggregate.py`, `aggregate_hist.py`.
-- Raw data: `bench-other/results-731/`, `results-main/`, `results-hist/`; aggregates in
+  `flock` on the shared benchmark lock with `timeout 3600`, each process under `timeout 900`. Scripts:
+  `rounds.sh` (which now also does what `round.sh` and `rounds-from.sh` did), `aggregate.py`,
+  `aggregate_hist.py`.
+- Raw data: not kept. Aggregates, in `OtherEngines/results/`:
   `results-731-aggregate.txt`, `results-main-aggregate.txt`, `results-hist-aggregate.txt`.
 
 ### Noise (A/A)
@@ -49,7 +50,7 @@ from an earlier measurement in this session (stated where it came from).
 - 0c0e5d4 set: ratio of medians 0.89-1.15; per-round ratios 0.36-2.07 (load reached 20).
 - Read differences of medians under about 10-15% as noise.
 
-Cross-harness check for the reused Lua-CSharp numbers: the luacs-bench harness also timed MoonSharp
+Cross-harness check for the reused Lua-CSharp numbers: the Lua-CSharp harness ([src/DevTools/Research/LuaCSharp](../../src/DevTools/Research/LuaCSharp/README.md)) also timed MoonSharp
 (fork ed96417) in the same rounds as Lua-CSharp. Our 0c0e5d4 medians divided by its MoonSharp
 medians give 0.90-1.07 (median 0.95) over 21 cases, so the two harnesses agree within that margin.
 Lua-CSharp ratios below carry that extra ~10% uncertainty.
@@ -219,7 +220,7 @@ CoreCLR. The gains that survive are in the table insert path and in arithmetic/u
   `cs_to_lua_call3` and `lua_to_cs_call1` match ours exactly.
 - Single commits inside the large history ranges (3811213, f366e87 and 2342527 are bundled with other
   commits). The history ran 3 rounds, not 7.
-- Lua-CSharp was not re-run; its numbers come from luacs-bench (7 rounds, another harness, checked via
+- Lua-CSharp was not re-run; its numbers come from the Lua-CSharp harness (7 rounds, another harness, checked via
   MoonSharp to agree within 0.90-1.07).
 - Debugger attached, WattleScript syntax mode, long-running retained-memory or GC-pause behaviour.
 - WattleScript's own test suite was not run.

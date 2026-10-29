@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Standalone: not part of any solution. MoonSharpProject: the interpreter project to profile, by default
+       this repository's; the published profile used upstream fbd0367 in a separate worktree. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <Optimize>true</Optimize>
+    <DebugType>portable</DebugType>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+    <MoonSharpProject Condition="'$(MoonSharpProject)' == ''">$(MSBuildThisFileDirectory)../../../../MoonSharp.Interpreter/MoonSharp.Interpreter.csproj</MoonSharpProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(MoonSharpProject)" />
+  </ItemGroup>
+</Project>

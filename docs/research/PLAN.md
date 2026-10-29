@@ -2,8 +2,9 @@
 
 Date: 2026-10-28. Inputs: seven code-level reports in this folder (`lua-csharp.md`, `unityenhanced.md`,
 `xlua.md`, `luau.md`, `jint.md`, `other-managed.md`, `moonsharp-profile.md`) plus the measured
-Lua-CSharp head-to-head in `scratchpad/luacs-bench/results/default` (aggregated with
-`luacs-bench/aggregate.py`, 3-4 rounds x 7 runs, .NET 8.0.33, same 4-core VM).
+Lua-CSharp head-to-head of [lua-csharp-measured.md](lua-csharp-measured.md) (aggregated with `aggregate.py` in
+[src/DevTools/Research/LuaCSharp](../../src/DevTools/Research/LuaCSharp/README.md), 3-4 rounds x 7 runs,
+.NET 8.0.33, same 4-core VM).
 
 Target code: fork master `emindeniz99/moonsharp@58fa6bb` (upstream base `fbd0367`; the VM files have the
 same line numbers, only `FastStack.cs` moved; int64 values live in `DynValue.m_Object` as
@@ -96,7 +97,7 @@ What the table says:
 
 A = boolean singletons + `>`/`>=` fix; C = lazy table keys + no `__newindex` probe without metatable;
 D = `Instruction[]` snapshot + sealed `DynValueStack` + small clears; E = ExecArgs without Slice/double
-copy + closure without LINQ + `IsNumericType` by reference compare. Patch: `scratchpad/profile/proto-ABCDE.patch`.
+copy + closure without LINQ + `IsNumericType` by reference compare. Patch: [proto-ABCDE.patch](../../src/DevTools/Research/Profile/proto-ABCDE.patch).
 
 UnityEnhanced-derived proof of concept (plain cells only for captured locals, 30 lines, unityenhanced.md):
 sum loop 240 -> 144 B/iter, 189 -> 163 ns; fib(15) 127 -> 85 B, 74 -> 61 ns; 8-case aliasing check matched.
@@ -389,7 +390,7 @@ Rules for every PR in this group:
 - **Tests**: 10k `table.insert` and 10k remove-then-add finish under a linear time bound (assert on op
   count of the dictionary walk via an internal counter, not wall time); `next` while assigning nil to
   every key; `#t` after `t[#t] = nil`; `Table.Pairs` does not yield dead keys (today it does, see
-  `table-order/part1.md` §1.2); metatable added after first set still triggers `__newindex`.
+  [table-order.md](table-order.md) §1.2); metatable added after first set still triggers `__newindex`.
 - **Benchmark**: method_call 696 -> 648 B and hash 768 -> 720 B, hash min 632 -> 564 ns (measured C);
   new `table_insert_remove_10k` from ~0.5 s to ~ms [S: SolarSharp 564 -> 3 ms on 2.0.0, re-measure on master].
 - **Compatibility**: iteration order unchanged (insertion order kept). **Licence**: ideas only.
@@ -756,7 +757,7 @@ pieces upstream when they stand alone.
   array". Public `Table` API unchanged; `CollectDeadKeys` becomes a no-op. Enables A17 stage B (slot
   index caches) and B12.
 - **Order decision for the owner**: today MoonSharp iterates in insertion order. The fork's
-  `table-order` spike (`scratchpad/table-order/part1.md`) found no repo test that depends on order and
+  `table-order` spike ([table-order.md](table-order.md) §1) found no repo test that depends on order and
   showed: option (a) keep insertion order everywhere, (b) integer keys 1..#t first then insertion order
   (same `json.serialize` output as master), (c) hash order (changes per process on .NET Core because of
   randomized string hashes; reject). Recommendation: (b), documented, because it matches Lua and keeps

@@ -22,11 +22,11 @@ Short answer:
 
 | | MoonSharp | Lua-CSharp |
 |---|---|---|
-| Source | fork `origin/master` **8933421** (merge of #8), detached worktree at `scratchpad/ms-master` | nuget.org **LuaCSharp 0.5.8**, pinned `[0.5.8]` |
+| Source | fork `origin/master` **8933421** (merge of #8), from a detached worktree | nuget.org **LuaCSharp 0.5.8**, pinned `[0.5.8]` |
 | Commit | `89334213e7f2a5a3d28a233ed55dcaa89c13c8c3` | nuspec `<repository commit="c735770a21407226cfd1204bbe11a25de27cddf9">`, which is "Merge pull request #371 from nuskey8/codex/release-0.5.8". It is 32 commits behind the `a8d84c7` the research note read, and 22 files under `src/Lua` differ, including the stdlib and VM-semantics PRs #377-#383. |
 | Binary | `MoonSharp.Interpreter.dll` netstandard2.0, Release, built with `dotnet build -c Release -f netstandard2.0`; sha256 `b550cbaf…5b204e69` | `lib/net8.0/Lua.dll` from the package (sha256 `c52eee64…e036f9`), plus `Lua.Annotations.dll`. The nupkg's sha256 is `051cc0cc…0d7b9c`. |
 | Language level | Lua 5.2, doubles only | Lua 5.2, doubles only |
-| Host app | `scratchpad/luacs-bench` (`LuaCsBench.csproj`, `Program.cs`), net8.0, Release, `InvariantGlobalization=true`, default GC (workstation, concurrent) and default tiered JIT | same process style |
+| Host app | `LuaCsBench.csproj` and `Program.cs` in [src/DevTools/Research/LuaCSharp](../../src/DevTools/Research/LuaCSharp/README.md), net8.0, Release, `InvariantGlobalization=true`, default GC (workstation, concurrent) and default tiered JIT | same process style |
 | Runtime | .NET 8.0.33 (RyuJIT), built with SDK 10.0.403 | same |
 | Machine | 4-vCPU Intel Xeon 2.1 GHz cloud VM, 15 GB RAM, Ubuntu 24.04.5, kernel 6.18.44 | same |
 
@@ -57,15 +57,13 @@ measured at `fbd0367`, not at 8933421.
   112,001,218 ValueTasks completed synchronously and **0** asynchronously, so the `AsTask` fallback never ran.
   Its cost is measured in boundary case (a3) below.
 - **Locking.** Every process ran under
-  `flock scratchpad/bench.lock` with `timeout 900`. Rounds 1-4 took the lock per process. Rounds 5-7 took it once
-  per round (`run-round-locked.sh`), because other agents' queued benchmarks kept winning the lock between
+  `flock` on the shared benchmark lock with `timeout 900`. Rounds 1-4 took the lock per process. Rounds 5-7 took
+  it once per round (as `run-rounds.sh` now does), because other agents' queued benchmarks kept winning the lock between
   processes. Both ways, no other process holding the lock ran at the same time. Unlocked work by other agents
   did run alongside rounds 1-4 (load average up to 5.2 on 4 vCPUs). The A/A spread below includes that noise.
-- **Discarded data.** These runs are kept but not used:
-  - one partial round against MoonSharp `ed96417`, the master before #8
-    (`results/discarded-ms-ed96417`);
-  - two partial round-5 attempts, cut off by the 2-hour background limit and by a restart
-    (`results/discarded-partial-r5*`).
+- **Discarded data.** These runs were not used (and their files were not kept):
+  - one partial round against MoonSharp `ed96417`, the master before #8;
+  - two partial round-5 attempts, cut off by the 2-hour background limit and by a restart.
 
 ### Noise (A/A, MoonSharp against itself)
 
@@ -178,7 +176,7 @@ code with no PGO. This used 3 rounds, below the 7-round minimum, so treat it as 
 - All values are ns per iteration, as the median of 3 rounds.
 - The MoonSharp A/A (median of rounds) was 0.93-1.07.
 - Round 1 ran while other agents' unlocked work pushed the load average up to 10.6, which widened some IQRs.
-  Raw data and IQRs are in `luacs-bench/results/tc0-summary.md`.
+  The IQRs are in `results/tc0-summary.md` in [src/DevTools/Research/LuaCSharp](../../src/DevTools/Research/LuaCSharp/README.md); the raw data was not kept.
 - All checks matched. All 486 Lua-CSharp `ValueTask`s completed synchronously.
 
 With tiering off, both engines were slower in most cases. The loop, arithmetic, table and `string.format`
@@ -240,7 +238,7 @@ ratios stayed similar or grew (MoonSharp / Lua-CSharp of 8.5-17x). Lua-CSharp lo
 ## Not measured
 
 - **Lua-CSharp `main@a8d84c7` (2026-10-27).** This is the column the owner asked for, and it is missing. I
-  fetched the commit into `scratchpad/ext/build/lua-csharp-main` and read the build files:
+  fetched the commit and read the build files:
   - `src/Lua/Lua.csproj` has no `Target`, `Exec`, `UsingTask` or `Import`. It references the PolySharp 1.14.1
     package (a source generator that runs at compile time) and, on net6.0/netstandard2.1 only,
     `Microsoft.Bcl.TimeProvider` and `System.Runtime.CompilerServices.Unsafe`. It has `ProjectReference`s to
@@ -253,10 +251,10 @@ ratios stayed similar or grew (MoonSharp / Lua-CSharp of 8.5-17x). Lua-CSharp lo
 
   So the files met the condition for building. However, the session's permission classifier denied
   `dotnet build -c Release -f net8.0 src/Lua/Lua.csproj` as running external code, and I did not try to work
-  around it. To add the column, the owner can approve that build. Then point `LuaCsBench.csproj` at
-  `ext/build/lua-csharp-main/src/Lua/bin/Release/net8.0/Lua.dll` (plus `Lua.Annotations.dll`) in a copy of the
-  project, and run `run-round-locked.sh`. The harness compiled against the 0.5.8 API; whether it compiles
-  unchanged against main is unchecked.
+  around it. To add the column, the owner can approve that build. Then build `LuaCsBench.csproj` with
+  `-p:LuaCsDir=<Lua-CSharp>/src/Lua/bin/Release/net8.0` and run `run-rounds.sh` (the README in
+  [src/DevTools/Research/LuaCSharp](../../src/DevTools/Research/LuaCSharp/README.md) has the commands). [lua-csharp-own-bench.md](lua-csharp-own-bench.md) later did this: the harness
+  compiled unchanged against main.
 - **Lua-CSharp on .NET 10, NativeAOT, Unity Mono or IL2CPP, and phones.** Everything here is .NET 8 RyuJIT on a
   server CPU.
 - **Lua-CSharp's own benchmark project and scripts.** These were deliberately not run.
@@ -275,12 +273,11 @@ ratios stayed similar or grew (MoonSharp / Lua-CSharp of 8.5-17x). Lua-CSharp lo
 
 ## Files
 
-All paths are under `/tmp/claude-0/-home-user/49abf7c9-632c-52bb-859e-20c0836e18dc/scratchpad/`:
+In [src/DevTools/Research/LuaCSharp](../../src/DevTools/Research/LuaCSharp/README.md):
 
-- harness: `luacs-bench/Program.cs`, `luacs-bench/LuaCsBench.csproj`, `luacs-bench/NuGet.config`
-- runners: `luacs-bench/run-rounds.sh` (rounds 1-4), `luacs-bench/run-round-locked.sh` (rounds 5-7 and the
-  tiering-off runs)
-- aggregation: `luacs-bench/aggregate.py`
-- raw per-process JSON lines: `luacs-bench/results/default/`, `luacs-bench/results/tc0/`; aggregated output in
-  `luacs-bench/results/default-summary.md` and `luacs-bench/results/tc0-summary.md`
-- run logs with load averages: `luacs-bench/results-default.log`, `luacs-bench/results-tc0.log`
+- harness: `Program.cs`, `LuaCsBench.csproj`, `NuGet.config`
+- runner: `run-rounds.sh` (one lock per round, as rounds 5-7 and the tiering-off runs; rounds 1-4 used a
+  copy that locked per process)
+- aggregation: `aggregate.py`; its output for the two series is in `results/default-summary.md` and
+  `results/tc0-summary.md`
+- the raw per-process JSON lines and the run logs with load averages were not kept

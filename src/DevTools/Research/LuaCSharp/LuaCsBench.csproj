@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Standalone: not part of any solution. See README.md for the build commands. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <Optimize>true</Optimize>
+    <IsPackable>false</IsPackable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- The MoonSharp build to measure: any MoonSharp.Interpreter.dll (netstandard2.0, Release). -->
+    <MoonSharpDll Condition="'$(MoonSharpDll)' == ''">$(MSBuildThisFileDirectory)../../../MoonSharp.Interpreter/bin/Release/netstandard2.0/MoonSharp.Interpreter.dll</MoonSharpDll>
+    <!-- Empty: NuGet LuaCSharp 0.5.8. Otherwise the folder holding a Lua-CSharp build's Lua.dll and Lua.Annotations.dll. -->
+    <LuaCsDir Condition="'$(LuaCsDir)' == ''"></LuaCsDir>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(LuaCsDir)' == ''">
+    <!-- Exact pin: nuget.org LuaCSharp 0.5.8, nuspec repository commit c735770a21407226cfd1204bbe11a25de27cddf9 -->
+    <PackageReference Include="LuaCSharp" Version="[0.5.8]" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(LuaCsDir)' != ''">
+    <Reference Include="Lua"><HintPath>$(LuaCsDir)/Lua.dll</HintPath></Reference>
+    <Reference Include="Lua.Annotations"><HintPath>$(LuaCsDir)/Lua.Annotations.dll</HintPath></Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="MoonSharp.Interpreter"><HintPath>$(MoonSharpDll)</HintPath></Reference>
+  </ItemGroup>
+
+</Project>

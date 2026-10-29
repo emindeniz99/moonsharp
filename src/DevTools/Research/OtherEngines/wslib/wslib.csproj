@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Own build of a WattleScript interpreter from its sources (https://github.com/WattleScript/wattlescript),
+       same TFM and LangVersion as its own csproj. Compiles its sources only; runs none of its scripts or tools.
+       InterpreterSrc: the interpreter source folder, src/WattleScript.Interpreter (src/MoonSharp.Interpreter in
+       checkpoints before the rename, with -p:AssemblyName=MoonSharp.Interpreter). -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>8</LangVersion>
+    <AssemblyName Condition="'$(AssemblyName)' == '' Or '$(AssemblyName)' == 'wslib'">WattleScript.Interpreter</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Optimize>true</Optimize>
+    <DebugType>pdbonly</DebugType>
+    <NoWarn>$(NoWarn);CS1591;CS0618;CS8632;CS0162;CS0168;CS0219;CS0414;CS0649;CS0169;CS0108;CS0114;CS1998;CS0659;CS0661;CS0660;CS0612</NoWarn>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(InterpreterSrc)' != ''">
+    <Compile Include="$(InterpreterSrc)/**/*.cs" Exclude="$(InterpreterSrc)/obj/**;$(InterpreterSrc)/bin/**" />
+  </ItemGroup>
+  <Target Name="RequireInterpreterSrc" BeforeTargets="CoreCompile" Condition="'$(InterpreterSrc)' == ''">
+    <Error Text="Pass -p:InterpreterSrc=&lt;wattlescript&gt;/src/WattleScript.Interpreter (see ../README.md)." />
+  </Target>
+</Project>

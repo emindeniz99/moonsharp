@@ -1,0 +1,39 @@
+## aot: 11 rounds; median of rounds (each round: median of 3 runs in one process)
+case	next	next2	spike	spikeoff	luacs
+empty_loop	8.2	8.2	4.9	8.2	5.2
+int_math	39.4	39.6	18.9	38.9	20.0
+float_math	69.4	69.0	26.7	68.6	34.0
+function_call	129.8	131.0	64.1	135.2	85.7
+fib_recursive	58.5us	62.9us	32.7us	62.1us	39.2us
+numeric-loop	318.5us	324.4us	148.9us	315.0us	190.7us
+nbody	1690.1us	1709.6us	857.5us	1712.1us	601.4us
+ratios to next: median of per-round ratios (interquartile range)
+case	next2/next	spike/next	spikeoff/next	luacs/next
+empty_loop	1.002 (0.979-1.018)	0.594 (0.584-0.604)	1.000 (0.981-1.031)	0.632 (0.612-0.658)
+int_math	1.007 (0.986-1.029)	0.490 (0.470-0.500)	0.988 (0.953-1.016)	0.514 (0.510-0.521)
+float_math	1.001 (0.989-1.065)	0.381 (0.377-0.430)	0.993 (0.980-1.041)	0.493 (0.472-0.504)
+function_call	0.997 (0.994-1.017)	0.492 (0.485-0.532)	1.054 (1.035-1.073)	0.660 (0.639-0.675)
+fib_recursive	1.075 (1.025-1.098)	0.560 (0.544-0.587)	1.072 (1.033-1.113)	0.663 (0.662-0.680)
+numeric-loop	1.013 (0.980-1.040)	0.468 (0.462-0.532)	0.979 (0.972-1.006)	0.596 (0.594-0.609)
+nbody	0.990 (0.968-1.068)	0.506 (0.498-0.512)	1.005 (0.999-1.043)	0.355 (0.334-0.357)
+spike/luacs: empty_loop 0.93, int_math 0.95, float_math 0.81, function_call 0.75, fib_recursive 0.84, numeric-loop 0.78, nbody 1.45
+
+## mono: 11 rounds; median of rounds (each round: median of 3 runs in one process)
+case	next	next2	spike	spikeoff
+empty_loop	18.8	18.6	12.0	18.8
+int_math	88.7	87.2	44.7	88.1
+float_math	172.4	166.1	86.5	164.1
+function_call	182.0	185.7	83.0	183.8
+fib_recursive	82.8us	84.4us	39.2us	86.8us
+numeric-loop	790.8us	769.0us	454.6us	751.4us
+nbody	2605.0us	2586.4us	1158.6us	2534.0us
+ratios to next: median of per-round ratios (interquartile range)
+case	next2/next	spike/next	spikeoff/next
+empty_loop	1.005 (0.955-1.080)	0.637 (0.633-0.673)	1.006 (0.996-1.118)
+int_math	0.967 (0.952-1.033)	0.516 (0.492-0.567)	1.017 (0.990-1.025)
+float_math	0.959 (0.941-1.018)	0.503 (0.493-0.535)	0.982 (0.920-1.015)
+function_call	1.007 (0.972-1.050)	0.460 (0.442-0.469)	1.012 (0.967-1.040)
+fib_recursive	1.010 (1.002-1.068)	0.479 (0.470-0.528)	1.060 (1.032-1.082)
+numeric-loop	0.985 (0.921-1.007)	0.596 (0.538-0.603)	0.977 (0.897-0.999)
+nbody	0.999 (0.980-1.006)	0.444 (0.441-0.464)	0.991 (0.965-1.024)
+

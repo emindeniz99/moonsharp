@@ -23,8 +23,10 @@ Limits, stated plainly:
 
 - **No same-machine A/B was run.** I wrote a harness that compiles MoonSharp `fbd0367` sources and
   WattleScript sources with my own csproj and runs the xLua-NG flag_bench workloads plus four CLR
-  interop cases (`scratchpad/bench-other/Program.cs`, `ms/ms.csproj`, `ws/ws.csproj`), but the
-  permission classifier denied building/running external code. The harness is ready if the owner
+  interop cases (a draft, not kept), but the
+  permission classifier denied building/running external code. The A/B ran later with a new harness
+  ([src/DevTools/Research/OtherEngines](../../src/DevTools/Research/OtherEngines/README.md)); the results are in
+  [wattlescript-measured.md](wattlescript-measured.md). The harness is ready if the owner
   approves running it. All WattleScript speed claims below are therefore mechanism-based estimates.
 - The only cross-engine measurements are SolarSharp's own CI BenchmarkDotNet series
   (`https://braedonwooding.github.io/solarsharp/dev/bench/data.js`, last entry commit `e10a939`,
@@ -448,7 +450,7 @@ WattleScript Regex patterns.
 ## 11. Open questions
 
 1. Same-machine A/B of WattleScript vs MoonSharp fbd0367 on the 18 flag_bench workloads and 4 interop
-   cases: harness ready at `scratchpad/bench-other/`, blocked on permission to build external code.
+   cases: done later, in [wattlescript-measured.md](wattlescript-measured.md).
 2. Re-measure SolarSharp's four O(n^2) table scripts on MoonSharp master to confirm the cause before
    fixing (expected: same, code unchanged).
 3. IL2CPP behaviour of `[StructLayout(Explicit)]` DynValue and `ref` returns on Unity 2021.3: expected

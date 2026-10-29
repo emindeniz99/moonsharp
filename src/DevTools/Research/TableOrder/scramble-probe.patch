@@ -1,0 +1,95 @@
+diff --git a/src/MoonSharp.Interpreter/DataTypes/Table.cs b/src/MoonSharp.Interpreter/DataTypes/Table.cs
+index c4a4bec..0a9cd14 100644
+--- a/src/MoonSharp.Interpreter/DataTypes/Table.cs
++++ b/src/MoonSharp.Interpreter/DataTypes/Table.cs
+@@ -549,11 +549,63 @@ namespace MoonSharp.Interpreter
+ 		}
+ 
+ 
++
++		// SCRAMBLE PROBE (temporary): MOONSHARP_ORDER_PROBE = "b" (array 1..Length first, then insertion order)
++		// or "c<seed>" (array 1..Length first, then a seeded hash order).
++		static readonly string s_Probe = System.Environment.GetEnvironmentVariable("MOONSHARP_ORDER_PROBE");
++
++		static uint ProbeHash(DynValue k, uint seed)
++		{
++			string s = k.Type + ":" + (k.Type == DataType.String ? k.String : k.Type == DataType.Number ? k.Number.ToString("R") : k.GetHashCode().ToString());
++			uint h = 2166136261u ^ seed;
++			foreach (char c in s) { h ^= c; h *= 16777619u; }
++			h ^= h >> 15; h *= 0x2c1b3c6du; h ^= h >> 12;
++			return h;
++		}
++
++		List<TablePair> ProbeOrder()
++		{
++			var all = m_Values.ToList();
++			if (string.IsNullOrEmpty(s_Probe)) return all;
++			int len = Length;
++			var arr = new List<TablePair>();
++			var rest = new List<TablePair>();
++			foreach (var p in all)
++			{
++				int idx = p.Key.Type == DataType.Number ? GetIntegralKey(p.Key.Number) : -1;
++				if (idx >= 1 && idx <= len) arr.Add(p); else rest.Add(p);
++			}
++			arr.Sort((x, y) => x.Key.Number.CompareTo(y.Key.Number));
++			if (s_Probe[0] == 'c')
++			{
++				uint seed = s_Probe.Length > 1 ? uint.Parse(s_Probe.Substring(1)) : 1u;
++				rest = rest.OrderBy(p => ProbeHash(p.Key, seed)).ToList();
++			}
++			arr.AddRange(rest);
++			return arr;
++		}
++
++		TablePair? ProbeNext(DynValue v)
++		{
++			var order = ProbeOrder();
++			int start = 0;
++			if (!v.IsNil())
++			{
++				int pos = order.FindIndex(p => p.Key.Equals(v) || (p.Key.Type == DataType.Number && v.Type == DataType.Number && p.Key.Number == v.Number));
++				if (pos < 0) return null;
++				start = pos + 1;
++			}
++			for (int i = start; i < order.Count; i++)
++				if (!order[i].Value.IsNil()) return order[i];
++			return TablePair.Nil;
++		}
++
+ 		/// <summary>
+ 		/// Returns the next pair from a value
+ 		/// </summary>
+ 		public TablePair? NextKey(DynValue v)
+ 		{
++			if (!string.IsNullOrEmpty(s_Probe)) return ProbeNext(v);
+ 			if (v.IsNil())
+ 			{
+ 				LinkedListNode<TablePair> node = m_Values.First;
+@@ -657,7 +709,7 @@ namespace MoonSharp.Interpreter
+ 		{
+ 			get
+ 			{
+-				return m_Values.Select(n => new TablePair(n.Key, n.Value));
++				return ProbeOrder().Select(n => new TablePair(n.Key, n.Value));
+ 			}
+ 		}
+ 
+@@ -669,7 +721,7 @@ namespace MoonSharp.Interpreter
+ 		{
+ 			get
+ 			{
+-				return m_Values.Select(n => n.Key);
++				return ProbeOrder().Select(n => n.Key);
+ 			}
+ 		}
+ 
+@@ -681,7 +733,7 @@ namespace MoonSharp.Interpreter
+ 		{
+ 			get
+ 			{
+-				return m_Values.Select(n => n.Value);
++				return ProbeOrder().Select(n => n.Value);
+ 			}
+ 		}
+ 	}

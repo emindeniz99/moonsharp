@@ -3,8 +3,8 @@
 Date: 2026-10-28. Branch: `spike/table-order` on github.com/emindeniz99/moonsharp (no PR), based on
 master `ed96417`. Commits: `2c9e546` (array part, struct hash, three orders), `67c01be` (collect dead
 keys on the next insert, as master intends), `51e5d38` (sparse-array guard; build switches for the
-variants), `97def54` (benchmark workloads). Scripts, probes, fuzzers and raw results are in the
-scratchpad folder `table-order/` next to this file.
+variants), `97def54` (benchmark workloads). Scripts, probes, fuzzers and the A/B and workload results are in
+[src/DevTools/Research/TableOrder](../../src/DevTools/Research/TableOrder/README.md).
 
 Markers: [C] confirmed here (run or read, with file:line or URL), [S] secondary or inferred,
 [U] unconfirmed.
@@ -35,7 +35,7 @@ lines, one MIGRATING note for mixed tables. Reasons in section 5.
 
 ### 1.1 Empirical: scramble the order and see what breaks
 
-Method. A temporary patch to master's `Table` (`scramble-probe.patch` in the scratchpad folder) made
+Method. A temporary patch to master's `Table` (`scramble-probe.patch` in that folder) made
 `next`, `Table.Pairs`, `Keys` and `Values` return keys in a different order, selected by
 `MOONSHARP_ORDER_PROBE`: `b` = keys 1..`#t` ascending first, then the rest in insertion order;
 `c1`, `c2`, `c3` = keys 1..`#t` first, then the rest in a seeded hash order (three seeds). A Lua probe
@@ -117,7 +117,7 @@ confirmed the patch was active (`mixed:` changed from `x,y,1,2,z` to `1,2,z,y,x`
 - [S] moonsharp-unityenhanced keeps the `LinkedList` table (it only adds `AggressiveInlining` to
   `Table`/`LinkedListIndex`, research/unityenhanced.md P14), so Unity users of that fork see the same
   insertion order.
-- [C] The fork's own brief (scratchpad `issue99.md:210`) asks to compare "field ordering (where contract
+- [C] The fork's own brief (the owner's task brief, section 1B.5; not in this repository) asks to compare "field ordering (where contract
   requires deterministic serialization)" between browser, server and Unity. That is a requirement for
   *deterministic* order across hosts, which (a) and (b) meet and (c) does not.
 
@@ -422,7 +422,9 @@ gains in every variant, and reads only get faster after the struct value rewrite
 
 ## 6. Reproduce
 
-All paths under `/tmp/claude-0/-home-user/49abf7c9-632c-52bb-859e-20c0836e18dc/scratchpad/table-order/`.
+All files are in [src/DevTools/Research/TableOrder](../../src/DevTools/Research/TableOrder/README.md),
+whose README has the commands; the scripts take the spike worktree (`SPIKE`) and a work folder (`WORK`)
+as variables.
 
 - Variant builds: `build_variants.sh` (one source; `-p:TableOrder=B|C`, `-p:TableOrderDynamic=true`),
   output `bin-a`, `bin-b`, `bin-c`, `bin-d`; master DLL in `bin-master` (sha256 `39f5b217…`).
@@ -441,9 +443,9 @@ the array part; a (c) built on the compact dict.
 
 ## 7. Incidents during this task
 
-- The shared scratchpad already had a `runtests.sh` from another agent; my first `Write` replaced it.
-  I could not restore the original and deleted my copy, so a caller of that path gets "not found"
-  instead of running my script. My files now live only in `table-order/`.
+- The shared session folder already had a `runtests.sh` from another agent; my first `Write` replaced it.
+  I could not restore the original and deleted my copy, so a caller of that path got "not found"
+  instead of running my script. My files then lived only in their own folder.
 - The shared `bench.lock` was held from at least 11:23 to 11:50 UTC by an idle MSBuild node
   (`/nodeReuse:true`, working directory in worktree `agent-a1c1799c79e914492`): it inherited the lock's
   file descriptor from a `flock … dotnet build` and kept it after the build ended. Killing it was refused

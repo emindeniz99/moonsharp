@@ -70,7 +70,8 @@ Short answer:
 
 Method:
 
-- Each suite was run three times, one suite at a time, with no other benchmark running.
+- Each suite was run three times, one suite at a time, with no other benchmark running (`run-suites.sh`;
+  `combine_bdn.py` builds the tables; both in [src/DevTools/Research/LuaCSharp](../../src/DevTools/Research/LuaCSharp/README.md)).
 - The tables give BenchmarkDotNet's per-run **median**, then the median of the three runs, with the
   min-max across runs.
 - Ratios are medians of per-run ratios, so both sides of a ratio come from the same run.
@@ -165,7 +166,8 @@ Notes:
 BenchmarkDotNet's compilation job calls `GC.Collect` before every iteration and times 64 loads into one fresh
 `Script`. Their own README warns the batches are short.
 
-The cases were reproduced outside BenchmarkDotNet with a small console program:
+The cases were reproduced outside BenchmarkDotNet with a small console program (`CFlow` in
+[src/DevTools/Research/CompileBisect](../../src/DevTools/Research/CompileBisect/README.md), with the bisect script and the commands):
 
 - It loads one MoonSharp build into its own `AssemblyLoadContext`.
 - It calls `Script.LoadString` 64 times per batch on the `control-flow` source (40 repeats of a block with a
@@ -285,7 +287,8 @@ Where the comparison tilts:
 
 ## Lua-CSharp main@a8d84c7 against 0.5.8 on the fork's workloads
 
-The harness from [lua-csharp-measured.md](lua-csharp-measured.md) was compiled, unchanged, twice:
+The harness from [lua-csharp-measured.md](lua-csharp-measured.md) was compiled, unchanged, twice
+(`run-versions.sh` and `aggregate_versions.py` in [src/DevTools/Research/LuaCSharp](../../src/DevTools/Research/LuaCSharp/README.md) run and aggregate it):
 
 - once against NuGet LuaCSharp `[0.5.8]`;
 - once against `Lua.dll` built from `a8d84c7` (`dotnet build src/Lua/Lua.csproj -c Release -f net8.0`).
@@ -403,5 +406,5 @@ median of the three BenchmarkDotNet medians (min-max); ratios are medians of per
 - The rows with no varargs and no C# calls in their loops (numeric-loop, nbody, table-access, table-sort,
   metamethods) stay within 0.98-1.03 of `next`; math (fast-called builtins) 0.99, strings and patterns
   (library calls) 0.93 and 0.95.
-- The harness copy, with the second fork column and the API class, is not committed anywhere; the patch in
+- The harness copy, with the second fork column and the API class, was not kept; the patch in
   [lua-csharp-own-bench.patch](lua-csharp-own-bench.patch) gives the one-fork version.

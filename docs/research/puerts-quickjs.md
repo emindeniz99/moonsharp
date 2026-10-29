@@ -20,8 +20,8 @@ Nothing here was measured: no .NET SDK is installed in this VM, and the cloned r
 | MSF | https://github.com/emindeniz99/moonsharp (fork master) | `0c0e5d4b32e1566e525a5c76b7fac82a27225fb1` | 2026-10-28 | BSD-3 |
 
 PLAN.md was written against fork `58fa6bb`; master has moved to `0c0e5d4` (merge of `next`). The
-files cited below were re-read at `0c0e5d4`. Clones: `scratchpad/clones/{Tencent_puerts,
-bellard_quickjs,quickjs-ng_quickjs,emindeniz99_moonsharp}`. Ideas only from all three engines; no code
+files cited below were re-read at `0c0e5d4`, from clones of the four repositories above (not kept).
+Ideas only from all three engines; no code
 is copied. PuerTS's PInvoke runtime and its generators are C#, so its BSD-3 notice would be needed if
 any of it were ever adapted; nothing below proposes that.
 
@@ -819,4 +819,4 @@ as PuerTS's is.
 - QuickJS documentation (bytecode trust): https://github.com/bellard/quickjs/blob/19d6bd865e709e2b5717fb4f2290c0cecc57ee4b/doc/quickjs.texi#L860
 - quickjs-ng security policy: https://github.com/quickjs-ng/quickjs/blob/7a23d8e3fedb010070ef1a03873c55500c7aa1a9/SECURITY.md
 - QuickJS vendor page (size, startup claims): https://bellard.org/quickjs/
-- Earlier fit survey: `scratchpad/research/landscape/js-family.md`; plan: `scratchpad/research/PLAN.md`.
+- Earlier fit survey: [landscape/js-family.md](landscape/js-family.md); plan: [PLAN.md](PLAN.md).

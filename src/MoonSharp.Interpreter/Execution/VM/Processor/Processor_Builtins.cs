@@ -191,7 +191,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 						if (t.MetaTable != null)
 							return false;
 
-						t.Set(t.Length + 1, st[first + 1].ToDynValue());
+						t.SetValue(t.Length + 1, st[first + 1]);
 						return FastResult(argc, st[first]);
 					}
 				default:

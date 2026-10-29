@@ -93,6 +93,7 @@ namespace MoonSharp.Interpreter
 				return RegisterModuleTypeUncached(gtable, t);
 
 			Table table = CreateModuleNamespace(gtable, reg.Namespace);
+			table.ReserveHash(reg.Members.Length);
 
 			foreach (ModuleMember m in reg.Members)
 			{
@@ -360,37 +361,32 @@ namespace MoonSharp.Interpreter
 			}
 			else
 			{
-				Table table = null;
+				// Read without a DynValue per lookup; each table is created once per Script.
+				Table table = gtable.RawGetValue(ns).Object as Table;
 
-				DynValue found = gtable.Get(ns);
-
-				if (found.Type == DataType.Table)
-				{
-					table = found.Table;
-				}
-				else
+				if (table == null)
 				{
 					table = new Table(gtable.OwnerScript);
 					gtable.Set(ns, DynValue.NewTable(table));
 				}
 
+				Table package = gtable.RawGetValue("package").Object as Table;
 
-				DynValue package = gtable.RawGet("package");
-
-				if (package == null || package.Type != DataType.Table)
+				if (package == null)
 				{
-					gtable.Set("package", package = DynValue.NewTable(gtable.OwnerScript));
+					package = new Table(gtable.OwnerScript);
+					gtable.Set("package", DynValue.NewTable(package));
 				}
 
+				Table loaded = package.RawGetValue("loaded").Object as Table;
 
-				DynValue loaded = package.Table.RawGet("loaded");
-
-				if (loaded == null || loaded.Type != DataType.Table)
+				if (loaded == null)
 				{
-					package.Table.Set("loaded", loaded = DynValue.NewTable(gtable.OwnerScript));
+					loaded = new Table(gtable.OwnerScript);
+					package.Set("loaded", DynValue.NewTable(loaded));
 				}
 
-				loaded.Table.Set(ns, DynValue.NewTable(table));
+				loaded.Set(ns, DynValue.NewTable(table));
 
 				return table;
 			}

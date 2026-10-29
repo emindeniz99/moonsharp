@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using MoonSharp.Interpreter.Execution.VM;
 
 namespace MoonSharp.Interpreter
 {
@@ -9,11 +11,16 @@ namespace MoonSharp.Interpreter
 	/// <remarks>
 	/// Storage: an array part for integer keys 1..capacity and one hash part for every other key.
 	/// <list type="bullet">
+	/// <item>Keys and values are kept as the VM's value struct, so storing a number allocates nothing. The
+	/// public API returns a read-only <see cref="DynValue"/> for each value it reads (a shared one for nil,
+	/// booleans and small integers); changing a <see cref="DynValue"/> after storing it does not change the
+	/// table.</item>
 	/// <item>A key goes to the array part when it is at most max(2 * capacity, 4) and at most 4096 past the
 	/// capacity, and when more than half of the grown array would hold values; on growth, hash keys in the new
 	/// range move into the array.</item>
 	/// <item>The hash part is a compact dictionary: entries are appended in insertion order and chained from
-	/// bucket heads.</item>
+	/// bucket heads. Tables that got the same keys in the same order keep each key in the same entry, which
+	/// the VM's field caches use (<see cref="TryGetEntry"/>).</item>
 	/// <item><c>next</c>, <c>pairs</c> and <see cref="Pairs"/> return keys in insertion order across both parts.
 	/// Keys 1..m_Prefix, appended in order while the hash part was empty, come first; every other array key
 	/// has a pointer entry in the hash part that marks its place.</item>
@@ -28,17 +35,18 @@ namespace MoonSharp.Interpreter
 	{
 		struct Entry
 		{
-			// null in a pointer entry and in a removed entry
-			public DynValue Key;
-			// null: dead key (or removed entry); s_ArraySlot: pointer entry for array key Hash
-			public DynValue Value;
+			// Nil in a pointer entry and in a removed entry
+			public LuaValue Key;
+			// Nil: dead key (or removed entry); Void: pointer entry for array key Hash
+			public LuaValue Value;
 			public int Hash;
 			// next entry in the same bucket chain, -1 at the end
 			public int Next;
 		}
 
-		// Marks a pointer entry: the place in the order of an array key, whose value lives in m_Array.
-		static readonly DynValue s_ArraySlot = DynValue.NewString("<array slot>");
+		// An array slot whose key is placed in the order but has no value. It reads as nil: only Table tells
+		// it from an absent slot (nil without an object).
+		static readonly LuaValue s_DeadSlot = LuaValue.FromObject(DataType.Nil, new object());
 
 		const int MinCapacity = 4;
 		const int MaxArrayGap = 4096;
@@ -47,8 +55,8 @@ namespace MoonSharp.Interpreter
 		// tests read it (by reflection).
 		[ThreadStatic] static long s_ScanSteps;
 
-		// m_Array[i] holds key i + 1: null when absent (and not placed in the order), a nil value when dead.
-		DynValue[] m_Array;
+		// m_Array[i] holds key i + 1: absent (nil, not placed in the order), s_DeadSlot, or the value.
+		LuaValue[] m_Array;
 		// Keys 1..m_Prefix were appended in order while the hash part was empty: they come first in the order
 		// without pointer entries.
 		int m_Prefix;
@@ -75,10 +83,10 @@ namespace MoonSharp.Interpreter
 		internal int MetaAbsent;
 
 		// For the VM's field caches (FieldCache). Shape changes whenever a key is added to the hash part or
-		// its entries move, so while it stays the same an entry index still names the same key (or a removed
-		// entry, whose value is null) and a string key with no entry still has none. Its high 32 bits are an
-		// id that StampedShape gives the table the first time a cache records it, so a shape a cache holds
-		// also names the table, without a reference that would keep the table alive.
+		// its entries move, so while it stays the same a string key with no entry still has none and a dead
+		// entry still holds the same key. Its high 32 bits are an id that StampedShape gives the table the
+		// first time a cache records it, so a shape a cache holds also names the table, without a reference
+		// that would keep the table alive.
 		internal long Shape;
 
 		static int s_NextShapeId;
@@ -120,30 +128,86 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
-		/// <see cref="Set(string, DynValue)"/> with the key's hash already computed.
+		/// Stores a string key with its hash already computed.
 		/// </summary>
-		internal void SetString(string key, int hash, DynValue value)
+		internal void SetString(string key, int hash, LuaValue value)
 		{
-			this.CheckScriptOwnership(value);
-			SetString(key, hash, null, value);
+			CheckOwnership(ref value);
+			SetString(key, hash, LuaValue.FromString(key), ref value);
 		}
 
 		/// <summary>
-		/// The value of entry <paramref name="entry"/>: null when its key is dead or was removed.
+		/// The value of entry <paramref name="entry"/>: nil when its key is dead or was removed.
 		/// </summary>
-		internal DynValue EntryValue(int entry)
+		internal LuaValue EntryValue(int entry)
 		{
 			return m_Entries[entry].Value;
 		}
 
 		/// <summary>
-		/// Replaces the value of a live string-key entry with a value that is not nil. A live key is never
-		/// one of the metamethods MetaAbsent lists, so the bits stay.
+		/// True when entry <paramref name="entry"/> exists and holds string key <paramref name="key"/>, live or
+		/// dead; <paramref name="value"/> is its value then (nil when dead). An entry index found in one table
+		/// can be tried on any other: tables that got the same keys in the same order agree on it.
 		/// </summary>
-		internal void SetEntryValue(int entry, DynValue value)
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		internal bool TryGetEntry(int entry, string key, out LuaValue value)
 		{
-			this.CheckScriptOwnership(value);
-			m_Entries[entry].Value = value;
+			Entry[] entries = m_Entries;
+
+			if (entries != null && (uint)entry < (uint)entries.Length)
+			{
+				object k = entries[entry].Key.Object;
+
+				if (object.ReferenceEquals(k, key) || (entries[entry].Key.Type == DataType.String && string.Equals((string)k, key)))
+				{
+					value = entries[entry].Value;
+					return true;
+				}
+			}
+
+			value = default(LuaValue);
+			return false;
+		}
+
+		/// <summary>
+		/// Replaces the value of entry <paramref name="entry"/> with <paramref name="value"/> (not nil) when the
+		/// entry holds string key <paramref name="key"/> with a value; false otherwise. A live key is never one
+		/// of the metamethods MetaAbsent lists, so the bits stay.
+		/// </summary>
+		internal bool TrySetEntry(int entry, string key, ref LuaValue value)
+		{
+			Entry[] entries = m_Entries;
+
+			if (entries != null && (uint)entry < (uint)entries.Length && entries[entry].Value.Type != DataType.Nil)
+			{
+				object k = entries[entry].Key.Object;
+
+				if (object.ReferenceEquals(k, key) || (entries[entry].Key.Type == DataType.String && string.Equals((string)k, key)))
+				{
+					CheckOwnership(ref value);
+					entries[entry].Value = value;
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		/// <summary>
+		/// Sizes the hash part of an empty table for <paramref name="count"/> keys, so filling it does not
+		/// grow it step by step (the standard library's module tables).
+		/// </summary>
+		internal void ReserveHash(int count)
+		{
+			if (m_Entries != null || count <= MinCapacity)
+				return;
+
+			int capacity = MinCapacity;
+
+			while (capacity < count)
+				capacity *= 2;
+
+			Allocate(capacity);
 		}
 
 		/// <summary>
@@ -165,7 +229,7 @@ namespace MoonSharp.Interpreter
 		{
 			for (int i = 0; i < arrayValues.Length; i++)
 			{
-				this.Set(DynValue.NewNumber(i + 1), arrayValues[i]);
+				this.Set(i + 1, arrayValues[i]);
 			}
 		}
 
@@ -208,7 +272,7 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
-		/// Gets or sets the 
+		/// Gets or sets the
 		/// <see cref="System.Object" /> with the specified key(s).
 		/// This will marshall CLR and MoonSharp objects in the best possible way.
 		/// Multiple keys can be used to access subtables.
@@ -281,8 +345,27 @@ namespace MoonSharp.Interpreter
 		/// <param name="value">The value.</param>
 		public void Append(DynValue value)
 		{
-			this.CheckScriptOwnership(value);
-			SetInt(m_Length + 1, value, null);
+			Set(m_Length + 1, value);
+		}
+
+		// The value a DynValue argument stands for: null is nil.
+		static LuaValue In(DynValue value)
+		{
+			return (value == null) ? LuaValue.Nil : value.ToLuaValue();
+		}
+
+		// A stored value for the public API: null when absent or nil.
+		static DynValue Out(ref LuaValue value)
+		{
+			return (value.Type == DataType.Nil) ? null : value.ToDynValue();
+		}
+
+		void CheckOwnership(ref LuaValue value)
+		{
+			IScriptPrivateResource resource = value.Object as IScriptPrivateResource;
+
+			if (resource != null)
+				this.CheckScriptOwnership(resource);
 		}
 
 		#region Hash part
@@ -297,6 +380,26 @@ namespace MoonSharp.Interpreter
 		{
 			int i = (int)d;
 			return (i == d) ? i : d.GetHashCode();
+		}
+
+		// The hash of a key that is neither a string nor a number, consistent with LuaValue.RawEquals.
+		static int HashOther(ref LuaValue key)
+		{
+			switch (key.Type)
+			{
+				case DataType.Boolean:
+					return (key.Number != 0) ? 1 : 2;
+				case DataType.UserData:
+					{
+						// int64 and uint64 values are immutable and equal by value, so they hash by value too
+						UserData ud = (UserData)key.Object;
+						object o = ud.Object;
+						int h = (o is LuaInt64 || o is LuaUInt64) ? o.GetHashCode() : ud.GetHashCodeForEquals();
+						return (((int)DataType.UserData) << 27) ^ h;
+					}
+				default:
+					return (((int)key.Type) << 27) ^ RuntimeHelpers.GetHashCode(key.Object);
+			}
 		}
 
 		int Bucket(int hash)
@@ -314,9 +417,7 @@ namespace MoonSharp.Interpreter
 
 			for (int i = m_Buckets[Bucket(hash)] - 1; i >= 0; i = entries[i].Next)
 			{
-				DynValue k = entries[i].Key;
-
-				if (entries[i].Hash == hash && k != null && k.Type == DataType.String && string.Equals(k.String, s))
+				if (entries[i].Hash == hash && entries[i].Key.Type == DataType.String && string.Equals((string)entries[i].Key.Object, s))
 					return i;
 			}
 
@@ -332,16 +433,14 @@ namespace MoonSharp.Interpreter
 
 			for (int i = m_Buckets[Bucket(hash)] - 1; i >= 0; i = entries[i].Next)
 			{
-				DynValue k = entries[i].Key;
-
-				if (entries[i].Hash == hash && k != null && k.Type == DataType.Number && k.Number == d)
+				if (entries[i].Hash == hash && entries[i].Key.Type == DataType.Number && entries[i].Key.Number == d)
 					return i;
 			}
 
 			return -1;
 		}
 
-		int FindOther(DynValue key, int hash)
+		int FindOther(ref LuaValue key, int hash)
 		{
 			Entry[] entries = m_Entries;
 
@@ -350,9 +449,7 @@ namespace MoonSharp.Interpreter
 
 			for (int i = m_Buckets[Bucket(hash)] - 1; i >= 0; i = entries[i].Next)
 			{
-				DynValue k = entries[i].Key;
-
-				if (entries[i].Hash == hash && k != null && (object.ReferenceEquals(k, key) || k.Equals(key)))
+				if (entries[i].Hash == hash && entries[i].Key.Type != DataType.Nil && LuaValue.RawEquals(ref entries[i].Key, ref key))
 					return i;
 			}
 
@@ -368,7 +465,7 @@ namespace MoonSharp.Interpreter
 
 			for (int i = m_Buckets[Bucket(arrayKey)] - 1; i >= 0; i = entries[i].Next)
 			{
-				if (entries[i].Hash == arrayKey && object.ReferenceEquals(entries[i].Value, s_ArraySlot))
+				if (entries[i].Hash == arrayKey && entries[i].Value.Type == DataType.Void)
 					return i;
 			}
 
@@ -376,16 +473,16 @@ namespace MoonSharp.Interpreter
 		}
 
 		// The entry of a key that is not an array key in range, or -1.
-		int FindKey(DynValue key)
+		int FindKey(ref LuaValue key)
 		{
 			switch (key.Type)
 			{
 				case DataType.String:
-					return FindString(key.String, key.GetHashCode());
+					return FindString((string)key.Object, HashString((string)key.Object));
 				case DataType.Number:
 					return FindNumber(key.Number, HashNumber(key.Number));
 				default:
-					return FindOther(key, key.GetHashCode());
+					return FindOther(ref key, HashOther(ref key));
 			}
 		}
 
@@ -403,21 +500,15 @@ namespace MoonSharp.Interpreter
 
 		bool IsLive(ref Entry e)
 		{
-			DynValue v = e.Value;
+			DataType t = e.Value.Type;
 
-			if (v == null)
-				return false;
+			if (t == DataType.Void)
+				return m_Array[e.Hash - 1].Type != DataType.Nil;
 
-			if (object.ReferenceEquals(v, s_ArraySlot))
-			{
-				DynValue a = m_Array[e.Hash - 1];
-				return a != null && a.Type != DataType.Nil;
-			}
-
-			return true;
+			return t != DataType.Nil;
 		}
 
-		void AppendEntry(DynValue key, int hash, DynValue value)
+		void AppendEntry(ref LuaValue key, int hash, ref LuaValue value)
 		{
 			int i = m_Count++;
 			int b = Bucket(hash);
@@ -428,8 +519,14 @@ namespace MoonSharp.Interpreter
 			m_Buckets[b] = i + 1;
 		}
 
+		void AppendPointer(int arrayKey)
+		{
+			LuaValue key = LuaValue.Nil, value = LuaValue.Void;
+			AppendEntry(ref key, arrayKey, ref value);
+		}
+
 		// Appends a key to the order. Callers run AfterInsert once the value is stored.
-		void AddEntry(DynValue key, int hash, DynValue value)
+		void AddEntry(LuaValue key, int hash, ref LuaValue value)
 		{
 			Shape++;
 
@@ -438,7 +535,7 @@ namespace MoonSharp.Interpreter
 			else if (m_Count == m_Entries.Length)
 				Rebuild(1);
 
-			AppendEntry(key, hash, value);
+			AppendEntry(ref key, hash, ref value);
 		}
 
 		// Drops dead and removed entries, keeping the order; doubles the capacity when more than half of it
@@ -469,9 +566,9 @@ namespace MoonSharp.Interpreter
 			for (int i = 0; i < oldCount; i++)
 			{
 				if (IsLive(ref old[i]))
-					AppendEntry(old[i].Key, old[i].Hash, old[i].Value);
-				else if (object.ReferenceEquals(old[i].Value, s_ArraySlot))
-					m_Array[old[i].Hash - 1] = null;
+					AppendEntry(ref old[i].Key, old[i].Hash, ref old[i].Value);
+				else if (old[i].Value.Type == DataType.Void)
+					m_Array[old[i].Hash - 1] = LuaValue.Nil;
 			}
 		}
 
@@ -493,19 +590,19 @@ namespace MoonSharp.Interpreter
 				m_Entries[j].Next = m_Entries[i].Next;
 			}
 
-			m_Entries[i].Key = null;
-			m_Entries[i].Value = null;
+			m_Entries[i].Key = LuaValue.Nil;
+			m_Entries[i].Value = LuaValue.Nil;
 		}
 
-		void UpdateEntry(int i, DynValue value, int intKey)
+		void UpdateEntry(int i, ref LuaValue value, int intKey)
 		{
-			DynValue old = m_Entries[i].Value;
+			bool wasLive = m_Entries[i].Value.Type != DataType.Nil;
 
 			if (value.IsNil())
 			{
-				if (old != null)
+				if (wasLive)
 				{
-					m_Entries[i].Value = null;
+					m_Entries[i].Value = LuaValue.Nil;
 
 					if (intKey > 0 && intKey <= m_Length)
 						m_Length = intKey - 1;
@@ -517,7 +614,7 @@ namespace MoonSharp.Interpreter
 			{
 				m_Entries[i].Value = value;
 
-				if (old == null)
+				if (!wasLive)
 				{
 					if (intKey > 0 && intKey == m_Length + 1)
 						ExtendLength();
@@ -559,32 +656,31 @@ namespace MoonSharp.Interpreter
 
 				if (code >= 0)
 				{
-					DynValue v = m_Entries[code].Value;
+					DataType t = m_Entries[code].Value.Type;
 
-					if (v == null)
+					if (t == DataType.Nil)
 					{
-						if (m_Entries[code].Key != null)
+						if (m_Entries[code].Key.Type != DataType.Nil)
 							Unlink(code);
 					}
-					else if (object.ReferenceEquals(v, s_ArraySlot))
+					else if (t == DataType.Void)
 					{
 						// a dead hash key that moved into the array part
 						int k = m_Entries[code].Hash;
-						DynValue a = m_Array[k - 1];
 
-						if (a == null || a.Type == DataType.Nil)
+						if (m_Array[k - 1].Type == DataType.Nil)
 						{
 							Unlink(code);
-							m_Array[k - 1] = null;
+							m_Array[k - 1] = LuaValue.Nil;
 						}
 					}
 				}
 				else
 				{
 					int k = ~code;
-					DynValue a = m_Array[k - 1];
 
-					if (a == null || a.Type != DataType.Nil)
+					// absent (removed since) or live again
+					if (m_Array[k - 1].Type != DataType.Nil || m_Array[k - 1].Object == null)
 						continue;
 
 					if (k <= m_Prefix)
@@ -598,7 +694,7 @@ namespace MoonSharp.Interpreter
 						if (p >= 0)
 							Unlink(p);
 
-						m_Array[k - 1] = null;
+						m_Array[k - 1] = LuaValue.Nil;
 					}
 				}
 			}
@@ -618,16 +714,14 @@ namespace MoonSharp.Interpreter
 			int moved = 0;
 			s_ScanSteps += oldPrefix - k + 1;
 
-			m_Array[k - 1] = null;
+			m_Array[k - 1] = LuaValue.Nil;
 
 			for (int j = k + 1; j <= oldPrefix; j++)
 			{
-				DynValue a = m_Array[j - 1];
-
-				if (a.Type != DataType.Nil || keepDead)
+				if (m_Array[j - 1].Type != DataType.Nil || keepDead)
 					moved++;
 				else
-					m_Array[j - 1] = null;
+					m_Array[j - 1] = LuaValue.Nil;
 			}
 
 			m_Prefix = k - 1;
@@ -645,14 +739,14 @@ namespace MoonSharp.Interpreter
 			Allocate(capacity);
 
 			for (int j = k + 1; j <= oldPrefix; j++)
-				if (m_Array[j - 1] != null)
-					AppendEntry(null, j, s_ArraySlot);
+				if (m_Array[j - 1].Type != DataType.Nil || m_Array[j - 1].Object != null)
+					AppendPointer(j);
 
 			for (int i = 0; i < oldCount; i++)
 			{
-				if (old[i].Key != null || old[i].Value != null)
+				if (old[i].Key.Type != DataType.Nil || old[i].Value.Type != DataType.Nil)
 				{
-					AppendEntry(old[i].Key, old[i].Hash, old[i].Value);
+					AppendEntry(ref old[i].Key, old[i].Hash, ref old[i].Value);
 				}
 				else
 				{
@@ -710,9 +804,7 @@ namespace MoonSharp.Interpreter
 
 				for (int i = 0; i < len; i++)
 				{
-					DynValue a = m_Array[i];
-
-					if (a != null && a.Type != DataType.Nil)
+					if (m_Array[i].Type != DataType.Nil)
 						live++;
 				}
 
@@ -723,7 +815,7 @@ namespace MoonSharp.Interpreter
 				}
 			}
 
-			DynValue[] grown = new DynValue[newLen];
+			LuaValue[] grown = new LuaValue[newLen];
 
 			if (len > 0)
 				Array.Copy(m_Array, grown, len);
@@ -733,30 +825,29 @@ namespace MoonSharp.Interpreter
 			// hash keys in (len, newLen] move into the array; their entries keep their place in the order
 			for (int i = 0; i < m_Count; i++)
 			{
-				DynValue k = m_Entries[i].Key;
 				int h = m_Entries[i].Hash;
 
-				if (k == null || k.Type != DataType.Number || h <= len || h > newLen || k.Number != h)
+				if (m_Entries[i].Key.Type != DataType.Number || h <= len || h > newLen || m_Entries[i].Key.Number != h)
 					continue;
 
-				grown[h - 1] = m_Entries[i].Value ?? DynValue.Nil;
-				m_Entries[i].Key = null;
-				m_Entries[i].Value = s_ArraySlot;
+				grown[h - 1] = (m_Entries[i].Value.Type == DataType.Nil) ? s_DeadSlot : m_Entries[i].Value;
+				m_Entries[i].Key = LuaValue.Nil;
+				m_Entries[i].Value = LuaValue.Void;
 			}
 
 			return true;
 		}
 
-		void SetArraySlot(int key, DynValue value)
+		void SetArraySlot(int key, ref LuaValue value)
 		{
-			DynValue old = m_Array[key - 1];
-			bool wasLive = old != null && old.Type != DataType.Nil;
+			ref LuaValue slot = ref m_Array[key - 1];
+			bool wasLive = slot.Type != DataType.Nil;
 
 			if (value.IsNil())
 			{
 				if (wasLive)
 				{
-					m_Array[key - 1] = DynValue.Nil;
+					slot = s_DeadSlot;
 
 					if (key <= m_Length)
 						m_Length = key - 1;
@@ -767,15 +858,21 @@ namespace MoonSharp.Interpreter
 				return;
 			}
 
-			if (old == null)
+			if (!wasLive && slot.Object == null)
 			{
 				// a new key: place it in the order
 				if (m_Count == 0 && key == m_Prefix + 1)
+				{
 					m_Prefix = key;
+				}
 				else
-					AddEntry(null, key, s_ArraySlot);
+				{
+					LuaValue nil = LuaValue.Nil, pointer = LuaValue.Void;
+					AddEntry(nil, key, ref pointer);
+				}
 			}
 
+			// AddEntry may rebuild the hash part, which writes m_Array but never moves it
 			m_Array[key - 1] = value;
 
 			if (!wasLive)
@@ -796,9 +893,8 @@ namespace MoonSharp.Interpreter
 			while (true)
 			{
 				steps++;
-				DynValue v = RawGet(n + 1);
 
-				if (v == null || v.IsNil())
+				if (RawGetValue(n + 1).Type == DataType.Nil)
 					break;
 
 				n++;
@@ -812,23 +908,23 @@ namespace MoonSharp.Interpreter
 
 		#region Set
 
-		// keyValue: the caller's key object, kept for a new key when it is read-only (it may be -0, which
-		// prints differently from 0); null to create one.
-		void SetInt(int key, DynValue value, DynValue keyValue)
+		// keyNumber: the key as the caller gave it, kept for a new hash key (it may be -0, which prints
+		// differently from 0).
+		void SetInt(int key, ref LuaValue value, double keyNumber)
 		{
 			if (key >= 1)
 			{
-				DynValue[] arr = m_Array;
+				LuaValue[] arr = m_Array;
 
 				if (arr != null && key <= arr.Length)
 				{
-					SetArraySlot(key, value);
+					SetArraySlot(key, ref value);
 					return;
 				}
 
 				if (!value.IsNil() && TryGrowArrayFor(key))
 				{
-					SetArraySlot(key, value);
+					SetArraySlot(key, ref value);
 					return;
 				}
 			}
@@ -837,14 +933,14 @@ namespace MoonSharp.Interpreter
 
 			if (i >= 0)
 			{
-				UpdateEntry(i, value, key);
+				UpdateEntry(i, ref value, key);
 				return;
 			}
 
 			if (value.IsNil())
 				return;
 
-			AddEntry(keyValue == null ? DynValue.NewNumber(key) : keyValue.ReadOnly ? keyValue : DynValue.NewNumber(keyValue.Number), key, value);
+			AddEntry(LuaValue.FromNumber(keyNumber), key, ref value);
 
 			if (key >= 1 && key == m_Length + 1)
 				ExtendLength();
@@ -852,22 +948,98 @@ namespace MoonSharp.Interpreter
 			AfterInsert();
 		}
 
-		void SetString(string s, int hash, DynValue keyValue, DynValue value)
+		void SetString(string s, int hash, LuaValue key, ref LuaValue value)
 		{
 			MetaAbsent = 0;
 			int i = FindString(s, hash);
 
 			if (i >= 0)
 			{
-				UpdateEntry(i, value, 0);
+				UpdateEntry(i, ref value, 0);
 				return;
 			}
 
 			if (value.IsNil())
 				return;
 
-			AddEntry((keyValue != null && keyValue.ReadOnly) ? keyValue : DynValue.NewString(s), hash, value);
+			AddEntry(key, hash, ref value);
 			AfterInsert();
+		}
+
+		/// <summary>
+		/// t[key] = value without metamethods (rawset). Raises Lua's errors for a nil or NaN key.
+		/// </summary>
+		internal void SetValue(ref LuaValue key, LuaValue value)
+		{
+			switch (key.Type)
+			{
+				case DataType.String:
+					{
+						CheckOwnership(ref value);
+						string s = (string)key.Object;
+						SetString(s, HashString(s), key, ref value);
+						return;
+					}
+				case DataType.Number:
+					{
+						double d = key.Number;
+						int k = (int)d;
+
+						if (k == d)
+						{
+							CheckOwnership(ref value);
+							SetInt(k, ref value, d);
+							return;
+						}
+
+						if (double.IsNaN(d))
+							throw ScriptRuntimeException.TableIndexIsNaN();
+
+						CheckOwnership(ref value);
+						int hash = HashNumber(d);
+						int i = FindNumber(d, hash);
+
+						if (i >= 0)
+						{
+							UpdateEntry(i, ref value, 0);
+						}
+						else if (!value.IsNil())
+						{
+							AddEntry(key, hash, ref value);
+							AfterInsert();
+						}
+
+						return;
+					}
+				case DataType.Nil:
+				case DataType.Void:
+					throw ScriptRuntimeException.TableIndexIsNil();
+			}
+
+			CheckOwnership(ref key);
+			CheckOwnership(ref value);
+
+			int h = HashOther(ref key);
+			int j = FindOther(ref key, h);
+
+			if (j >= 0)
+			{
+				UpdateEntry(j, ref value, 0);
+			}
+			else if (!value.IsNil())
+			{
+				AddEntry(key, h, ref value);
+				AfterInsert();
+			}
+		}
+
+		/// <summary>
+		/// t[key] = value without metamethods, for an integer key.
+		/// </summary>
+		internal void SetValue(int key, LuaValue value)
+		{
+			CheckOwnership(ref value);
+			SetInt(key, ref value, key);
 		}
 
 		/// <summary>
@@ -880,9 +1052,9 @@ namespace MoonSharp.Interpreter
 			if (key == null)
 				throw ScriptRuntimeException.TableIndexIsNil();
 
-			value = value ?? DynValue.Nil;
-			this.CheckScriptOwnership(value);
-			SetString(key, HashString(key), null, value);
+			LuaValue v = In(value);
+			CheckOwnership(ref v);
+			SetString(key, HashString(key), LuaValue.FromString(key), ref v);
 		}
 
 		/// <summary>
@@ -892,9 +1064,7 @@ namespace MoonSharp.Interpreter
 		/// <param name="value">The value; null is the same as nil.</param>
 		public void Set(int key, DynValue value)
 		{
-			value = value ?? DynValue.Nil;
-			this.CheckScriptOwnership(value);
-			SetInt(key, value, null);
+			SetValue(key, In(value));
 		}
 
 		/// <summary>
@@ -904,66 +1074,8 @@ namespace MoonSharp.Interpreter
 		/// <param name="value">The value; null is the same as nil.</param>
 		public void Set(DynValue key, DynValue value)
 		{
-			if (key.IsNilOrNan())
-			{
-				if (key.IsNil())
-					throw ScriptRuntimeException.TableIndexIsNil();
-				else
-					throw ScriptRuntimeException.TableIndexIsNaN();
-			}
-
-			value = value ?? DynValue.Nil;
-
-			if (key.Type == DataType.String)
-			{
-				this.CheckScriptOwnership(value);
-				SetString(key.String, key.GetHashCode(), key, value);
-				return;
-			}
-
-			if (key.Type == DataType.Number)
-			{
-				this.CheckScriptOwnership(value);
-				double d = key.Number;
-				int k = (int)d;
-
-				if (k == d)
-				{
-					SetInt(k, value, key);
-					return;
-				}
-
-				int hash = HashNumber(d);
-				int i = FindNumber(d, hash);
-
-				if (i >= 0)
-				{
-					UpdateEntry(i, value, 0);
-				}
-				else if (!value.IsNil())
-				{
-					AddEntry(key.ReadOnly ? key : DynValue.NewNumber(d), hash, value);
-					AfterInsert();
-				}
-
-				return;
-			}
-
-			this.CheckScriptOwnership(key);
-			this.CheckScriptOwnership(value);
-
-			int h = key.GetHashCode();
-			int j = FindOther(key, h);
-
-			if (j >= 0)
-			{
-				UpdateEntry(j, value, 0);
-			}
-			else if (!value.IsNil())
-			{
-				AddEntry(key, h, value);
-				AfterInsert();
-			}
+			LuaValue k = key.ToLuaValue();
+			SetValue(ref k, In(value));
 		}
 
 		/// <summary>
@@ -1062,14 +1174,76 @@ namespace MoonSharp.Interpreter
 		#region RawGet
 
 		/// <summary>
+		/// t[key] without metamethods: nil when the table has no value for the key.
+		/// </summary>
+		internal LuaValue RawGetValue(string key)
+		{
+			int i = FindString(key, HashString(key));
+			return (i >= 0) ? m_Entries[i].Value : LuaValue.Nil;
+		}
+
+		/// <summary>
+		/// t[key] without metamethods: nil when the table has no value for the key.
+		/// </summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		internal LuaValue RawGetValue(int key)
+		{
+			LuaValue[] arr = m_Array;
+
+			if (arr != null && (uint)(key - 1) < (uint)arr.Length)
+				return arr[key - 1];
+
+			return RawGetHashInt(key);
+		}
+
+		LuaValue RawGetHashInt(int key)
+		{
+			int i = FindNumber(key, key);
+			return (i >= 0) ? m_Entries[i].Value : LuaValue.Nil;
+		}
+
+		/// <summary>
+		/// t[key] without metamethods: nil when the table has no value for the key.
+		/// </summary>
+		internal LuaValue RawGetValue(ref LuaValue key)
+		{
+			int i;
+
+			switch (key.Type)
+			{
+				case DataType.String:
+					return RawGetValue((string)key.Object);
+				case DataType.Number:
+					{
+						double d = key.Number;
+						int k = (int)d;
+
+						if (k == d)
+							return RawGetValue(k);
+
+						i = FindNumber(d, HashNumber(d));
+						break;
+					}
+				case DataType.Nil:
+				case DataType.Void:
+					return LuaValue.Nil;
+				default:
+					i = FindOther(ref key, HashOther(ref key));
+					break;
+			}
+
+			return (i >= 0) ? m_Entries[i].Value : LuaValue.Nil;
+		}
+
+		/// <summary>
 		/// Gets the value associated with the specified key,
 		/// without bringing to Nil the non-existant values.
 		/// </summary>
 		/// <param name="key">The key.</param>
 		public DynValue RawGet(string key)
 		{
-			int i = FindString(key, HashString(key));
-			return (i >= 0) ? m_Entries[i].Value : null;
+			LuaValue v = RawGetValue(key);
+			return Out(ref v);
 		}
 
 		/// <summary>
@@ -1079,13 +1253,8 @@ namespace MoonSharp.Interpreter
 		/// <param name="key">The key.</param>
 		public DynValue RawGet(int key)
 		{
-			DynValue[] arr = m_Array;
-
-			if (arr != null && (uint)(key - 1) < (uint)arr.Length)
-				return arr[key - 1];
-
-			int i = FindNumber(key, key);
-			return (i >= 0) ? m_Entries[i].Value : null;
+			LuaValue v = RawGetValue(key);
+			return Out(ref v);
 		}
 
 		/// <summary>
@@ -1095,26 +1264,9 @@ namespace MoonSharp.Interpreter
 		/// <param name="key">The key.</param>
 		public DynValue RawGet(DynValue key)
 		{
-			if (key.Type == DataType.String)
-			{
-				int i = FindString(key.String, key.GetHashCode());
-				return (i >= 0) ? m_Entries[i].Value : null;
-			}
-
-			if (key.Type == DataType.Number)
-			{
-				double d = key.Number;
-				int k = (int)d;
-
-				if (k == d)
-					return RawGet(k);
-
-				int i = FindNumber(d, HashNumber(d));
-				return (i >= 0) ? m_Entries[i].Value : null;
-			}
-
-			int j = FindOther(key, key.GetHashCode());
-			return (j >= 0) ? m_Entries[j].Value : null;
+			LuaValue k = key.ToLuaValue();
+			LuaValue v = RawGetValue(ref k);
+			return Out(ref v);
 		}
 
 		/// <summary>
@@ -1163,7 +1315,7 @@ namespace MoonSharp.Interpreter
 			if (i < 0)
 				return false;
 
-			bool wasLive = m_Entries[i].Value != null;
+			bool wasLive = m_Entries[i].Value.Type != DataType.Nil;
 			Unlink(i);
 
 			if (wasLive && intKey > 0 && intKey <= m_Length)
@@ -1190,17 +1342,15 @@ namespace MoonSharp.Interpreter
 		/// <returns><c>true</c> if values was successfully removed; otherwise, <c>false</c>.</returns>
 		public bool Remove(int key)
 		{
-			DynValue[] arr = m_Array;
+			LuaValue[] arr = m_Array;
 
 			if (arr == null || (uint)(key - 1) >= (uint)arr.Length)
 				return RemoveEntry(FindNumber(key, key), key);
 
-			DynValue a = arr[key - 1];
-
-			if (a == null)
+			if (arr[key - 1].Type == DataType.Nil && arr[key - 1].Object == null)
 				return false;
 
-			bool wasLive = a.Type != DataType.Nil;
+			bool wasLive = arr[key - 1].Type != DataType.Nil;
 
 			if (key <= m_Prefix)
 			{
@@ -1209,7 +1359,7 @@ namespace MoonSharp.Interpreter
 			else
 			{
 				Unlink(FindPointer(key));
-				arr[key - 1] = null;
+				arr[key - 1] = LuaValue.Nil;
 			}
 
 			if (wasLive && key <= m_Length)
@@ -1237,7 +1387,8 @@ namespace MoonSharp.Interpreter
 			if (key.Type == DataType.String)
 				return Remove(key.String);
 
-			return RemoveEntry(FindKey(key), 0);
+			LuaValue lk = key.ToLuaValue();
+			return RemoveEntry(FindKey(ref lk), 0);
 		}
 
 		/// <summary>
@@ -1280,15 +1431,13 @@ namespace MoonSharp.Interpreter
 		bool Advance(ref int pos, out TablePair pair)
 		{
 			int head = m_Prefix;
-			DynValue[] arr = m_Array;
+			LuaValue[] arr = m_Array;
 
 			for (; pos < head; pos++)
 			{
-				DynValue v = arr[pos];
-
-				if (v.Type != DataType.Nil)
+				if (arr[pos].Type != DataType.Nil)
 				{
-					pair = new TablePair(DynValue.NewNumber(pos + 1), v);
+					pair = new TablePair(DynValue.FromNumber(pos + 1), arr[pos].ToDynValue());
 					pos++;
 					return true;
 				}
@@ -1298,24 +1447,23 @@ namespace MoonSharp.Interpreter
 
 			for (int i = pos - head; i < m_Count; i++)
 			{
-				DynValue v = entries[i].Value;
+				DataType t = entries[i].Value.Type;
 
-				if (v == null)
+				if (t == DataType.Nil)
 					continue;
 
-				if (object.ReferenceEquals(v, s_ArraySlot))
+				if (t == DataType.Void)
 				{
 					int k = entries[i].Hash;
-					DynValue av = arr[k - 1];
 
-					if (av == null || av.Type == DataType.Nil)
+					if (arr[k - 1].Type == DataType.Nil)
 						continue;
 
-					pair = new TablePair(DynValue.NewNumber(k), av);
+					pair = new TablePair(DynValue.FromNumber(k), arr[k - 1].ToDynValue());
 				}
 				else
 				{
-					pair = new TablePair(entries[i].Key, v);
+					pair = new TablePair(entries[i].Key.ToDynValue(), entries[i].Value.ToDynValue());
 				}
 
 				pos = head + i + 1;
@@ -1344,7 +1492,8 @@ namespace MoonSharp.Interpreter
 				}
 			}
 
-			int i = FindKey(key);
+			LuaValue k = key.ToLuaValue();
+			int i = FindKey(ref k);
 			return (i >= 0) ? m_Prefix + i : -1;
 		}
 
@@ -1389,17 +1538,22 @@ namespace MoonSharp.Interpreter
 			get { return m_Length; }
 		}
 
-		internal void InitNextArrayKeys(DynValue val, bool lastpos)
+		internal void InitNextArrayKeys(LuaValue val, bool lastpos)
 		{
 			if (val.Type == DataType.Tuple && lastpos)
 			{
-				foreach (DynValue v in val.Tuple)
-					InitNextArrayKeys(v, true);
+				DynValue tuple = val.TupleValue;
+
+				if (tuple != null)
+				{
+					foreach (DynValue v in tuple.Tuple)
+						InitNextArrayKeys(v.ToLuaValue(), true);
+
+					return;
+				}
 			}
-			else
-			{
-				Set(++m_InitArray, val.ToScalar());
-			}
+
+			SetValue(++m_InitArray, val.ToScalar());
 		}
 
 		/// <summary>

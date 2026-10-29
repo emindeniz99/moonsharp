@@ -89,5 +89,54 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				Assert.IsNotNull(Interpreter.GetType(name), "ILLink.Descriptors.xml names a type that does not exist: " + name);
 			}
 		}
+
+		[Test]
+		public void Substitutions_StubOnlyMembersThatExist()
+		{
+			// ILLink.Substitutions.xml lets a trimmed app without dynamic code drop System.Linq.Expressions
+			// (112 KB brotli in the browser package). A renamed method would silently keep it: the trimmer
+			// only warns about a member it cannot find.
+#if UNITY_5_3_OR_NEWER
+			TestRunner.Skip();
+#endif
+			XElement assembly;
+
+			using (Stream stream = Interpreter.GetManifestResourceStream("ILLink.Substitutions.xml"))
+			{
+				Assert.IsNotNull(stream, "ILLink.Substitutions.xml must be embedded in the assembly under exactly that name, or the trimmer ignores it");
+				assembly = XDocument.Load(stream).Root.Elements("assembly").Single();
+			}
+
+			Assert.AreEqual(Interpreter.GetName().Name, (string)assembly.Attribute("fullname"));
+			Assert.AreEqual("System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported", (string)assembly.Attribute("feature"),
+				"the stubs are only right where the runtime reports no dynamic code: IsRunningOnAOT is true there, so no descriptor optimizes");
+			Assert.AreEqual("false", (string)assembly.Attribute("featurevalue"));
+
+			int methods = 0;
+
+			foreach (XElement type in assembly.Elements("type"))
+			{
+				Type t = Interpreter.GetType((string)type.Attribute("fullname"));
+				Assert.IsNotNull(t, "ILLink.Substitutions.xml names a type that does not exist: " + (string)type.Attribute("fullname"));
+
+				foreach (XElement method in type.Elements("method"))
+				{
+					// "ReturnType Name()": every stubbed method takes no arguments.
+					string signature = (string)method.Attribute("signature");
+					string[] parts = signature.Split(' ');
+					Assert.AreEqual(2, parts.Length, signature);
+					Assert.IsTrue(parts[1].EndsWith("()"), signature);
+					string name = parts[1].Substring(0, parts[1].Length - 2);
+
+					MethodInfo found = t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+						.SingleOrDefault(m => m.Name == name && m.GetParameters().Length == 0 && m.ReturnType.FullName == parts[0]);
+
+					Assert.IsNotNull(found, "ILLink.Substitutions.xml stubs a method that does not exist: " + t.FullName + "::" + signature);
+					methods++;
+				}
+			}
+
+			Assert.AreEqual(5, methods, "every member that references System.Linq.Expressions is stubbed (docs/hosting.md, \"Browser budget\")");
+		}
 	}
 }

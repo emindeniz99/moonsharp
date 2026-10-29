@@ -126,13 +126,13 @@ upm_should_exclude_name() {
   fi
 
   case "$name" in
-    *.meta|bin|obj|_Projects|*.csproj|*.sln|*.snk|ILLink.Descriptors.xml)
+    *.meta|bin|obj|_Projects|*.csproj|*.sln|*.snk|ILLink.Descriptors.xml|ILLink.Substitutions.xml)
       return 0
       ;;
   esac
 
   case "$base_no_meta" in
-    bin|obj|_Projects|*.csproj|*.sln|*.snk|ILLink.Descriptors.xml)
+    bin|obj|_Projects|*.csproj|*.sln|*.snk|ILLink.Descriptors.xml|ILLink.Substitutions.xml)
       return 0
       ;;
     *)
@@ -153,6 +153,7 @@ upm_rsync_filtered() {
     --exclude '*.sln' \
     --exclude '*.snk' \
     --exclude 'ILLink.Descriptors.xml' \
+    --exclude 'ILLink.Substitutions.xml' \
     "$src_dir/" \
     "$dst_dir/"
 }

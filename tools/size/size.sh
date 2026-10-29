@@ -4,8 +4,10 @@
 #
 #   tools/size/size.sh [--nativeaot] [output directory]
 #
-# Builds the netstandard2.0 Release MoonSharp.Interpreter.dll and fails when its size differs
-# from interpreter-dll.baseline by more than one 512-byte step.
+# Builds the netstandard2.0 Release MoonSharp.Interpreter.dll and reports its size against
+# interpreter-dll.baseline. A difference of more than one 512-byte step is a warning, not a
+# failure: size is tracked, never a gate (owner decision, docs/ROADMAP.md). The script fails only
+# when a build fails or the NativeAOT probe does not work.
 #
 # With --nativeaot it also publishes probe/ (one script through a default Script) and hello/
 # (the same program without MoonSharp) with NativeAOT for linux-x64, runs the probe, and reports
@@ -46,6 +48,12 @@ fail() {
   if [ "${GITHUB_ACTIONS:-}" = true ]; then echo "::error::$1"; fi
   status=1
 }
+warn() {
+  echo "$1" >&2
+  if [ "${GITHUB_ACTIONS:-}" = true ]; then echo "::warning::$1"; fi
+  echo >> "$report"
+  echo "Warning: $1" >> "$report"
+}
 
 dotnet build "$root/src/MoonSharp.Interpreter/MoonSharp.Interpreter.csproj" -c Release -f netstandard2.0 \
   "${props[@]}" -o "$out/interpreter" -nologo > "$out/interpreter.log" 2>&1 \
@@ -61,9 +69,9 @@ dll="$(size "$out/interpreter/MoonSharp.Interpreter.dll")"
 } > "$report"
 
 if [ "$dll" -gt $((baseline + tolerance)) ]; then
-  fail "MoonSharp.Interpreter.dll grew to $dll bytes, $((dll - baseline)) over the baseline of $baseline. If that is intended, put $dll in tools/size/interpreter-dll.baseline in the same commit."
+  warn "MoonSharp.Interpreter.dll grew to $dll bytes, $((dll - baseline)) over the baseline of $baseline. Put $dll in tools/size/interpreter-dll.baseline to measure later changes from there."
 elif [ "$dll" -lt $((baseline - tolerance)) ]; then
-  fail "MoonSharp.Interpreter.dll shrank to $dll bytes, $((baseline - dll)) under the baseline of $baseline. Put $dll in tools/size/interpreter-dll.baseline, so later growth is measured from there."
+  warn "MoonSharp.Interpreter.dll shrank to $dll bytes, $((baseline - dll)) under the baseline of $baseline. Put $dll in tools/size/interpreter-dll.baseline, so later growth is measured from there."
 fi
 
 if [ "$nativeaot" = true ]; then

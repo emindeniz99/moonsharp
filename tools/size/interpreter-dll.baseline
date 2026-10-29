@@ -1,8 +1,6 @@
 # Size in bytes of the netstandard2.0 Release MoonSharp.Interpreter.dll as tools/size/size.sh
-# builds it. CI (the size job in .github/workflows/ci.yml) fails when the DLL is more than
-# 512 bytes larger or smaller than this number.
+# builds it. CI (the size job in .github/workflows/ci.yml) warns when the DLL is more than
+# 512 bytes larger or smaller than this number; size never fails CI.
 #
-# A change that grows the DLL on purpose puts the new size, as size.sh prints it, here in the
-# same commit and says why in the commit body. A change that shrinks it lowers the number, so
-# later growth is measured from there.
+# Update the number when the size moves, so the next change is measured from there.
 452608

@@ -1,5 +1,5 @@
 {
-  "description": "First-load budget for the browser package (docs/hosting.md, 'Browser budget'). test/budget.mjs measures one published build and fails when a measurement exceeds that build's entry in 'enforced': 'interpreter' for the default build (bin/Release), 'aot' for the AOT build (bin/Release-aot).",
+  "description": "First-load budget for the browser package (docs/hosting.md, 'Browser budget'). test/budget.mjs measures one published build and warns (never fails) when a measurement exceeds that build's entry in 'enforced': 'interpreter' for the default build (bin/Release), 'aot' for the AOT build (bin/Release-aot).",
   "target": {
     "firstLoadMs": 5000,
     "decision": "docs/ROADMAP.md, 2026-10-28: first load under 5 s on a mid-range phone over slow 4G",

@@ -64,8 +64,9 @@ jobs:
           name: nativeaot-unit-logs
           path: .artifacts/nativeaot/*.log
 
-  # The interpreter DLL against tools/size/interpreter-dll.baseline (fails beyond 512 bytes either
-  # way), and what MoonSharp adds to a NativeAOT binary (report only). Both go to the job summary.
+  # The interpreter DLL against tools/size/interpreter-dll.baseline and what MoonSharp adds to a
+  # NativeAOT binary, both to the job summary. Size changes are warnings, never failures; the job
+  # fails only when a build fails or the NativeAOT probe does not work.
   size:
     runs-on: ubuntu-latest
     timeout-minutes: 15

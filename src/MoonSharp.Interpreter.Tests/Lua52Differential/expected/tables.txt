@@ -64,6 +64,15 @@ sort calls per element	OK	3	true 1 100
 sort __len	OK	4	1 2 3 0
 sort returns nothing	OK	1	0
 maxn	OK	1	10
+maxn empty	OK	1	0
+maxn negative and string keys	OK	1	0
+maxn fractional	OK	2	4503599627370496p-53 6755399441055744p-52
+maxn after removal	OK	1	2
+maxn hash above array	OK	1	100
+maxn raw	OK	1	0
+maxn large keys	OK	2	4503599627370496p1 inf
+maxn no argument	ERR	"bad argument #1 to 'maxn' (table expected, got no value)"
+maxn non table	ERR	"bad argument #1 to 'maxn' (table expected, got string)"
 length holes constructor	OK	5	3 3 2 3 2
 length holes assignment	OK	1	4
 length after nil end	OK	1	2

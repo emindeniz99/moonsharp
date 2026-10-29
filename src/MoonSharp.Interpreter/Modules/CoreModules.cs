@@ -34,7 +34,7 @@ namespace MoonSharp.Interpreter
 		/// </summary>
 		String = 0x8,
 		/// <summary>
-		/// The load methods: "load", "loadsafe", "loadfile", "loadfilesafe", "dofile" and "require"
+		/// The load methods: "load", "loadstring", "loadsafe", "loadfile", "loadfilesafe", "dofile" and "require"
 		/// </summary>
 		LoadMethods = 0x10,
 		/// <summary>

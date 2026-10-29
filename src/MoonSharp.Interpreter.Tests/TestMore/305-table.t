@@ -83,21 +83,17 @@ error_like(function () table.insert(t, 2, 'g', 'h')  end,
            "^[^:]+:%d+: wrong number of arguments to 'insert'",
            "function insert (too many arg)")
 
-if (platform and platform.compat) or jit then
-    t = {}
-    is(table.maxn(t), 0, "function maxn")
-    t[1] = 'a'
-    t[2] = 'b'
-    is(table.maxn(t), 2)
-    t[6] = 'g'
-    is(table.maxn(t), 6)
-    a = {}
-    a[10000] = 1
-    is(table.maxn(a), 10000)
-else
-    is(table.maxn, nil, "maxn (removed)")
-    skip("maxn (removed)", 3)
-end
+-- MoonSharp : table.maxn exists, as in Lua 5.2's default build (LUA_COMPAT_ALL)
+t = {}
+is(table.maxn(t), 0, "function maxn")
+t[1] = 'a'
+t[2] = 'b'
+is(table.maxn(t), 2)
+t[6] = 'g'
+is(table.maxn(t), 6)
+a = {}
+a[10000] = 1
+is(table.maxn(a), 10000)
 
 t = table.pack("abc", "def", "ghi")
 eq_array(t, {

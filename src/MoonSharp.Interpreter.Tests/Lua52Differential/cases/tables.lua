@@ -134,6 +134,24 @@ local t = setmetatable({3, 2, 1, 0}, {__len = function() return 3 end}) table.so
 return select("#", table.sort({2, 1}))
 --@@ maxn
 return table.maxn and table.maxn({1, 2, [10] = 3, [2.5] = 4})
+--@@ maxn empty
+return table.maxn({})
+--@@ maxn negative and string keys
+return table.maxn({[-3] = 1, a = 2, ["5"] = 3})
+--@@ maxn fractional
+return table.maxn({[0.5] = 1}), table.maxn({[1.5] = 1, [1] = 2})
+--@@ maxn after removal
+local t = {1, 2, 3} t[3] = nil return table.maxn(t)
+--@@ maxn hash above array
+return table.maxn({[100] = 1, 2})
+--@@ maxn raw
+return table.maxn(setmetatable({}, {__index = {[5] = 1}, __len = function() return 9 end}))
+--@@ maxn large keys
+return table.maxn({[2^53] = 1}), table.maxn({[1/0] = 1})
+--@@ maxn no argument
+return table.maxn()
+--@@ maxn non table
+return table.maxn("x")
 --@@ length holes constructor
 return #{nil, 2, 3}, #{1, nil, 3}, #{1, 2, nil}, #{nil, nil, 3}, #{n = 1, nil, 2}
 --@@ length holes assignment

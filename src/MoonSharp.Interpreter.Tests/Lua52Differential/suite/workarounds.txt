@@ -33,7 +33,6 @@ errors.lua@418: print("LIMIT-LOCALS", tostring(b))
 files.lua:6-6  # io.input missing file -> CLR FileNotFoundException
 files.lua:54-54  # loadfile missing -> CLR exception
 files.lua:59-65  # seek -> CLR IOException
-gc.lua:138-139  # collectgarbage("count") returns one value
 goto.lua:69-91  # goto to label at end of block after local
 literals.lua@31: local f = assert(load('return '..x))
 literals.lua@33: if s ~= y then print("LEXSTRING", ("%q"):format(x), ("%q"):format(tostring(s))) end

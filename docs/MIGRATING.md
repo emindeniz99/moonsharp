@@ -1501,3 +1501,14 @@ do not change.
 
 **Affected:** host callbacks that read `AdditionalData` and are called through
 `pcall`, `xpcall` or `ScriptExecutionContext.Call`.
+
+## The browser package has an AOT build in its own folder
+
+`src/Hosting/browser` now ships a second, ahead-of-time compiled build next to
+the default interpreter build (docs/hosting.md, "Two browser builds"). The
+default is unchanged: `dotnet publish -c Release` still writes the page to
+`bin/Release/net10.0/publish/wwwroot`. A publish with
+`-p:RunAOTCompilation=true` used to write to the same folder and now writes to
+`bin/Release-aot/net10.0/publish/wwwroot` (and `obj/Release-aot`). Affected:
+scripts that published the package with that switch and read the result from
+the old folder.

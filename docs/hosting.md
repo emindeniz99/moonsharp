@@ -571,60 +571,153 @@ changes with the MoonSharp version.
 ## Browser budget
 
 The owner's target: the first load takes under 5 s on a mid-range phone over
-slow 4G (ROADMAP.md, decisions). `src/Hosting/browser/budget.json` turns it into
-numbers, and `test/budget.mjs` measures the published page in headless Chromium
-with an empty cache (CI runs it last in `hosting.yml` and writes the table to
-the job summary):
+slow 4G (ROADMAP.md, decisions). On 2026-10-29 the owner accepted the load of
+the day for now and asked for a native relink before measuring again.
+`src/Hosting/browser/budget.json` turns the target into numbers, and
+`test/budget.mjs` measures the published page in headless Chromium with an
+empty cache (CI runs it last in `hosting.yml` and writes the table to the job
+summary):
 
-- **Bytes**: every file the page fetches before the runtime is ready (19 files),
+- **Bytes**: every file the page fetches before the runtime is ready (18 files),
   counted as the `.br` file `dotnet publish` writes next to it, which is what a
-  production server sends.
+  production server sends. Enforced.
 - **Desktop start**: navigation to a usable runtime (`window.moonsharp`), median
-  of 5 runs.
-- **Phone model**: 9 round trips of 150 ms (DNS, TCP, TLS and the page's chain
-  of dependent requests) + bytes at 1.6 Mbit/s + 4 × desktop start. 150 ms,
-  1.6 Mbit/s and the 4× CPU factor for a mid-tier phone are what Lighthouse and
-  Chrome DevTools call slow 4G
+  of 5 runs. Enforced.
+- **Desktop first paint**: the page is drawn, and the editor usable, while the
+  runtime downloads. Reported.
+- **Phone model**: 6 round trips of 150 ms + bytes at 1.6 Mbit/s + 4 × desktop
+  start. 150 ms, 1.6 Mbit/s and the 4× CPU factor for a mid-tier phone are what
+  Lighthouse and Chrome DevTools call slow 4G
   ([Lighthouse throttling](https://github.com/GoogleChrome/lighthouse/blob/main/docs/throttling.md)).
+  The round trips are DNS, TCP, TLS, `index.html`, the module graph with
+  `dotnet.js` (preloaded by `index.html`), then the runtime scripts,
+  `dotnet.native.wasm` and the assemblies together. Reported.
+- **Slow-4G emulation**: one cold load in Chromium with DevTools network
+  throttling (150 ms, 1.6 Mbit/s) and 4× CPU throttling, files sent as brotli.
+  It needs no assumption about the request chain, but leaves out DNS, TCP and
+  TLS (add 0.45 s). Reported.
 
-Measured on 2026-10-28 in headless Chromium 153, the build before this branch
-(`7bb1550`) and after it in alternating rounds, 3 rounds of 5 cold loads each,
-on a shared 4-core VM (load average 6–8):
+### Measurements
 
-| Measurement | Before | After | Enforced budget |
+Measured on 2026-10-29 in headless Chromium 153 on a 4-core VM at load
+average 1–2, SDK 10.0.402 with workload set 10.0.402 (runtime 10.0.13,
+Emscripten 3.1.56). Each row is a separate publish. Desktop start is the median
+of 5 cold loads; it moves by about ±30 ms between runs, so differences below
+that are noise.
+
+| Build | Bytes, brotli | `dotnet.native.wasm` | Desktop start | Slow-4G emulation |
+|---|---|---|---|---|
+| `next` before this work, prebuilt runtime | 1,777,440 | 976,249 | 312 ms | 10.2 s |
+| Relinked (`WasmBuildNative`) | 1,281,473 | 468,247 | 306 ms | 7.8 s |
+| Relinked, `EmccLinkOptimizationFlag=-Oz` | 1,272,677 | 459,545 | 318 ms | 7.8 s |
+| Relinked, `InvariantTimezone=true` | 1,213,982 | 417,367 | 305 ms | 7.5 s |
+| Relinked, `WasmEnableSIMD=false` | 1,258,030 | 465,613 | 290 ms | 7.6 s |
+| Relinked, `WasmEnableExceptionHandling=false` (turns SIMD off too) | 1,257,540 | 463,858 | 305 ms | 7.7 s |
+| Relinked, `DynamicCodeSupport=false` | 1,123,477 | 460,370 | 300 ms | 7.0 s |
+| Relinked, `RunAOTCompilation=true` | 2,694,066 | 2,091,079 | 301 ms | 14.9 s |
+| Relinked, `DynamicCodeSupport=false`, `WasmNativeDebugSymbols=false` | 1,095,321 | 449,796 | 304 ms | 6.9 s |
+| The same with the preloads in `index.html` (**shipped**) | 1,095,488 | 449,796 | 302 ms | 6.5 s |
+| Shipped, `WasmEnableSIMD=false` | 1,071,847 | 446,868 | 285 ms | 6.4 s |
+
+The shipped build against `next`: 682 KB brotli less (−38%), 10.2 s → 6.5 s
+emulated, phone model 11.1 s (with the 9 round trips counted then) → 7.3 s, first paint 0.4 s emulated in both. The
+desktop start did not change measurably. What is left: `dotnet.native.wasm`
+450 KB, `System.Private.CoreLib` 373 KB, `MoonSharp.Interpreter` 129 KB, the
+runtime scripts 86 KB (`dotnet.runtime.js` 48 KB, `dotnet.native.js` 26 KB,
+`dotnet.js` 12 KB), then 6 small assemblies and the page.
+
+What each shipped option does:
+
+- **`WasmBuildNative`** (Release only) relinks `dotnet.native.wasm` with
+  Emscripten so it keeps only what this app calls. It needs the `wasm-tools`
+  workload: `dotnet workload install wasm-tools --version 10.0.402`, the
+  workload set that matches the SDK in `mise.toml`, as `hosting.yml` does.
+  Without the workload a Release build stops with NETSDK1147 instead of
+  shipping the prebuilt runtime. A relink takes about 20 s.
+- **`DynamicCodeSupport=false`** makes the interop descriptors use reflection
+  (`_MOONSHARP.is_aot` is true, MIGRATING.md). The interpreter's
+  `ILLink.Substitutions.xml` then lets the trimmer drop the expression-tree
+  accessors, and with them `System.Linq.Expressions` (112 KB) and CoreLib's
+  emit support (37 KB). The linker's dependency dump showed exactly five
+  members pulling that assembly in; `TrimDescriptorTests` checks that the file
+  still names them. The same switch takes 646 KB off the NativeAOT library
+  for Java (4,883,480 → 4,237,864 bytes).
+- **`WasmNativeDebugSymbols=false`** (Release only): the relinked
+  `dotnet.native.js` keeps its comments and the wasm its name section
+  otherwise, 28 KB. A native crash then shows function indexes, not names.
+- **Preloads**: `index.html` lists the module graph and `dotnet.js` as
+  `modulepreload`, so they load with the page instead of one after another.
+  The runtime files start two round trips earlier (774 → 444 ms emulated). The
+  fingerprinted runtime files cannot be listed by hand; the SDK's
+  `OverrideHtmlAssetPlaceholders` preloads only `dotnet.js` and renames it,
+  which breaks `createMoonSharp()` and the Web Worker, so it is not used.
+- **Buttons**: the page is drawn about 0.4 s into the emulated load and the
+  editor works during the download; the buttons stay disabled until the
+  runtime is ready instead of throwing.
+
+Rejected:
+
+- **`InvariantTimezone`** (−67 KB) drops the time zone data, and `os.date`
+  without `!` then returns UTC instead of the browser's local time. That
+  changes what scripts see, so it needs the owner. The smoke test now runs in
+  the Asia/Tokyo zone and fails with it on.
+- **`WasmEnableSIMD=false`** (−23.5 KB, and older Safari versions would run the
+  page). Chromium showed no difference, Firefox ran string-keyed table work
+  4–7% slower in 3 rounds (table writes and reads with string keys: 220–228
+  against 212–218 ms; string concatenation: 71–74 against 68 ms).
+- **`WasmEnableExceptionHandling=false`** turns SIMD off with it, and the
+  JavaScript-based exception handling it falls back to is slower.
+- **`-Oz` linking** (−8.8 KB): recursive Lua calls ran about 4% slower (fib:
+  671 and 676 against 640 and 656 ms).
+- **Globalization**: the package already uses `InvariantGlobalization`, so no
+  ICU data ships; `HybridGlobalization` and ICU subsets only apply to apps
+  that load culture data. The interpreter is culture-invariant: the smoke test
+  runs the corpus with a Turkish locale in all three browsers, 248/248.
+- **Streaming instantiation** is already on when the server sends
+  `application/wasm`, as `serve.mjs` does. Sending `application/octet-stream`
+  instead, which makes the runtime fall back to an array buffer, gave the same
+  times (6.59–6.67 s against 6.63–6.69 s emulated): the transfer dominates.
+- **Deferring the runtime** until the first click would move the first result
+  later, not earlier. The page already draws before the runtime starts.
+- **Partial AOT**: the documented route is a profile (`WasmAotProfilePath`).
+  Interpreting every assembly except CoreLib and MoonSharp through an internal
+  SDK item still gave 2,329,849 bytes (CoreLib must be compiled), so it was
+  not pursued.
+
+### AOT: for the owner
+
+`RunAOTCompilation=true` compiles the IL to WebAssembly ahead of time. Lua
+workloads from `src/DevTools/Benchmarks/LuaWorkloads.cs` with smaller counts,
+median of 5 after a warm-up, Chromium 153, ms:
+
+| Workload | Interpreter (`next`) | Interpreter (shipped) | AOT |
 |---|---|---|---|
-| Bytes, brotli | 1,948,563 | 1,774,807 | 1,850,000 |
-| Bytes, raw | 6,044,828 | 5,565,590 | |
-| Files | 23 | 19 | |
-| Desktop start, median of 5, per round | 693, 1,073, 755 ms | 1,111, 845, 671 ms | 1,500 ms |
-| Phone model | 13.4–14.9 s | 12.5–14.3 s | target 5 s, reported only |
+| `fib_recursive`, 2,000 × fib(12) | 606–662 | 628–660 | 201–203 |
+| `int_math`, 200,000 | 42–44 | 44 | 25 |
+| `float_math`, 200,000 | 80–84 | 85 | 46 |
+| `table_hash_set_get`, 100,000 | 135–143 | 139–141 | 53–54 |
+| `string_concat`, 50,000 | 46–48 | 45–50 | 20 |
+| `string_format`, 50,000 | 100–103 | 94–99 | 30–32 |
+| `string_pattern`, 10,000 | 294–301 | 282–285 | 53 |
+| `table_sort`, 200 × 256 | 108–111 | 105 | 30–32 |
+| `closure_create_call`, 100,000 | 108–112 | 103–110 | 30–31 |
+| Cached `invoke` with JSON, µs per call | 37–40 | 39–42 | 9.3–10.1 |
 
-The start time did not change measurably; the rounds differ more than the
-builds. The old build fails the byte budget, which is how the check was tested.
+AOT runs Lua 1.7–5.6× faster and doubles the download (2.69 MB, 14.9 s
+emulated against 7.8 s for the same build without AOT). It suits pages that run
+long scripts after loading and do not mind a slow first visit; the playground
+and short rules suit the interpreter. Not shipped: the choice is the owner's.
 
-**The 5 s target cannot be met with .NET WebAssembly under these assumptions.**
-`dotnet.native.wasm` alone is 976 KB brotli, 4.7 s at 1.6 Mbit/s; with the round
-trips that is 6 s before any assembly arrives or any code runs. Within 5 s the
-model leaves 346 KB brotli for everything, with a 0.5 s desktop start. The
-ROADMAP decision assumed the target was met ("today 1.91 MB brotli, about
-0.6 s start"); under the standard slow 4G it is missed by more than 2×. So CI
-enforces the measured state with a margin (the "Enforced budget" column) and
-reports the phone model against the target without failing on it, until the
-owner picks one of: a faster network assumption (on WebPageTest's "4G" profile,
-9 Mbit/s and 170 ms, the model gives about 6 s with a 0.7 s desktop start), a cached or deferred runtime
-(the playground could render before the runtime starts), or a smaller engine for
-the web.
+### The 5 s target
 
-What this branch removed from the download: `System.Text.RegularExpressions`
-(94 KB brotli), which only `ScriptHost` used to read an error's position and
-which plain string code now replaces, and the trimmer root on
-`MoonSharp.Interpreter` (71 KB brotli across the interpreter and CoreLib;
-`System.ComponentModel.Primitives`, `System.Diagnostics.Process` and
-`netstandard` went with it). What is left: `dotnet.native.wasm` 976 KB,
-`System.Private.CoreLib` 425 KB, `MoonSharp.Interpreter` 127 KB,
-`System.Linq.Expressions` 112 KB (kept by the interpreter's CLR interop) and the
-runtime scripts. Shrinking `dotnet.native.wasm` needs a native relink with the
-`wasm-tools` workload.
+It stays out of reach under slow 4G. The shipped download alone takes 5.2 s at
+1.6 Mbit/s; within 5 s the model leaves 440 KB brotli for everything with a
+0.5 s desktop start, and the relinked `dotnet.native.wasm` is 450 KB by itself.
+CI enforces the measured state with a 4% margin (1,140,000 bytes) and keeps the
+desktop start budget at 1,500 ms until CI runners have a record. The levers
+that remain need the owner: `InvariantTimezone` (−67 KB, local time becomes
+UTC), AOT (faster scripts, larger download), a faster network assumption, a
+cached runtime for repeat visits, or a smaller engine for the web.
 
 ## Status
 
@@ -633,6 +726,7 @@ Measured on 2026-10-28 on a 4-core Intel Xeon 2.1 GHz cloud VM, Ubuntu 24.04.
 | Check | Result |
 |---|---|
 | Conformance corpus, 245 cases in 10 suites (2026-10-28, `mise.toml` tools, branch `feat/hosting-hardening`): `dotnet`, `dotnet-bytecode`, .NET with invariant globalization and with `tr_TR`, Chromium 153, Firefox 155 and WebKit 26.6 (Playwright 1.63, main thread), Java 17 worker, CoreCLR 8.0.32 and NativeAOT in process | 245/245 on each; every known-failures file is empty |
+| Conformance corpus, 248 cases (2026-10-29, branch `perf/browser-size`): Chromium 153, Firefox 155 and WebKit 26.6 with a `tr-TR` locale and the Asia/Tokyo zone, `dotnet`, `dotnet-tr-TR`, Java worker, CoreCLR and NativeAOT in process | 248/248 on each |
 | Conformance corpus, .NET with `LANG=tr_TR.UTF-8` | all pass since numbers convert to text without the process culture; earlier 223/225 (`1.5 .. ''` gave `1,5`) |
 | Shared fixtures, .NET 8 CLI | 24/24 under `C.UTF-8`, `tr_TR`, `de_DE` and invariant globalization |
 | Shared fixtures, headless Chromium 153 (Playwright 1.63), main thread | 24/24 |

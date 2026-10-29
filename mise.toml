@@ -8,6 +8,10 @@
 #   conda:clang, which links against its own sysroot and fails with
 #   "cannot find -lz" (tried with conda:clang 23.1.2 on 2026-10-28).
 # - Mono, for the net45 test runner; it is not in the mise registry.
+# - The wasm-tools workload, for a Release build of src/Hosting/browser (it
+#   relinks the WebAssembly runtime with Emscripten): `dotnet workload install
+#   wasm-tools --version 10.0.402`, the workload set of the SDK below, as
+#   hosting.yml does. It goes into the SDK's own folder.
 [tools]
 # The JNI shim in src/Hosting/native.
 cmake = "4.4.4"

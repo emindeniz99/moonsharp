@@ -1,0 +1,268 @@
+tonumber "10"	OK	1	10
+arith "10"	OK	1	10
+tonumber "  10  "	OK	1	10
+arith "  10  "	OK	1	10
+tonumber "\t5\n"	OK	1	5
+arith "\t5\n"	OK	1	5
+tonumber "0x10"	OK	1	16
+arith "0x10"	OK	1	16
+tonumber "0X1F"	OK	1	31
+arith "0X1F"	OK	1	31
+tonumber "-0x10"	OK	1	-16
+arith "-0x10"	OK	1	-16
+tonumber "+0x2"	OK	1	2
+arith "+0x2"	OK	1	2
+tonumber "0x"	OK	1	nil
+arith "0x"	ERR	"attempt to perform arithmetic on a string value"
+tonumber "0x.8"	OK	1	4503599627370496p-53
+arith "0x.8"	OK	1	4503599627370496p-53
+tonumber "0x8."	OK	1	8
+arith "0x8."	OK	1	8
+tonumber "0x1p4"	OK	1	16
+arith "0x1p4"	OK	1	16
+tonumber "0x1P-1"	OK	1	4503599627370496p-53
+arith "0x1P-1"	OK	1	4503599627370496p-53
+tonumber "0x.1p4"	OK	1	1
+arith "0x.1p4"	OK	1	1
+tonumber "1e5"	OK	1	100000
+arith "1e5"	OK	1	100000
+tonumber "1E+5"	OK	1	100000
+arith "1E+5"	OK	1	100000
+tonumber "1e-2"	OK	1	5764607523034235p-59
+arith "1e-2"	OK	1	5764607523034235p-59
+tonumber "1e"	OK	1	nil
+arith "1e"	ERR	"attempt to perform arithmetic on a string value"
+tonumber "1e+"	OK	1	nil
+arith "1e+"	ERR	"attempt to perform arithmetic on a string value"
+tonumber ".5"	OK	1	4503599627370496p-53
+arith ".5"	OK	1	4503599627370496p-53
+tonumber "5."	OK	1	5
+arith "5."	OK	1	5
+tonumber "."	OK	1	nil
+arith "."	ERR	"attempt to perform arithmetic on a string value"
+tonumber "-.5"	OK	1	-4503599627370496p-53
+arith "-.5"	OK	1	-4503599627370496p-53
+tonumber "+5"	OK	1	5
+arith "+5"	OK	1	5
+tonumber "- 5"	OK	1	nil
+arith "- 5"	ERR	"attempt to perform arithmetic on a string value"
+tonumber "--5"	OK	1	nil
+arith "--5"	ERR	"attempt to perform arithmetic on a string value"
+tonumber "5-"	OK	1	nil
+arith "5-"	ERR	"attempt to perform arithmetic on a string value"
+tonumber "1 0"	OK	1	nil
+arith "1 0"	ERR	"attempt to perform arithmetic on a string value"
+tonumber ""	OK	1	nil
+arith ""	ERR	"attempt to perform arithmetic on a string value"
+tonumber " "	OK	1	nil
+arith " "	ERR	"attempt to perform arithmetic on a string value"
+tonumber "inf"	OK	1	nil
+arith "inf"	ERR	"attempt to perform arithmetic on a string value"
+tonumber "-inf"	OK	1	nil
+arith "-inf"	ERR	"attempt to perform arithmetic on a string value"
+tonumber "nan"	OK	1	nil
+arith "nan"	ERR	"attempt to perform arithmetic on a string value"
+tonumber "NaN"	OK	1	nil
+arith "NaN"	ERR	"attempt to perform arithmetic on a string value"
+tonumber "infinity"	OK	1	nil
+arith "infinity"	ERR	"attempt to perform arithmetic on a string value"
+tonumber "0b101"	OK	1	nil
+arith "0b101"	ERR	"attempt to perform arithmetic on a string value"
+tonumber "1_000"	OK	1	nil
+arith "1_000"	ERR	"attempt to perform arithmetic on a string value"
+tonumber "5\0"	OK	1	nil
+arith "5\0"	ERR	"attempt to perform arithmetic on a string value"
+tonumber "9007199254740993"	OK	1	4503599627370496p1
+arith "9007199254740993"	OK	1	4503599627370496p1
+tonumber "1e400"	OK	1	inf
+arith "1e400"	OK	1	inf
+tonumber "-1e400"	OK	1	-inf
+arith "-1e400"	OK	1	-inf
+tonumber "1e-400"	OK	1	0
+arith "1e-400"	OK	1	0
+tonumber "0x7fffffffffffffff"	OK	1	4503599627370496p11
+arith "0x7fffffffffffffff"	OK	1	4503599627370496p11
+tonumber "0xffffffffffffffff"	OK	1	4503599627370496p12
+arith "0xffffffffffffffff"	OK	1	4503599627370496p12
+tonumber "0x10000000000000000"	OK	1	4503599627370496p12
+arith "0x10000000000000000"	OK	1	4503599627370496p12
+tonumber "00012"	OK	1	12
+arith "00012"	OK	1	12
+tonumber "1.5e3"	OK	1	1500
+arith "1.5e3"	OK	1	1500
+tonumber "0x1.8"	OK	1	6755399441055744p-52
+arith "0x1.8"	OK	1	6755399441055744p-52
+tonumber "  0x10  "	OK	1	16
+arith "  0x10  "	OK	1	16
+tonumber "1,5"	OK	1	nil
+arith "1,5"	ERR	"attempt to perform arithmetic on a string value"
+tonumber "\v12\f"	OK	1	12
+arith "\v12\f"	OK	1	12
+tonumber "10" base 2	OK	1	2
+tonumber "ff" base 2	OK	1	nil
+tonumber "FF" base 2	OK	1	nil
+tonumber "zz" base 2	OK	1	nil
+tonumber "-ff" base 2	OK	1	nil
+tonumber " ff " base 2	OK	1	nil
+tonumber "1.5" base 2	OK	1	nil
+tonumber "" base 2	OK	1	nil
+tonumber "0x10" base 2	OK	1	nil
+tonumber "8" base 2	OK	1	nil
+tonumber "7fffffffffffffff" base 2	OK	1	nil
+tonumber "11111111111111111111111111111111111111111111111111111111111111111" base 2	OK	1	4503599627370496p13
+tonumber "+1" base 2	OK	1	1
+tonumber "- 1" base 2	OK	1	nil
+tonumber "10" base 8	OK	1	8
+tonumber "ff" base 8	OK	1	nil
+tonumber "FF" base 8	OK	1	nil
+tonumber "zz" base 8	OK	1	nil
+tonumber "-ff" base 8	OK	1	nil
+tonumber " ff " base 8	OK	1	nil
+tonumber "1.5" base 8	OK	1	nil
+tonumber "" base 8	OK	1	nil
+tonumber "0x10" base 8	OK	1	nil
+tonumber "8" base 8	OK	1	nil
+tonumber "7fffffffffffffff" base 8	OK	1	nil
+tonumber "11111111111111111111111111111111111111111111111111111111111111111" base 8	OK	1	5146971002709138p140
+tonumber "+1" base 8	OK	1	1
+tonumber "- 1" base 8	OK	1	nil
+tonumber "10" base 10	OK	1	10
+tonumber "ff" base 10	OK	1	nil
+tonumber "FF" base 10	OK	1	nil
+tonumber "zz" base 10	OK	1	nil
+tonumber "-ff" base 10	OK	1	nil
+tonumber " ff " base 10	OK	1	nil
+tonumber "1.5" base 10	OK	1	nil
+tonumber "" base 10	OK	1	nil
+tonumber "0x10" base 10	OK	1	nil
+tonumber "8" base 10	OK	1	8
+tonumber "7fffffffffffffff" base 10	OK	1	nil
+tonumber "11111111111111111111111111111111111111111111111111111111111111111" base 10	OK	1	7602530730928911p160
+tonumber "+1" base 10	OK	1	1
+tonumber "- 1" base 10	OK	1	nil
+tonumber "10" base 16	OK	1	16
+tonumber "ff" base 16	OK	1	255
+tonumber "FF" base 16	OK	1	255
+tonumber "zz" base 16	OK	1	nil
+tonumber "-ff" base 16	OK	1	-255
+tonumber " ff " base 16	OK	1	255
+tonumber "1.5" base 16	OK	1	nil
+tonumber "" base 16	OK	1	nil
+tonumber "0x10" base 16	OK	1	nil
+tonumber "8" base 16	OK	1	8
+tonumber "7fffffffffffffff" base 16	OK	1	4503599627370496p11
+tonumber "11111111111111111111111111111111111111111111111111111111111111111" base 16	OK	1	4803839602528529p204
+tonumber "+1" base 16	OK	1	1
+tonumber "- 1" base 16	OK	1	nil
+tonumber "10" base 36	OK	1	36
+tonumber "ff" base 36	OK	1	555
+tonumber "FF" base 36	OK	1	555
+tonumber "zz" base 36	OK	1	1295
+tonumber "-ff" base 36	OK	1	-555
+tonumber " ff " base 36	OK	1	555
+tonumber "1.5" base 36	OK	1	nil
+tonumber "" base 36	OK	1	nil
+tonumber "0x10" base 36	OK	1	42804
+tonumber "8" base 36	OK	1	8
+tonumber "7fffffffffffffff" base 36	OK	1	6117907925098143p28
+tonumber "11111111111111111111111111111111111111111111111111111111111111111" base 36	OK	1	8496806164915484p278
+tonumber "+1" base 36	OK	1	1
+tonumber "- 1" base 36	OK	1	nil
+tonumber "10" base 1	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "ff" base 1	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "FF" base 1	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "zz" base 1	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "-ff" base 1	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber " ff " base 1	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "1.5" base 1	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "" base 1	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "0x10" base 1	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "8" base 1	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "7fffffffffffffff" base 1	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "11111111111111111111111111111111111111111111111111111111111111111" base 1	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "+1" base 1	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "- 1" base 1	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "10" base 37	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "ff" base 37	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "FF" base 37	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "zz" base 37	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "-ff" base 37	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber " ff " base 37	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "1.5" base 37	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "" base 37	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "0x10" base 37	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "8" base 37	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "7fffffffffffffff" base 37	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "11111111111111111111111111111111111111111111111111111111111111111" base 37	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "+1" base 37	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "- 1" base 37	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "10" base 0	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "ff" base 0	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "FF" base 0	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "zz" base 0	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "-ff" base 0	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber " ff " base 0	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "1.5" base 0	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "" base 0	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "0x10" base 0	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "8" base 0	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "7fffffffffffffff" base 0	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "11111111111111111111111111111111111111111111111111111111111111111" base 0	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "+1" base 0	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "- 1" base 0	ERR	"bad argument #2 to 'tonumber' (base out of range)"
+tonumber "10" base 10.5	OK	1	10
+tonumber "ff" base 10.5	OK	1	nil
+tonumber "FF" base 10.5	OK	1	nil
+tonumber "zz" base 10.5	OK	1	nil
+tonumber "-ff" base 10.5	OK	1	nil
+tonumber " ff " base 10.5	OK	1	nil
+tonumber "1.5" base 10.5	OK	1	nil
+tonumber "" base 10.5	OK	1	nil
+tonumber "0x10" base 10.5	OK	1	nil
+tonumber "8" base 10.5	OK	1	8
+tonumber "7fffffffffffffff" base 10.5	OK	1	nil
+tonumber "11111111111111111111111111111111111111111111111111111111111111111" base 10.5	OK	1	7602530730928911p160
+tonumber "+1" base 10.5	OK	1	1
+tonumber "- 1" base 10.5	OK	1	nil
+tonumber "10" base "16"	OK	1	16
+tonumber "ff" base "16"	OK	1	255
+tonumber "FF" base "16"	OK	1	255
+tonumber "zz" base "16"	OK	1	nil
+tonumber "-ff" base "16"	OK	1	-255
+tonumber " ff " base "16"	OK	1	255
+tonumber "1.5" base "16"	OK	1	nil
+tonumber "" base "16"	OK	1	nil
+tonumber "0x10" base "16"	OK	1	nil
+tonumber "8" base "16"	OK	1	8
+tonumber "7fffffffffffffff" base "16"	OK	1	4503599627370496p11
+tonumber "11111111111111111111111111111111111111111111111111111111111111111" base "16"	OK	1	4803839602528529p204
+tonumber "+1" base "16"	OK	1	1
+tonumber "- 1" base "16"	OK	1	nil
+tonumber "10" base nil	OK	1	10
+tonumber "ff" base nil	OK	1	nil
+tonumber "FF" base nil	OK	1	nil
+tonumber "zz" base nil	OK	1	nil
+tonumber "-ff" base nil	OK	1	nil
+tonumber " ff " base nil	OK	1	nil
+tonumber "1.5" base nil	OK	1	6755399441055744p-52
+tonumber "" base nil	OK	1	nil
+tonumber "0x10" base nil	OK	1	16
+tonumber "8" base nil	OK	1	8
+tonumber "7fffffffffffffff" base nil	OK	1	nil
+tonumber "11111111111111111111111111111111111111111111111111111111111111111" base nil	OK	1	7602530730928912p160
+tonumber "+1" base nil	OK	1	1
+tonumber "- 1" base nil	OK	1	nil
+tonumber value 10	OK	1	10
+tonumber value 10 base 10	OK	1	10
+tonumber value 1.5	OK	1	6755399441055744p-52
+tonumber value 1.5 base 10	OK	1	nil
+tonumber value nil	OK	1	nil
+tonumber value nil base 10	ERR	"bad argument #1 to 'tonumber' (string expected, got nil)"
+tonumber value true	OK	1	nil
+tonumber value true base 10	ERR	"bad argument #1 to 'tonumber' (string expected, got boolean)"
+tonumber value {}	OK	1	nil
+tonumber value {} base 10	ERR	"bad argument #1 to 'tonumber' (string expected, got table)"
+tonumber value print	OK	1	nil
+tonumber value print base 10	ERR	"bad argument #1 to 'tonumber' (string expected, got function)"
+tonumber no arg	ERR	"bad argument #1 to 'tonumber' (value expected)"
+tonumber 2 results	OK	1	1

@@ -1,0 +1,25 @@
+status lifecycle	OK	4	"suspended" "running" "suspended" "dead"
+status normal	OK	1	"normal"
+running main	OK	2	"thread" true
+running inside	OK	3	true "thread" false
+resume dead	OK	2	false "cannot resume dead coroutine"
+resume non coroutine	ERR	"bad argument #1 to 'resume' (coroutine expected, got number)"
+resume self	OK	3	true false "cannot resume non-suspended coroutine"
+resume passes values	OK	4	true 3 true 12
+resume result count	OK	1	1
+resume error value	OK	2	false "string"
+resume error string	OK	2	false "x"
+wrap multiple values	OK	3	1 2 3
+wrap error propagates	CRASH	System.NullReferenceException
+wrap error table	CRASH	System.NullReferenceException
+wrap dead	CRASH	System.NullReferenceException
+wrap type	OK	1	"function"
+yield outside	OK	2	false "=c:(1,0-32): attempt to yield from outside a coroutine"
+yield across pcall	OK	3	"in" true "out"
+yield across metamethod	OK	2	"foo" "bar"
+yield across table.sort	OK	2	false "attempt to yield across a CLR-call boundary"
+yield in iterator	OK	1	6
+isyieldable absent	OK	1	nil
+create non function	OK	2	false "bad argument #1 to 'create' (function expected, got number)"
+create C function	OK	2	"thread" "suspended"
+status bad arg	OK	2	false "bad argument #1 to 'status' (coroutine expected, got table)"

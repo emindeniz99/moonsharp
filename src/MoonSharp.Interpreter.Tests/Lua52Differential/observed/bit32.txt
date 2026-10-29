@@ -1,0 +1,17 @@
+band none	ERR	"bad argument #1 to 'band' (number expected, got no value)"
+bor none	ERR	"bad argument #1 to 'bor' (number expected, got no value)"
+bxor none	ERR	"bad argument #1 to 'bxor' (number expected, got no value)"
+btest none	ERR	"bad argument #1 to 'btest' (number expected, got no value)"
+band negative	OK	3	4294967295 4294967295 4294967292
+band fraction	OK	4	1 2 4294967295 0
+bnot	OK	3	4294967295 0 4294967295
+lshift ranges	OK	7	2147483648 1 2 0 1 4294967295 1
+rshift ranges	OK	5	1 2147483648 2147483648 1 16777215
+arshift	OK	6	-1 -1 -134217728 8388607 -2 -2147483648
+rotate	OK	5	591751041 2166572391 1 2147483648 2147483648
+extract top bits	ERR	"trying to access non-existent bits"
+extract errors	OK	5	false false false false "bad argument #3 to 'extract' (width must be positive)"
+replace	ERR	"trying to access non-existent bits"
+replace width default	OK	1	0
+non number argument	OK	3	true false "bad argument #1 to 'band' (number expected, got table)"
+result is unsigned	OK	2	true true

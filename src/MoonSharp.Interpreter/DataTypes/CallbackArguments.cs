@@ -44,6 +44,8 @@ namespace MoonSharp.Interpreter
 
 		private protected void CountArguments(int slots, DataType lastType, int lastTupleLength)
 		{
+			m_LastIsTuple = false;
+
 			if (lastType == DataType.Tuple)
 			{
 				m_Count = lastTupleLength - 1 + slots;
@@ -59,57 +61,49 @@ namespace MoonSharp.Interpreter
 			}
 		}
 
-		private protected bool LastIsTuple
-		{
-			get { return m_LastIsTuple; }
-		}
-
 		/// <summary>
-		/// The arguments of a call to a library function, read in place from the value stack: the
-		/// <c>slots</c> values from <c>first</c>.
+		/// The arguments of a call to a C# function that uses them only during the call, read in place from
+		/// the value stack: the <c>slots</c> values from <c>first</c>, one argument each (the call expanded a
+		/// last argument holding several values or none). The processor reuses one view per call depth
+		/// (<see cref="Reuse"/>).
 		/// </summary>
 		internal sealed class StackArguments : CallbackArguments
 		{
-			readonly ValueStack m_Stack;
-			readonly int m_First;
-			readonly int m_Slots;
+			ValueStack m_Stack;
+			int m_First;
 
 			internal StackArguments(ValueStack stack, int first, int slots, bool isMethodCall)
 				: base(isMethodCall)
 			{
-				m_Stack = stack;
-				m_First = first;
-				m_Slots = slots;
-
-				if (slots > 0)
-				{
-					ref LuaValue last = ref stack.Items[first + slots - 1];
-					CountArguments(slots, last.Type, last.Type == DataType.Tuple ? last.TupleValue.Tuple.Length : 0);
-				}
+				Reuse(stack, first, slots, isMethodCall);
 			}
 
-			// The same value RawGet reads in list mode: a tuple gives its first value, or nil when empty.
+			internal void Reuse(ValueStack stack, int first, int slots, bool isMethodCall)
+			{
+				m_Stack = stack;
+				m_First = first;
+				IsMethodCall = isMethodCall;
+				CountArguments(slots, DataType.Nil, 0);
+			}
+
+			// The same value RawGet reads in list mode: a tuple (a call or '...' in the middle of the argument
+			// list) gives its first value, or nil when empty.
 			internal LuaValue Value(int index)
 			{
-				LuaValue v;
-
-				if (!LastIsTuple || index < m_Slots - 1)
-					v = m_Stack.Items[m_First + index];
-				else
-					v = m_Stack.Items[m_First + m_Slots - 1].TupleValue.Tuple[index - (m_Slots - 1)].ToLuaValue();
+				LuaValue v = m_Stack.Items[m_First + index];
 
 				if (v.Type == DataType.Tuple)
 				{
-					DynValue[] tuple = v.ToDynValue().Tuple;
+					ValueStack varArgs = v.Object as ValueStack;
+
+					if (varArgs != null)
+						return ValueStack.VarArgsCount(v.Number) > 0 ? varArgs.VarArg(v.Number, 0) : LuaValue.Nil;
+
+					DynValue[] tuple = v.TupleValue.Tuple;
 					v = tuple.Length > 0 ? tuple[0].ToLuaValue() : LuaValue.Nil;
 				}
 
 				return v;
-			}
-
-			internal StackArguments SkipFirst()
-			{
-				return new StackArguments(m_Stack, m_First + 1, m_Slots - 1, false);
 			}
 		}
 
@@ -193,6 +187,76 @@ namespace MoonSharp.Interpreter
 
 			LuaValue v = m_Args == null ? ((StackArguments)this).Value(index) : RawGet(index, false).ToLuaValue();
 			return v.Type == DataType.Void ? LuaValue.Nil : v;
+		}
+
+		// The argument at index as RawGet(index, false) ?? DynValue.Void gives it, without creating a DynValue.
+		LuaValue ValueAt(int index)
+		{
+			if (index >= m_Count)
+				return LuaValue.Void;
+
+			return m_Args == null ? ((StackArguments)this).Value(index) : RawGet(index, false).ToLuaValue();
+		}
+
+		/// <summary>
+		/// The type of the argument at <paramref name="index"/>, without creating a <see cref="DynValue"/>:
+		/// <see cref="DataType.Void"/> when it is missing or is a call that returned no value (the type of
+		/// <c>RawGet(index, false) ?? DynValue.Void</c>). With <see cref="NumberAt"/>, <see cref="StringAt"/> and
+		/// the other readers below, a callback reads its arguments without allocating.
+		/// </summary>
+		public DataType TypeAt(int index)
+		{
+			return ValueAt(index).Type;
+		}
+
+		/// <summary>
+		/// The <see cref="DynValue.Number"/> of the argument at <paramref name="index"/>, without creating a
+		/// <see cref="DynValue"/>: the number, 1 or 0 for a boolean, 0 for anything else.
+		/// </summary>
+		public double NumberAt(int index)
+		{
+			return ValueAt(index).Number;
+		}
+
+		/// <summary>
+		/// The <see cref="DynValue.Boolean"/> of the argument at <paramref name="index"/>, without creating a
+		/// <see cref="DynValue"/>.
+		/// </summary>
+		public bool BooleanAt(int index)
+		{
+			return ValueAt(index).Number != 0;
+		}
+
+		/// <summary>
+		/// The string at <paramref name="index"/>, or null when that argument is not a string.
+		/// </summary>
+		public string StringAt(int index)
+		{
+			return ValueAt(index).Object as string;
+		}
+
+		/// <summary>
+		/// The table at <paramref name="index"/>, or null when that argument is not a table.
+		/// </summary>
+		public Table TableAt(int index)
+		{
+			return ValueAt(index).Object as Table;
+		}
+
+		/// <summary>
+		/// The Lua function at <paramref name="index"/>, or null when that argument is not one.
+		/// </summary>
+		public Closure FunctionAt(int index)
+		{
+			return ValueAt(index).Object as Closure;
+		}
+
+		/// <summary>
+		/// The userdata at <paramref name="index"/>, or null when that argument is not a userdata.
+		/// </summary>
+		public UserData UserDataAt(int index)
+		{
+			return ValueAt(index).Object as UserData;
 		}
 
 		/// <summary>
@@ -298,16 +362,25 @@ namespace MoonSharp.Interpreter
 
 		/// <summary>
 		/// Returns a copy of CallbackArguments where the first ("self") argument is skipped if this was a method call,
-		/// otherwise returns itself.
+		/// otherwise returns itself. Arguments read in place on the value stack are copied, so the result stays
+		/// valid after the call: CLR methods that take a <see cref="CallbackArguments"/> parameter get it from here.
 		/// </summary>
 		/// <returns></returns>
 		public CallbackArguments SkipMethodCall()
 		{
+			if (m_Args == null)
+			{
+				int skip = this.IsMethodCall ? 1 : 0;
+				DynValue[] values = new DynValue[System.Math.Max(0, m_Count - skip)];
+
+				for (int i = 0; i < values.Length; i++)
+					values[i] = RawGet(i + skip, false);
+
+				return new CallbackArguments(values, false);
+			}
+
 			if (this.IsMethodCall)
 			{
-				if (m_Args == null)
-					return ((StackArguments)this).SkipFirst();
-
 				Slice<DynValue> slice = new Slice<DynValue>(m_Args, 1, m_Args.Count - 1, false);
 				return new CallbackArguments(slice, false);
 			}

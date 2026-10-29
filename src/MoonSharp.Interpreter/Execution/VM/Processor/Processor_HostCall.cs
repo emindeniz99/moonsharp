@@ -98,12 +98,37 @@ namespace MoonSharp.Interpreter.Execution.VM
 				return 1;
 			}
 
-			DynValue[] values = Internal_AdjustTuple(new DynValue[] { value.ToDynValue() });
+			return PushHostArguments(value.TupleValue.Tuple);
+		}
 
-			for (int i = 0; i < values.Length; i++)
-				m_ValueStack.Push(values[i]);
+		/// <summary>
+		/// Pushes the arguments of a call from C# and returns how many values it pushed: what
+		/// <see cref="Internal_AdjustTuple"/> gives, without its array. A tuple gives its first value, or all of
+		/// them when it is the last argument.
+		/// </summary>
+		private int PushHostArguments(DynValue[] args)
+		{
+			int pushed = 0;
 
-			return values.Length;
+			while (args != null && args.Length > 0)
+			{
+				int last = args.Length - 1;
+
+				for (int i = 0; i < last; i++)
+					m_ValueStack.Push(args[i].ToScalar());
+
+				pushed += last;
+
+				if (args[last].Type != DataType.Tuple)
+				{
+					m_ValueStack.Push(args[last]);
+					return pushed + 1;
+				}
+
+				args = args[last].Tuple;
+			}
+
+			return pushed;
 		}
 	}
 }

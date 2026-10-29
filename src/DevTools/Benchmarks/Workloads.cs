@@ -93,5 +93,13 @@ return function(n)
 	end
 	return c
 end";
+
+		// The "calls-varargs" case of Lua-CSharp's sandbox/Benchmark comparison (2,000 calls per chunk
+		// there), and '...' passed on to Lua and library functions.
+		public const string CallsVarArgs = @"
+local function f(a, ...) local b, c = ... return a + b + c end
+local function g(...) return select('#', ...) + math.max(...) end
+local function h(...) return g(...) end
+return function(n) local s = 0 for i = 1, n do s = s + f(i, 2, 3) + h(i, 2, 3) end return s end";
 	}
 }

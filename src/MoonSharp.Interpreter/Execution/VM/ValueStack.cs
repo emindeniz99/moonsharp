@@ -110,5 +110,78 @@ namespace MoonSharp.Interpreter.Execution.VM
 			Array.Clear(Items, 0, Count);
 			Count = 0;
 		}
+
+		// '...' of a running vararg function: its values stay where the caller pushed them, below the
+		// function's locals, and the '...' local holds a Tuple pointing at them (start and count packed in
+		// Number, exact in a double), so a call allocates nothing for them. Such a value is valid only while
+		// that function's frame is on this stack: the VM resolves it before the frame goes (a call expands it
+		// in place, return turns it into a DynValue, a store reads one of its values), and DynValue.FromLuaValue
+		// copies it into a DynValue tuple.
+		const double VARARGS_SCALE = 262144; // 2^18, more than the maximum stack size
+
+		/// <summary>
+		/// A Tuple holding the <paramref name="count"/> values from <paramref name="start"/>.
+		/// </summary>
+		public LuaValue VarArgs(int start, int count)
+		{
+			LuaValue v;
+			v.Object = this;
+			v.Number = start * VARARGS_SCALE + count;
+			v.Type = DataType.Tuple;
+			return v;
+		}
+
+		// These take the Tuple's Number, so callers pass a field instead of a reference to a local LuaValue,
+		// which would keep the JIT from holding that local in registers.
+		public static int VarArgsStart(double packed)
+		{
+			return (int)(packed / VARARGS_SCALE);
+		}
+
+		public static int VarArgsCount(double packed)
+		{
+			return (int)(packed % VARARGS_SCALE);
+		}
+
+		static LuaValue s_Void = LuaValue.Void;
+
+		/// <summary>
+		/// The value at <paramref name="index"/> of a '...' Tuple from this stack (its Number is
+		/// <paramref name="packed"/>), void past its end, by reference; callers only read it. A reference, not
+		/// a LuaValue: a struct returned by a call that is not inlined, inside ToScalar or GetStoreValue,
+		/// made the JIT keep their results in memory at every site the instruction loop inlines them, which
+		/// slowed the whole loop by about 10% (TableInsertLookup1K in the A/B run, which calls nothing).
+		/// </summary>
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public ref LuaValue VarArg(double packed, int index)
+		{
+			if (index >= VarArgsCount(packed))
+				return ref s_Void;
+
+			return ref Items[VarArgsStart(packed) + index];
+		}
+
+		/// <summary>
+		/// The values of a '...' Tuple from this stack as a DynValue, as the '...' local held them before:
+		/// an empty tuple, the value itself, or a tuple.
+		/// </summary>
+		public DynValue VarArgsToDynValue(double packed)
+		{
+			int start = VarArgsStart(packed);
+			int count = VarArgsCount(packed);
+
+			if (count == 0)
+				return DynValue.EmptyTuple;
+
+			if (count == 1)
+				return Items[start].ToDynValue();
+
+			DynValue[] values = new DynValue[count];
+
+			for (int i = 0; i < count; i++)
+				values[i] = Items[start + i].ToDynValue();
+
+			return DynValue.NewTuple(values);
+		}
 	}
 }

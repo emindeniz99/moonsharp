@@ -136,19 +136,16 @@ namespace MoonSharp.Interpreter.Execution.VM
 			else
 				m_ValueStack.Push(function);  // func val
 
-			args = Internal_AdjustTuple(args);
-
-			for (int i = 0; i < args.Length; i++)
-				m_ValueStack.Push(args[i]);
+			int argCount = PushHostArguments(args);
 
 			ref CallStackItem frame = ref m_ExecutionStack.Push();
 			frame.BasePointer = m_ValueStack.Count;
-			frame.ArgCount = args.Length;
+			frame.ArgCount = argCount;
 			frame.Debug_EntryPoint = function.Function.EntryPointByteCodeLocation;
 			frame.ReturnAddress = -1;
 			frame.Function = function.Function;
 			frame.Upvalues = function.Function.Upvalues;
-			frame.CallingSourceRef = SourceRef.GetClrLocation();
+			frame.CallingSourceRef = s_HostCallLocation;
 			frame.Flags = flags;
 
 			return function.Function.EntryPointByteCodeLocation;

@@ -302,15 +302,15 @@ namespace MoonSharp.Interpreter.Interop
 
 			for (int i = 0; i < count; i++)
 			{
-				DynValue arg = args.RawGet(first + i, false);
 				int kind;
 
-				switch (arg.Type)
+				// Read in place: no DynValue per argument.
+				switch (args.TypeAt(first + i))
 				{
 					case DataType.Nil: kind = 0; break;
 					case DataType.Void: kind = 1; break;
 					case DataType.Boolean: kind = 2; break;
-					case DataType.Number: kind = ScriptToClrConversions.IsFractional(arg.Number) ? 4 : 3; break;
+					case DataType.Number: kind = ScriptToClrConversions.IsFractional(args.NumberAt(first + i)) ? 4 : 3; break;
 					case DataType.String: kind = 5; break;
 					case DataType.Function: kind = 6; break;
 					case DataType.ClrFunction: kind = 7; break;
@@ -596,7 +596,9 @@ namespace MoonSharp.Interpreter.Interop
 		/// <returns></returns>
 		public CallbackFunction GetCallbackFunction(Script script, object obj = null)
 		{
-			return new CallbackFunction(GetCallback(script, obj), this.Name);
+			// Argument conversion reads the arguments during the call only; a CallbackArguments parameter gets
+			// a copy (CallbackArguments.SkipMethodCall).
+			return new CallbackFunction(GetCallback(script, obj), this.Name) { UsesArgumentsOnlyDuringCall = true };
 		}
 
 		/// <summary>

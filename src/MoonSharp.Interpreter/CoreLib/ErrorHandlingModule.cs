@@ -69,7 +69,7 @@ namespace MoonSharp.Interpreter.CoreLib
 						return DynValue.NewTailCallReq(new TailCallData()
 						{
 							Args = new DynValue[0],
-							Function = DynValue.NewCallback((c, x) => ret, funcName),
+							Function = CallbackFunction.NewInternal((c, x) => ret, funcName),
 							Continuation = new CallbackFunction(pcall_continuation, funcName),
 							ErrorHandler = new CallbackFunction(pcall_onerror, funcName),
 							ErrorHandlerBeforeUnwind = handlerBeforeUnwind

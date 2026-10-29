@@ -78,6 +78,8 @@ namespace MoonSharp.Interpreter.Interop
 			bool isExtensionMethod = (methodBase.IsStatic && parameters.Length > 0 && methodBase.GetCustomAttributes(typeof(ExtensionAttribute), false).Any());
 
 			base.Initialize(methodBase.Name, isStatic, parameters, isExtensionMethod);
+			// A subclass may override Execute and keep the context.
+			ExecuteKeepsNoContext = GetType() == typeof(MethodMemberDescriptor);
 
 			// adjust access mode
 			if (Script.GlobalOptions.Platform.IsRunningOnAOT())

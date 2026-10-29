@@ -23,7 +23,7 @@ namespace MoonSharp.Interpreter.CoreLib
 
 			DynValue meta = executionContext.GetMetamethodTailCall(table, "__ipairs", args.GetArray());
 
-			return meta ?? DynValue.NewTuple(DynValue.NewCallback(__next_i), table, DynValue.NewNumber(0));
+			return meta ?? DynValue.NewTuple(CallbackFunction.NewInternal(__next_i), table, DynValue.NewNumber(0));
 		}
 
 		// pairs (t)
@@ -40,7 +40,7 @@ namespace MoonSharp.Interpreter.CoreLib
 
 			DynValue meta = executionContext.GetMetamethodTailCall(table, "__pairs", args.GetArray());
 
-			return meta ?? DynValue.NewTuple(DynValue.NewCallback(next), table);
+			return meta ?? DynValue.NewTuple(CallbackFunction.NewInternal(next), table);
 		}
 
 		// next (table [, index])

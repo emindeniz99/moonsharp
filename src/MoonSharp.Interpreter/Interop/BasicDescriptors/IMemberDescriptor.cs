@@ -96,7 +96,7 @@ namespace MoonSharp.Interpreter.Interop.BasicDescriptors
 		/// <returns></returns>
 		public static DynValue GetGetterCallbackAsDynValue(this IMemberDescriptor desc, Script script, object obj)
 		{
-			return DynValue.NewCallback((p1, p2) => desc.GetValue(script, obj));
+			return CallbackFunction.NewInternal((p1, p2) => desc.GetValue(script, obj));
 		}
 
 		/// <summary>

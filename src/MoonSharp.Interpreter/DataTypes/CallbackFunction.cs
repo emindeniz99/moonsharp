@@ -97,6 +97,28 @@ namespace MoonSharp.Interpreter
 		internal bool ReadsArgumentsInPlace;
 
 		/// <summary>
+		/// Whether a Lua call of this function may get the <see cref="ScriptExecutionContext"/> the processor
+		/// lends to every C# call at the same call depth, instead of a new one. Only for MoonSharp's own
+		/// functions, which never let host code keep their context: the standard library, internal callbacks,
+		/// and userdata and delegate descriptors whose CLR member takes no ScriptExecutionContext or
+		/// CallbackArguments. A host callback gets a context of its own on every call, which it may keep
+		/// (a coroutine or a timer reading it later sees that call's CallingLocation and AdditionalData).
+		/// </summary>
+		internal bool ReusesContext;
+
+		/// <summary>
+		/// A MoonSharp-internal callback as a DynValue, with <see cref="ReusesContext"/> set: the callback must
+		/// not keep its context or hand it to host code (except through <see cref="ScriptExecutionContext.Call"/>,
+		/// which gives the callee a context of its own).
+		/// </summary>
+		internal static DynValue NewInternal(Func<ScriptExecutionContext, CallbackArguments, DynValue> callBack, string name = null)
+		{
+			DynValue v = DynValue.NewCallback(callBack, name);
+			v.Callback.ReusesContext = true;
+			return v;
+		}
+
+		/// <summary>
 		/// The builtin fast-call id of a library function (Processor_Builtins.cs), or 0.
 		/// </summary>
 		internal int BuiltinId;

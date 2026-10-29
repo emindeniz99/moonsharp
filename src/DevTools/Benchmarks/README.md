@@ -61,7 +61,11 @@ with a loop because Lua 5.2 has no `table.move`; its seed arithmetic exceeds
 `table_remove_readd_10k` are MoonSharp-only: they track table operations whose
 cost used to grow with the table size.
 
-The same mode also runs cases that flag_bench does not have: calls across the
+The same mode also runs cases that flag_bench does not have: Lua-CSharp's
+`calls-varargs` and `host-calls` cases as loops (`calls_varargs`,
+`host_calls`; `host_calls_in_place` is the same callback with
+`CallbackFunction.UsesArgumentsOnlyDuringCall`), `...` passed on to Lua and
+library functions (`varargs_forward`), calls across the
 C#/Lua boundary in both directions (`cs_to_lua_call3`, `lua_to_cs_call1`),
 CLR method and property access (`clr_interop` in the default access mode,
 `clr_interop_reflection` as IL2CPP gets it), an overloaded method called

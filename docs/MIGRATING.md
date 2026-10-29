@@ -1156,3 +1156,19 @@ This callback allocates nothing per call; written with `args[0].Number` and
 `UsesArgumentsOnlyDuringCall`.
 
 **Affected:** nobody; existing callbacks behave as before.
+
+## Tail call optimization keeps the frame C# called
+
+**Before:** past `ScriptOptions.TailCallOptimizationThreshold` (65,536 by
+default, counted in call frames or in value stack slots) a tail call in the
+function that C# called (the chunk of `DoString`, a function run by
+`Script.Call`) removed that function's frame. A tail-called C# function then
+failed with `IndexOutOfRangeException` (`return tostring(1)` with the threshold
+at 1), and an error in a tail-called Lua function unwound past the frame into
+the frames of the C# caller's own Lua code.
+
+**After:** that frame never takes part in the optimization; every other tail
+call does as before.
+
+**Affected:** scripts that ran with a low threshold or a value stack deeper
+than the threshold.

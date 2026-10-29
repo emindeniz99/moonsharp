@@ -194,6 +194,23 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
+		/// Sizes the hash part of an empty table for <paramref name="count"/> keys, so filling it does not
+		/// grow it step by step (the standard library's module tables).
+		/// </summary>
+		internal void ReserveHash(int count)
+		{
+			if (m_Entries != null || count <= MinCapacity)
+				return;
+
+			int capacity = MinCapacity;
+
+			while (capacity < count)
+				capacity *= 2;
+
+			Allocate(capacity);
+		}
+
+		/// <summary>
 		/// Initializes a new instance of the <see cref="Table"/> class.
 		/// </summary>
 		/// <param name="owner">The owner script.</param>

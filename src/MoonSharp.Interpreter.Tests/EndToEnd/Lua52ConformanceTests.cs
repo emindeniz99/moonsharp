@@ -218,5 +218,22 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 					return table.concat({ s(math.fmod(7, 4)), s(math.fmod(-7, 4)), s(math.fmod(7, -4)), s(math.fmod(5.5, 2)),
 						s(math.fmod(2^53, 3)), s(math.fmod(-0.0, 1)), s(a), s(b), s(c), s(d), s(e), s(f) }, '|')"));
 		}
+
+
+		// Entry 24: bit32 as Lua 5.2's lbitlib. Negative numbers went through a (uint) cast of a double, which
+		// .NET 9 and ARM64 saturate to 0 (bit32.band(-1) was 0 there); fractions truncated instead of rounding;
+		// shifts wrapped modulo 32; arshift returned negative numbers; extract and replace refused the top bit
+		// and replace did not shift; band() and friends needed an argument.
+		[Test]
+		public void Bit32_FollowsLua52()
+		{
+			Assert.AreEqual("4294967295|4294967294|4294967292|2|2|4294967294|0|0|2|0|4294967295|4160749568|10|1|4|16|4294967295|0|true",
+				RunString(@"
+					local b = bit32
+					return table.concat({ b.band(-1), b.bor(-2), b.band(2^40 - 4), b.band(1.5), b.band(2.5), b.band(-1.5),
+						b.lshift(1, 32), b.rshift(1, -32), b.lshift(1, 1.9), b.lshift(-1, 64), b.arshift(-1, 1),
+						b.arshift(0x80000000, 4), b.extract(0xa0001111, 28, 4), b.extract(0xa0001111, 31),
+						b.replace(0, 1, 2), b.replace(0, 3, 4), b.band(), b.bor(), tostring(b.btest()) }, '|')"));
+		}
 	}
 }

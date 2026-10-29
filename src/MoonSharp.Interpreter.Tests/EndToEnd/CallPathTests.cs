@@ -174,6 +174,30 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
+		public void CallPath_TailCallsKeepTheEntryFrame()
+		{
+			// The threshold also counts value stack slots, so a tail call in the function C# called could
+			// remove that entry frame: a tail-called C# function then returned to address -1 and the loop
+			// failed with IndexOutOfRangeException, and an error in a tail-called Lua function unwound past
+			// the entry frame into the frames of the C# caller's own loop.
+			Script s = new Script();
+			s.Options.TailCallOptimizationThreshold = 1;
+			s.Globals["callLua"] = DynValue.NewCallback((ctx, args) => ctx.GetScript().Call(args[0]));
+
+			DynValue r = s.DoString(@"
+				local function boom() error('boom') end
+				local function viaTail() return boom() end
+				local ok, err = pcall(callLua, viaTail)
+				local t = { 'a', 'b' }
+				return ok, err, table.concat(t, ',')");
+
+			Assert.AreEqual(false, r.Tuple[0].Boolean);
+			StringAssert.EndsWith("boom", r.Tuple[1].String);
+			Assert.AreEqual("a,b", r.Tuple[2].String);
+			Assert.AreEqual("1", s.DoString("return tostring(1)").String);
+		}
+
+		[Test]
 		public void CallPath_ErrorsInsideCallsUnwindCleanly()
 		{
 			// pcall and xpcall around failing Lua functions with arguments, many times over: the stack must
@@ -288,6 +312,276 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual("1,2,3", r.Tuple[0].String);
 			Assert.AreEqual(true, r.Tuple[1].Boolean);
 			Assert.AreEqual("[a][b][c]", r.Tuple[2].String);
+		}
+			[Test]
+		public void CallPath_NestedCSharpCallsKeepTheirOwnContext()
+		{
+			// The processor reuses one execution context per call depth. A C# function that calls Lua, which
+			// calls another C# function, still sees its own context after the inner call returns.
+			Script script = new Script();
+			var inner = new CallbackFunction((ctx, args) => DynValue.NewString((string)ctx.AdditionalData), "inner") { AdditionalData = "inner" };
+			var outer = new CallbackFunction((ctx, args) =>
+			{
+				MoonSharp.Interpreter.Debugging.SourceRef before = ctx.CallingLocation;
+				DynValue innerResult = ctx.Call(args[0]);
+				Assert.AreSame(before, ctx.CallingLocation);
+				return DynValue.NewString((string)ctx.AdditionalData + "/" + innerResult.String);
+			}, "outer") { AdditionalData = "outer" };
+
+			script.Globals["inner"] = inner;
+			script.Globals["outer"] = outer;
+
+			DynValue r = script.DoString("return outer(function() return inner() end), outer(function() return outer(function() return inner() end) end)");
+
+			Assert.AreEqual("outer/inner", r.Tuple[0].String);
+			Assert.AreEqual("outer/outer/inner", r.Tuple[1].String);
+		}
+
+		[Test]
+		public void CallPath_HostCallbacksMayKeepTheirArguments()
+		{
+			// A host callback gets argument objects of its own by default, which it may keep and read after it
+			// returned (code written for MoonSharp 2.0 does). Only callbacks that declare they do not keep them
+			// read the value stack in place.
+			Script script = new Script();
+			var kept = new System.Collections.Generic.List<CallbackArguments>();
+			script.Globals["keep"] = DynValue.NewCallback((ctx, args) => { kept.Add(args); return DynValue.Nil; });
+
+			script.DoString("local function two() return 'b', 'c' end keep(1, 'a') keep(2, two()) local function f(...) keep(...) end f(3, 4, 5)");
+
+			Assert.AreEqual(3, kept.Count);
+			Assert.AreEqual("1,a", kept[0][0].Number + "," + kept[0][1].String);
+			Assert.AreEqual("2,b,c", kept[1][0].Number + "," + kept[1][1].String + "," + kept[1][2].String);
+			Assert.AreEqual(3, kept[2].Count);
+			Assert.AreEqual(5, kept[2][2].Number);
+		}
+
+		[Test]
+		public void CallPath_CallbacksThatUseArgumentsOnlyDuringTheCall()
+		{
+			// Arguments read in place: every argument shape, ':' calls, and a callback that calls itself
+			// through Lua reads its own arguments again after the inner call returned.
+			Script script = new Script();
+			script.Globals["f"] = new CallbackFunction((ctx, args) =>
+			{
+				string own = string.Join(",", System.Array.ConvertAll(args.GetArray(), v => v.ToPrintString()));
+
+				if (args.Count > 0 && args[0].Type == DataType.Function)
+				{
+					string inner = ctx.Call(args[0]).String;
+					string again = string.Join(",", System.Array.ConvertAll(args.GetArray(1), v => v.ToPrintString()));
+					return DynValue.NewString(inner + "|" + again);
+				}
+
+				return DynValue.NewString(own + ";" + args.IsMethodCall);
+			}, "f") { UsesArgumentsOnlyDuringCall = true };
+
+			DynValue r = script.DoString(@"
+				local function two() return 'b', 'c' end
+				local function none() end
+				local t = { f = f }
+				return f(1, two()), f(two(), 'z'), f(1, none()), t:f(9), f(function() return f('x', 'y') end, 7, 8)");
+
+			Assert.AreEqual("1,b,c;False", r.Tuple[0].String);
+			Assert.AreEqual("b,z;False", r.Tuple[1].String);
+			Assert.AreEqual("1;False", r.Tuple[2].String);
+			StringAssert.EndsWith(",9;True", r.Tuple[3].String);
+			Assert.AreEqual("x,y;False|7,8", r.Tuple[4].String);
+		}
+
+		public class ArgumentKeeper
+		{
+			public CallbackArguments Kept;
+
+			public int Keep(CallbackArguments args)
+			{
+				if (Kept == null)
+					Kept = args;
+
+				return args.Count;
+			}
+		}
+
+		[Test]
+		public void CallPath_UserDataMethodsKeepACopyOfTheirArguments()
+		{
+			// Userdata methods read their arguments in place, but a CallbackArguments parameter gets a copy
+			// that stays valid after the call.
+			UserData.RegisterType<ArgumentKeeper>();
+			Script script = new Script();
+			var keeper = new ArgumentKeeper();
+			script.Globals["k"] = keeper;
+
+			DynValue r = script.DoString("local n = k:Keep(1, 'two', 3) k:Keep(4, 5) return n + #string.rep('x', 3)");
+
+			Assert.AreEqual(6, r.Number);
+			Assert.AreEqual(3, keeper.Kept.Count);
+			Assert.AreEqual(1, keeper.Kept[0].Number);
+			Assert.AreEqual("two", keeper.Kept[1].String);
+			Assert.AreEqual(3, keeper.Kept[2].Number);
+		}
+			// Every shape of '...' (Lua 5.2's results, from lua5.2 5.2.4): the values stay on the value stack
+		// where the caller pushed them, and each consumer reads them there or copies them out before the
+		// frame goes.
+		const string VarArgsShapes = @"
+				local out = {}
+				local function put(...) local t = {} for i = 1, select('#', ...) do t[i] = tostring((select(i, ...))) end out[#out + 1] = table.concat(t, ',') end
+				local function none() end
+				local function two() return 'b', 'c' end
+				local function f(a, ...) local b, c = ... return a + b + c end
+				put(f(1, 2, 3), f(1, 2, 3, 4))
+				local function count(...) return select('#', ...) end
+				put(count(), count(nil), count(nil, nil), count(1, none()), count(none(), 1), count(two()), count(1, two()))
+				local function pack(...) return {...} end
+				local function packn(...) return {n = select('#', ...), ...} end
+				put(#pack(1, 2, 3), #pack(), packn(1, nil, 3).n, packn(1, nil, 3)[3])
+				local function mixed(...) local t = {0, ...} local u = {..., 9} return #t, t[4], #u, u[1], u[2] end
+				put(mixed(1, 2, 3))
+				local function fwd(...) return count(...), string.format(string.rep('%s', select('#', ...)), ...) end
+				put(fwd('x', 'y', 'z'))
+				local function ret(...) return ... end
+				put(ret()) put(ret(1)) put(ret(1, 2, 3)) put(ret(nil, nil))
+				local function scalar(...) return (...) end
+				put(scalar(4, 5, 6), scalar())
+				local function mid(...) return count(..., 'z'), (select(2, ..., 'z')) end
+				put(mid(1, 2, 3)) put(mid())
+				local function orv(...) local a = ... or 5 return a end
+				put(orv(), orv(false, 1), orv(7))
+				local function arith(...) return ... + 1, ... .. '!' end
+				put(arith(10, 20))
+				local function loop(n, ...) if n == 0 then return select('#', ...), ... end return loop(n - 1, ...) end
+				put(loop(300, 'a', nil, 'c'))
+				local function loopmid(n, ...) if n == 0 then return select('#', ...), ... end return loopmid(n - 1, ..., n) end
+				put(loopmid(3, 'q'))
+				local function iter(...) local r = {} for i, v in ... do r[#r + 1] = v end return table.concat(r, ',') end
+				put(iter(ipairs({'a', 'b'})))
+				local function pc(...) return pcall(count, ...) end
+				put(pc(1, 2, 3))
+				local co = coroutine.wrap(function(...) local a, b = ... local x = coroutine.yield(select('#', ...), ...) return x, ... end)
+				put(co(1, 2)) put(co('r'))
+				local function nested(...) local function g(...) return select('#', ...), ... end return g(g(...)) end
+				put(nested(5, 6))
+				local function holes(a, b, ...) return a, b, select('#', ...), ... end
+				put(holes(1)) put(holes(1, 2, nil)) put(holes(1, 2, nil, 4))
+				local function asargs(...) return math.max(...), select(-1, ...) end
+				put(asargs(3, 9, 4))
+				local function unpacked(...) return table.unpack({...}) end
+				put(unpacked(1, 2, 3))
+				local function deep(...) local a = {...} local function inner(...) return #a + select('#', ...) end return inner(...) end
+				put(deep(1, 2))
+				return table.concat(out, '\n')";
+
+		const string VarArgsShapesExpected =
+				"6,6\n" +
+				"0,1,2,1,2,2,3\n" +
+				"3,0,3,3\n" +
+				"4,3,2,1,9\n" +
+				"3,xyz\n" +
+				"\n" +
+				"1\n" +
+				"1,2,3\n" +
+				"nil,nil\n" +
+				"4,nil\n" +
+				"2,z\n" +
+				"2,z\n" +
+				"5,5,7\n" +
+				"11,10!\n" +
+				"3,a,nil,c\n" +
+				"2,q,1\n" +
+				"a,b\n" +
+				"true,3\n" +
+				"2,1,2\n" +
+				"r,1,2\n" +
+				"3,2,5,6\n" +
+				"1,nil,0\n" +
+				"1,2,1,nil\n" +
+				"1,2,2,nil,4\n" +
+				"9,4\n" +
+				"1,2,3\n" +
+				"4\n";
+
+		[Test]
+		public void CallPath_VarArgsShapesFollowLua52()
+		{
+			Assert.AreEqual(VarArgsShapesExpected.TrimEnd('\n'), new Script().DoString(VarArgsShapes).String);
+		}
+
+		[Test]
+		public void CallPath_VarArgsShapesFollowLua52UnderTailCalls()
+		{
+			// Every tail call reuses its frame: '...' values passed on must not point into the frame it removes.
+			Script s = new Script();
+			s.Options.TailCallOptimizationThreshold = 1;
+			Assert.AreEqual(VarArgsShapesExpected.TrimEnd('\n'), s.DoString(VarArgsShapes).String);
+		}
+			[Test]
+		public void CallPath_ArgumentReadersAndReturnWithoutDynValues()
+		{
+			// TypeAt, NumberAt and the other readers give what RawGet(i, false) ?? DynValue.Void would, in
+			// both argument forms; Return gives the result to the VM, to pcall, to a C# caller through
+			// ScriptExecutionContext.Call and to the host through Script.Call.
+			foreach (bool inPlace in new[] { false, true })
+			{
+				Script script = new Script();
+				var describe = new CallbackFunction((ctx, args) =>
+				{
+					var parts = new System.Collections.Generic.List<string>();
+
+					for (int i = 0; i <= args.Count; i++)
+					{
+						parts.Add(args.TypeAt(i) + ":" + args.NumberAt(i) + ":" + args.BooleanAt(i) + ":" + (args.StringAt(i) ?? "-")
+							+ ":" + (args.TableAt(i) != null) + ":" + (args.FunctionAt(i) != null) + ":" + (args.UserDataAt(i) != null)
+							+ ":" + (args.RawGet(i, false) ?? DynValue.Void).Type);
+					}
+
+					return ctx.Return(string.Join(" ", parts));
+				}, "describe") { UsesArgumentsOnlyDuringCall = inPlace };
+				var add = new CallbackFunction((ctx, args) => ctx.Return(args.NumberAt(0) + args.NumberAt(1)), "add") { UsesArgumentsOnlyDuringCall = inPlace };
+				var viaContext = new CallbackFunction((ctx, args) => DynValue.NewNumber(ctx.Call(DynValue.NewCallback(add), args[0], args[1]).Number * 10), "viaContext");
+
+				script.Globals["describe"] = describe;
+				script.Globals["add"] = add;
+				script.Globals["viaContext"] = viaContext;
+				UserData.RegisterType<ArgumentKeeper>();
+				script.Globals["ud"] = UserData.Create(new ArgumentKeeper());
+
+				DynValue r = script.DoString(@"
+					local function none() end
+					local function two() return 'x', 'y' end
+					local ok, sum = pcall(add, 2, 3)
+					return describe(5, true, 's', {}, print, function() end, ud, none(), nil, two()),
+						add(1e10, 0.5), ok, sum, viaContext(4, 5), { add(1, 2) }");
+
+				Assert.AreEqual("Number:5:True:-:False:False:False:Number Boolean:1:True:-:False:False:False:Boolean " +
+					"String:0:False:s:False:False:False:String Table:0:False:-:True:False:False:Table " +
+					"ClrFunction:0:False:-:False:False:False:ClrFunction Function:0:False:-:False:True:False:Function " +
+					"UserData:0:False:-:False:False:True:UserData Void:0:False:-:False:False:False:Void " +
+					"Nil:0:False:-:False:False:False:Nil String:0:False:x:False:False:False:String " +
+					"String:0:False:y:False:False:False:String Void:0:False:-:False:False:False:Void", r.Tuple[0].String, "in place: " + inPlace);
+				Assert.AreEqual(1e10 + 0.5, r.Tuple[1].Number);
+				Assert.AreEqual(true, r.Tuple[2].Boolean);
+				Assert.AreEqual(5, r.Tuple[3].Number);
+				Assert.AreEqual(90, r.Tuple[4].Number);
+				Assert.AreEqual(3, r.Tuple[5].Table.Get(1).Number);
+				Assert.AreEqual(7, script.Call(script.Globals.Get("add"), 3, 4).Number);
+			}
+		}
+			[Test]
+		public void CallPath_CSharpFunctionsCalledByPcallSeeTheirOwnAdditionalData()
+		{
+			// pcall and ScriptExecutionContext.Call ran a C# function with the caller's context, so
+			// AdditionalData was pcall's (null) or the calling callback's.
+			Script script = new Script();
+			var tagged = new CallbackFunction((ctx, args) => DynValue.NewString((string)ctx.AdditionalData), "tagged") { AdditionalData = "mine" };
+			var caller = new CallbackFunction((ctx, args) => ctx.Call(args[0]), "caller") { AdditionalData = "caller" };
+			script.Globals["tagged"] = tagged;
+			script.Globals["caller"] = caller;
+
+			DynValue r = script.DoString("local ok, v = pcall(tagged) return v, caller(tagged), tagged()");
+
+			Assert.AreEqual("mine", r.Tuple[0].String);
+			Assert.AreEqual("mine", r.Tuple[1].String);
+			Assert.AreEqual("mine", r.Tuple[2].String);
 		}
 	}
 }

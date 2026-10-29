@@ -13,7 +13,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 	/// <see cref="Object"/>. String, Function (a <see cref="Closure"/>), ClrFunction, Table, UserData and
 	/// Thread keep the object itself. Tuple, TailCallRequest and YieldRequest keep the
 	/// <see cref="DynValue"/> that carries them, except the generic for's iterator state, a Tuple whose
-	/// object is a <see cref="LuaValue"/>[3]. default(LuaValue) is nil.
+	/// object is a <see cref="LuaValue"/>[3], and the '...' of a running function, a Tuple whose object is
+	/// the <see cref="ValueStack"/> that holds the values (<see cref="ValueStack.VarArgs"/>).
+	/// default(LuaValue) is nil.
 	///
 	/// The design follows Lua-CSharp's LuaValue and WattleScript's struct DynValue on MoonSharp's own code
 	/// (ideas only):
@@ -117,6 +119,12 @@ namespace MoonSharp.Interpreter.Execution.VM
 		{
 			if (Type != DataType.Tuple)
 				return this;
+
+			ValueStack stack = Object as ValueStack;
+
+			// By reference, see ValueStack.VarArg.
+			if (stack != null)
+				return stack.VarArg(Number, 0);
 
 			DynValue[] values = ((DynValue)Object).Tuple;
 

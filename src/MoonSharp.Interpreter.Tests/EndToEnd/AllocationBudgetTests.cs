@@ -214,39 +214,64 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
+		public void AllocationBudget_CallsVarArgs()
+		{
+			// Lua-CSharp's calls-varargs case. '...' stays on the value stack where the caller pushed it: no
+			// argument list, no array and no tuple per call (248 bytes before).
+			AssertLuaBudget("calls_varargs", "local function f(a, ...) local b, c = ... return a + b + c end\nreturn function(n) local s = 0 for i = 1, n do s = s + f(i, 2, 3) end return s end", NoAllocation);
+		}
+
+		[Test]
+		public void AllocationBudget_VarArgsForward()
+		{
+			// '...' passed on to another vararg function, to select('#') and to a library function, and
+			// counted: the call copies the values from where they are (808 bytes before).
+			AssertLuaBudget("varargs_forward", "local function g(...) return select('#', ...) + math.max(...) end\nlocal function f(...) return g(...) end\nreturn function(n) local s = 0 for i = 1, n do s = s + f(1, 2, 3) end return s end", NoAllocation);
+		}
+
+		[Test]
+		public void AllocationBudget_ReturnVarArgs()
+		{
+			// return ... with one value returns it as it is (184 bytes before: the '...' tuple, and a DynValue
+			// for the value once it lived on the stack).
+			AssertLuaBudget("return_varargs", "local function e(...) return ... end\nreturn function(n) local s = 0 for i = 1, n do s = s + e(i) end return s end", NoAllocation);
+		}
+
+		[Test]
 		public void AllocationBudget_CoroutineSwitch()
 		{
 			// Each coroutine reuses its yield request, a resume with no values pushes nil without a DynValue,
-			// and an empty argument list is a shared array (400 bytes before). Left: two call contexts, the
-			// argument objects, the yielded values' array and the yielded number's DynValue.
-			AssertLuaBudget("coroutine_switch", "return function(n) local co = coroutine.wrap(function() local i = 0 while true do i = i + 1 coroutine.yield(i) end end)\nlocal s = 0 for i = 1, n do s = s + co() end return s end", 248);
+			// and an empty argument list is a shared array (400 bytes before). The two calls' contexts and
+			// argument views are reused (248 bytes before), the yielded values wait in a buffer the coroutine
+			// keeps, and coroutine.wrap hands one value to its caller through its context (72 bytes before).
+			AssertLuaBudget("coroutine_switch", "return function(n) local co = coroutine.wrap(function() local i = 0 while true do i = i + 1 coroutine.yield(i) end end)\nlocal s = 0 for i = 1, n do s = s + co() end return s end", NoAllocation);
 		}
 
 		[Test]
 		public void AllocationBudget_StringFormat()
 		{
 			// The library reads its arguments in place: no argument array and no DynValue per string or
-			// number argument (368 bytes before). What is left: the call's context and argument view, the
-			// result string and its DynValue (the table stores the string itself since it keeps VM values;
-			// 216 bytes before).
-			AssertLuaBudget("string_format", "local format = string.format\nreturn function(n) local buf, j = {}, 1 for i = 1, n do buf[j] = format('%d:%s', i, 'x') j = j + 1 if j > 64 then j = 1 end end return buf[64] end", 176);
+			// number argument (368 bytes before), through a context and an argument view the processor
+			// reuses, and the table stores the string itself since it keeps VM values (216 bytes before,
+			// 176 with either change alone). What is left: the result string and its DynValue.
+			AssertLuaBudget("string_format", "local format = string.format\nreturn function(n) local buf, j = {}, 1 for i = 1, n do buf[j] = format('%d:%s', i, 'x') j = j + 1 if j > 64 then j = 1 end end return buf[64] end", 80);
 		}
 
 		[Test]
 		public void AllocationBudget_StringPattern()
 		{
 			// The string_pattern workload: find with two captures, gsub of one character, match at the end.
-			// 48,840 bytes with the KopiLua matcher; what is left is the calls' contexts and argument views,
-			// the captures, results and their DynValues, and gsub's result string.
-			AssertLuaBudget("string_pattern", "local s = 'the quick brown fox 123 jumps over the lazy dog 4567'\nreturn function(n) local c = 0 for i = 1, n do local a, b = s:find('(%a+) (%d+)') local r, k = s:gsub('o', '0') c = c + a + k + #s:match('%d+$') end return c end", 968);
+			// 48,840 bytes with the KopiLua matcher, 968 with the calls' own contexts and argument views; what
+			// is left is the captures, results and their DynValues, and gsub's result string.
+			AssertLuaBudget("string_pattern", "local s = 'the quick brown fox 123 jumps over the lazy dog 4567'\nreturn function(n) local c = 0 for i = 1, n do local a, b = s:find('(%a+) (%d+)') local r, k = s:gsub('o', '0') c = c + a + k + #s:match('%d+$') end return c end", 680);
 		}
 
 		[Test]
 		public void AllocationBudget_GsubCapture()
 		{
 			// Lua-CSharp's "patterns" case: gsub with a capture and a %1 replacement. 7,528 bytes with the
-			// KopiLua matcher.
-			AssertLuaBudget("gsub_capture", "local gsub = string.gsub\nreturn function(n) local c = 0 for i = 1, n do c = c + #gsub('hello 123 world 456', '(%a+)', '[%1]') end return c end", 328);
+			// KopiLua matcher, 328 before the call's context and argument view were reused.
+			AssertLuaBudget("gsub_capture", "local gsub = string.gsub\nreturn function(n) local c = 0 for i = 1, n do c = c + #gsub('hello 123 world 456', '(%a+)', '[%1]') end return c end", 232);
 		}
 
 		[Test]
@@ -259,15 +284,42 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void AllocationBudget_LuaToCsCall1()
 		{
+			// The context is reused (192 bytes before). Left: the argument list a host callback may keep (an
+			// array and its CallbackArguments), the DynValue of i and the result's DynValue.
 			SkipUnlessMeasurable();
 			Script script = new Script();
 			script.Globals["f"] = DynValue.NewCallback((ctx, args) => DynValue.NewNumber(args[0].Number + 1));
-			AssertBudget("lua_to_cs_call1", LuaLoop(script, "local f = f\nreturn function(n) local s = 0 for i = 1, n do s = s + f(i) end return s end"), N, 192);
+			AssertBudget("lua_to_cs_call1", LuaLoop(script, "local f = f\nreturn function(n) local s = 0 for i = 1, n do s = s + f(i) end return s end"), N, 144);
+		}
+
+		[Test]
+		public void AllocationBudget_LuaToCsCall1InPlace()
+		{
+			// A host callback that uses its arguments only during the call reads them in place through a
+			// reused view. Left: the DynValue args[0] creates for i and the result's DynValue.
+			SkipUnlessMeasurable();
+			Script script = new Script();
+			script.Globals["f"] = new CallbackFunction((ctx, args) => DynValue.NewNumber(args[0].Number + 1)) { UsesArgumentsOnlyDuringCall = true };
+			AssertBudget("lua_to_cs_call1_in_place", LuaLoop(script, "local f = f\nreturn function(n) local s = 0 for i = 1, n do s = s + f(i) end return s end"), N, 80);
+		}
+
+		[Test]
+		public void AllocationBudget_HostCallsWithoutDynValues()
+		{
+			// Lua-CSharp's host-calls case written against the allocation-free API: arguments read in place
+			// with NumberAt and the result returned with ScriptExecutionContext.Return (240 bytes with
+			// DynValue.NewCallback, args[i].Number and DynValue.NewNumber before this branch).
+			SkipUnlessMeasurable();
+			Script script = new Script();
+			script.Globals["add"] = new CallbackFunction((ctx, args) => ctx.Return(args.NumberAt(0) + args.NumberAt(1))) { UsesArgumentsOnlyDuringCall = true };
+			AssertBudget("host_calls_no_dynvalues", LuaLoop(script, "local add = add\nreturn function(n) local s = 0 for i = 1, n do s = add(s, i) end return s end"), N, NoAllocation);
 		}
 
 		[Test]
 		public void AllocationBudget_CsToLuaCall3()
 		{
+			// Left: the host's params array, the host's DynValue for i and the result's DynValue. The call's
+			// calling location is shared and the arguments are pushed without an adjusted copy (224 before).
 			SkipUnlessMeasurable();
 			Script script = new Script();
 			DynValue fn = script.DoString("return function(a, b, c) return a * b + c end");
@@ -277,7 +329,23 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			{
 				for (long i = 0; i < n; i++)
 					script.Call(fn, DynValue.NewNumber(i), two, three);
-			}, N, 224);
+			}, N, 128);
+		}
+
+		[Test]
+		public void AllocationBudget_CsToLuaCall0()
+		{
+			// Script.Call(fn) and Closure.Call() with no arguments share one empty argument array (24 bytes per
+			// call before); the result 1 is a shared DynValue.
+			SkipUnlessMeasurable();
+			Script script = new Script();
+			DynValue fn = script.DoString("return function() return 1 end");
+
+			AssertBudget("cs_to_lua_call0", n =>
+			{
+				for (long i = 0; i < n; i++)
+					script.Call(fn);
+			}, N, NoAllocation);
 		}
 
 		[Test]
@@ -297,6 +365,24 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		}
 
 		[Test]
+		public void AllocationBudget_ClrInteropGenerated()
+		{
+			// The source generator's descriptors (the IL2CPP path) read their arguments in place
+			// (CallbackArguments.TypeAt, NumberAt) and give a number or string result through
+			// ScriptExecutionContext.Return: no allocation for a method call (248 bytes per call before this
+			// branch, docs/source-generator.md).
+			SkipUnlessMeasurable();
+
+			using (new RegistrySnapshot(typeof(InteropParityTests.ParityClass)))
+			{
+				UserData.RegisterType(MoonSharp.Generated.GeneratedUserData.CreateDescriptor(typeof(InteropParityTests.ParityClass)));
+				Script script = new Script();
+				script.Globals["obj"] = new InteropParityTests.ParityClass();
+				AssertBudget("clr_interop_generated", LuaLoop(script, "return function(n) local s = 0 for i = 1, n do s = s + obj:Add(i, 2) + obj:Add(i, i) end return s end"), N, NoAllocation);
+			}
+		}
+
+		[Test]
 		public void AllocationBudget_ClrInteropReflection()
 		{
 			SkipUnlessMeasurable();
@@ -307,7 +393,10 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			{
 				Script script = new Script();
 				script.Globals["obj"] = new Calc();
-				AssertBudget("clr_interop_reflection", LuaLoop(script, "return function(n) local s = 0 for i = 1, n do s = s + obj:Add(i, 2) + obj.Value end return s end"), N, 424);
+				// Userdata methods read their arguments in place through a reused context and view (424 bytes
+				// before): no argument array, argument object or DynValue for obj. Left: reflection's object[]
+				// and boxes, the DynValue of i, and the DynValues of the two results.
+				AssertBudget("clr_interop_reflection", LuaLoop(script, "return function(n) local s = 0 for i = 1, n do s = s + obj:Add(i, 2) + obj.Value end return s end"), N, 256);
 			}
 			finally
 			{

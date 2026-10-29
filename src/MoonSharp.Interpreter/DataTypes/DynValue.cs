@@ -206,6 +206,12 @@ namespace MoonSharp.Interpreter
 						if (d != null)
 							return d;
 
+						// The '...' of a running function.
+						Execution.VM.ValueStack stack = v.Object as Execution.VM.ValueStack;
+
+						if (stack != null)
+							return stack.VarArgsToDynValue(v.Number);
+
 						// The generic for's iterator state.
 						Execution.VM.LuaValue[] values = (Execution.VM.LuaValue[])v.Object;
 						DynValue[] tuple = new DynValue[values.Length];
@@ -564,9 +570,14 @@ namespace MoonSharp.Interpreter
 		/// </summary>
 		internal static DynValue EmptyTuple { get; private set; }
 
+		/// <summary>
+		/// An empty argument list, shared by the calls that pass none.
+		/// </summary>
+		internal static readonly DynValue[] NoValues = new DynValue[0];
+
 		static DynValue()
 		{
-			EmptyTuple = new DynValue() { m_Object = new DynValue[0], m_Type = DataType.Tuple, m_ReadOnly = true };
+			EmptyTuple = new DynValue() { m_Object = NoValues, m_Type = DataType.Tuple, m_ReadOnly = true };
 			Nil = new DynValue() { m_Type = DataType.Nil }.AsReadOnly();
 			Void = new DynValue() { m_Type = DataType.Void }.AsReadOnly();
 			True = DynValue.NewBoolean(true).AsReadOnly();

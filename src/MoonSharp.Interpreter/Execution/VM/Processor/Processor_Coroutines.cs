@@ -37,21 +37,64 @@ namespace MoonSharp.Interpreter.Execution.VM
 			return DynValue.NewCoroutine(new Coroutine(P));
 		}
 
-		// The yield request of coroutine.yield, reused by every yield of this coroutine: Coroutine_Resume
-		// takes its values before the coroutine can run again.
+		// The yield request of coroutine.yield, reused by every yield of this coroutine, and the values it
+		// yields, copied into a buffer the coroutine keeps: Coroutine_Resume takes them before the coroutine
+		// can run again, so a yield allocates nothing. m_YieldCount is -1 when no values wait there.
 		DynValue m_YieldRequest;
+		LuaValue[] m_YieldValues;
+		int m_YieldCount = -1;
 
 		/// <summary>
-		/// A request to yield <paramref name="values"/> from this coroutine.
+		/// A request to yield the values of <paramref name="args"/> from this coroutine.
 		/// </summary>
-		internal DynValue YieldRequestFor(DynValue[] values)
+		internal DynValue YieldRequestFor(CallbackArguments args)
 		{
+			int count = args.Count;
+
+			if (m_YieldValues == null || m_YieldValues.Length < count)
+				m_YieldValues = new LuaValue[Math.Max(4, count)];
+
+			for (int i = 0; i < count; i++)
+				m_YieldValues[i] = args.GetLuaValue(i);
+
+			m_YieldCount = count;
+
 			if (m_YieldRequest == null)
-				m_YieldRequest = DynValue.NewYieldReq(values);
-			else
-				m_YieldRequest.YieldRequest.ReturnValues = values;
+				m_YieldRequest = DynValue.NewYieldReq(null);
 
 			return m_YieldRequest;
+		}
+
+		/// <summary>
+		/// The values the last coroutine.yield left in the buffer, as one VM value: void for none, the value
+		/// for one, a tuple for more. The buffer lets go of them.
+		/// </summary>
+		private LuaValue TakeYieldValues()
+		{
+			int count = m_YieldCount;
+			m_YieldCount = -1;
+
+			if (count == 0)
+				return LuaValue.Void;
+
+			LuaValue result;
+
+			if (count == 1)
+			{
+				result = m_YieldValues[0];
+			}
+			else
+			{
+				DynValue[] values = new DynValue[count];
+
+				for (int i = 0; i < count; i++)
+					values[i] = m_YieldValues[i].ToDynValue();
+
+				result = DynValue.NewTuple(values).ToLuaValue();
+			}
+
+			Array.Clear(m_YieldValues, 0, count);
+			return result;
 		}
 
 		/// <summary>
@@ -68,6 +111,15 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		public DynValue Coroutine_Resume(DynValue[] args)
 		{
+			return Coroutine_ResumeValue(args).ToDynValue();
+		}
+
+		/// <summary>
+		/// <see cref="Coroutine_Resume"/> with the result as a VM value, so coroutine.wrap hands one yielded or
+		/// returned value to its caller without a DynValue.
+		/// </summary>
+		internal LuaValue Coroutine_ResumeValue(DynValue[] args)
+		{
 			EnterNative();
 			EnterProcessor();
 			bool completed = false;
@@ -82,35 +134,30 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 				CoroutineState previous = m_State;
 				m_State = CoroutineState.Running;
-				DynValue retVal;
+				LuaValue retVal;
 
 				if (previous == CoroutineState.NotStarted && m_ValueStack.Peek().Type == DataType.ClrFunction)
 				{
 					// A C# function as the body (coroutine.create(select)): call it as the VM calls one. A tail
 					// call it returns runs here as the coroutine's code; a yield it returns suspends it.
-					DynValue[] a = Internal_AdjustTuple(args);
-
-					for (int i = 0; i < a.Length; i++)
-						m_ValueStack.Push(a[i]);
-
-					int ip = Internal_ExecCall(a.Length, -1);
+					int ip = Internal_ExecCall(PushHostArguments(args), -1);
 
 					if (ip == YIELD_SPECIAL_TRAP)
-						retVal = m_ValueStack.Pop().ToScalar().ToDynValue();
+						retVal = m_ValueStack.Pop().ToScalar();
 					else if (ip < 0)
-						retVal = m_ValueStack.Pop().ToDynValue();
+						retVal = m_ValueStack.Pop();
 					else
-						retVal = Processing_Loop(ip);
+						retVal = Processing_LoopValue(ip);
 				}
 				else if (previous == CoroutineState.NotStarted)
 				{
-					retVal = Processing_Loop(PushClrToScriptStackFrame(CallStackItemFlags.ResumeEntryPoint, null, args));
+					retVal = Processing_LoopValue(PushClrToScriptStackFrame(CallStackItemFlags.ResumeEntryPoint, null, args));
 				}
 				else if (m_SavedInstructionPtr < 0 && !PendingFrameOnTop())
 				{
 					// A C# body that yielded (coroutine.create(coroutine.yield)) has nothing left to run:
 					// the values of this resume are its results.
-					retVal = DynValue.NewTuple(args);
+					retVal = DynValue.NewTuple(args).ToLuaValue();
 				}
 				else
 				{
@@ -122,14 +169,16 @@ namespace MoonSharp.Interpreter.Execution.VM
 					// A C# function that yielded with handlers (pcall(coroutine.yield), a continuation)
 					// left its frame pending: the values go through it first.
 					m_ReturnToPending = PendingFrameOnTop();
-					retVal = Processing_Loop(m_SavedInstructionPtr);
+					retVal = Processing_LoopValue(m_SavedInstructionPtr);
 				}
 
 				completed = true;
 
 				if (retVal.Type == DataType.YieldRequest)
 				{
-					if (retVal.YieldRequest.Forced)
+					DynValue request = (DynValue)retVal.Object;
+
+					if (request.YieldRequest.Forced)
 					{
 						m_State = CoroutineState.ForceSuspended;
 						return retVal;
@@ -137,13 +186,18 @@ namespace MoonSharp.Interpreter.Execution.VM
 					else
 					{
 						m_State = CoroutineState.Suspended;
-						DynValue[] values = retVal.YieldRequest.ReturnValues;
+
+						// coroutine.yield left its values in the buffer.
+						if (request == m_YieldRequest && m_YieldCount >= 0)
+							return TakeYieldValues();
+
+						DynValue[] values = request.YieldRequest.ReturnValues;
 
 						// the reused request must not keep the values alive
-						if (retVal == m_YieldRequest)
-							retVal.YieldRequest.ReturnValues = null;
+						if (request == m_YieldRequest)
+							request.YieldRequest.ReturnValues = null;
 
-						return DynValue.NewTuple(values);
+						return DynValue.NewTuple(values).ToLuaValue();
 					}
 				}
 				else

@@ -128,10 +128,18 @@ namespace MoonSharp.Interpreter
 		/// <exception cref="System.InvalidOperationException">Only non-CLR coroutines can be resumed with this overload of the Resume method. Use the overload accepting a ScriptExecutionContext instead</exception>
 		public DynValue Resume(params DynValue[] args)
 		{
+			return ResumeValue(args).ToDynValue();
+		}
+
+		/// <summary>
+		/// <see cref="Resume(DynValue[])"/> with the result as a VM value (coroutine.wrap).
+		/// </summary>
+		internal Execution.VM.LuaValue ResumeValue(DynValue[] args)
+		{
 			this.CheckScriptOwnership(args);
 
 			if (Type == CoroutineType.Coroutine)
-				return m_Processor.Coroutine_Resume(args);
+				return m_Processor.Coroutine_ResumeValue(args);
 			else 
 				throw new InvalidOperationException("Only non-CLR coroutines can be resumed with this overload of the Resume method. Use the overload accepting a ScriptExecutionContext instead");
 		}
@@ -162,7 +170,7 @@ namespace MoonSharp.Interpreter
 		/// <exception cref="System.InvalidOperationException">Only non-CLR coroutines can be resumed with this overload of the Resume method. Use the overload accepting a ScriptExecutionContext instead</exception>
 		public DynValue Resume()
 		{
-			return Resume(new DynValue[0]);
+			return Resume(DynValue.NoValues);
 		}
 
 
@@ -173,7 +181,7 @@ namespace MoonSharp.Interpreter
 		/// <returns></returns>
 		public DynValue Resume(ScriptExecutionContext context)
 		{
-			return Resume(context, new DynValue[0]);
+			return Resume(context, DynValue.NoValues);
 		}
 
 		/// <summary>

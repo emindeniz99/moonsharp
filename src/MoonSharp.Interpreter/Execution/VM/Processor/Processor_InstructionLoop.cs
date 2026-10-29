@@ -754,6 +754,11 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			if (v.Type == DataType.Tuple)
 			{
+				ValueStack varArgs = v.Object as ValueStack;
+
+				if (varArgs != null)
+					return ParameterValue(varArgs.VarArg(v.Number, tupleidx));
+
 				DynValue[] tuple = v.TupleValue.Tuple;
 				DynValue e = (tupleidx < tuple.Length) ? tuple[tupleidx] : null;
 
@@ -859,11 +864,17 @@ namespace MoonSharp.Interpreter.Execution.VM
 			if (t.Type == DataType.Tuple)
 			{
 				LuaValue[] state = t.Object as LuaValue[];
+				ValueStack varArgs = t.Object as ValueStack;
 
 				if (state != null)
 				{
 					for (int idx = 0; idx < state.Length; idx++)
 						m_ValueStack.Push(state[idx]);
+				}
+				else if (varArgs != null)
+				{
+					for (int idx = 0; idx < ValueStack.VarArgsCount(t.Number); idx++)
+						m_ValueStack.Push(varArgs.VarArg(t.Number, idx));
 				}
 				else
 				{
@@ -1112,116 +1123,66 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		/// <summary>
 		/// The arguments of a call to a C# function, the top <paramref name="numargs"/> stack values, as
-		/// DynValues. A last argument that is a tuple of more than one value is expanded.
+		/// DynValues (Internal_ExecCall expanded a last argument holding several values).
 		/// </summary>
 		private DynValue[] CreateArgsListForFunctionCall(int numargs)
 		{
 			if (numargs == 0) return s_NoArgs;
 
 			int first = m_ValueStack.Count - numargs;
-			ref LuaValue lastParam = ref m_ValueStack[first + numargs - 1];
+			DynValue[] values = new DynValue[numargs];
 
-			if (lastParam.Type == DataType.Tuple && lastParam.TupleValue.Tuple.Length > 1)
-			{
-				DynValue[] tuple = lastParam.TupleValue.Tuple;
-				DynValue[] values = new DynValue[numargs - 1 + tuple.Length];
+			for (int idx = 0; idx < numargs; idx++)
+				values[idx] = m_ValueStack[first + idx].ToDynValue();
 
-				for (int idx = 0; idx < numargs - 1; idx++)
-					values[idx] = m_ValueStack[first + idx].ToDynValue();
-
-				Array.Copy(tuple, 0, values, numargs - 1, tuple.Length);
-				return values;
-			}
-			else
-			{
-				DynValue[] values = new DynValue[numargs];
-
-				for (int idx = 0; idx < numargs; idx++)
-					values[idx] = m_ValueStack[first + idx].ToDynValue();
-
-				return values;
-			}
+			return values;
 		}
 
 
 		private void ExecArgs(Instruction I)
 		{
-			// The arguments sit right below the frame's base pointer; the count is in the frame.
+			// The arguments sit right below the frame's base pointer; the count is in the frame. The caller
+			// expanded a last argument holding several values (Internal_ExecCall, PushHostArguments), so only
+			// a call that returned nothing can be left at the end, and it passes no value.
 			ref CallStackItem frame = ref m_ExecutionStack.Peek();
 			int numargs = frame.ArgCount;
 			int basePointer = frame.BasePointer;
 			int argsBase = basePointer - numargs;
 			SymbolRef[] symbols = I.SymbolList;
+			int fixedCount = symbols.Length;
+			bool hasVarArgs = fixedCount > 0 && symbols[fixedCount - 1].i_Name == WellKnownSymbols.VARARGS;
 
-			bool lastArgExpands = numargs > 0 && m_ValueStack[argsBase + numargs - 1].Type == DataType.Tuple
-				&& m_ValueStack[argsBase + numargs - 1].TupleValue.Tuple.Length > 1;
-			bool hasVarArgs = symbols.Length > 0 && symbols[symbols.Length - 1].i_Name == WellKnownSymbols.VARARGS;
+			if (hasVarArgs)
+				fixedCount--;
 
-			if (!lastArgExpands && !hasVarArgs)
+			// Copy the arguments, read in place, into the parameters' slots.
+			for (int i = 0; i < fixedCount; i++)
 			{
-				// Common case: copy the arguments, read in place, into the parameters' slots.
-				for (int i = 0; i < symbols.Length; i++)
-				{
-					m_ValueStack[basePointer + symbols[i].i_Index] = (i < numargs)
-						? ParameterValue(m_ValueStack[argsBase + i])
-						: LuaValue.Nil;
-				}
+				m_ValueStack[basePointer + symbols[i].i_Index] = (i < numargs)
+					? ParameterValue(m_ValueStack[argsBase + i])
+					: LuaValue.Nil;
+			}
 
+			if (!hasVarArgs)
 				return;
-			}
 
-			// unpacks last tuple arguments to simplify a lot of code down under
-			List<LuaValue> argsList = new List<LuaValue>(numargs);
+			if (numargs > 0 && m_ValueStack[argsBase + numargs - 1].Type == DataType.Void)
+				numargs--;
 
-			for (int i = 0; i < numargs; i++)
+			// '...' is the arguments after the parameters, where they are: no array, no DynValue. Each of
+			// them is one value ('...' or a call in the middle of an argument list gives its first one).
+			int first = argsBase + fixedCount;
+			int count = Math.Max(0, numargs - fixedCount);
+
+			for (int k = first; k < first + count; k++)
 			{
-				LuaValue a = m_ValueStack[argsBase + i];
+				ref LuaValue v = ref m_ValueStack[k];
 
-				if (i == numargs - 1 && lastArgExpands)
-				{
-					foreach (DynValue d in a.TupleValue.Tuple)
-						argsList.Add(d.ToLuaValue());
-				}
-				else if (i == numargs - 1 && (a.Type == DataType.Void || a.Type == DataType.Tuple))
-				{
-					// A last argument that is a call returning no values (f(1, g())) adds none, or its one value.
-					LuaValue v = a.ToScalar();
-					if (v.Type != DataType.Void)
-						argsList.Add(v);
-				}
-				else
-				{
-					argsList.Add(a);
-				}
+				if (v.Type == DataType.Tuple)
+					v = v.ToScalar();
 			}
 
-			for (int i = 0; i < symbols.Length; i++)
-			{
-				bool isVarArgs = (i == symbols.Length - 1) && (symbols[i].i_Name == WellKnownSymbols.VARARGS);
-
-				if (i >= argsList.Count)
-				{
-					// '...' with no values is an empty list, not one nil (select('#', ...) is 0).
-					this.AssignLocal(symbols[i], isVarArgs ? DynValue.EmptyTuple.ToLuaValue() : LuaValue.Nil);
-				}
-				else if (isVarArgs)
-				{
-					int len = argsList.Count - i;
-					DynValue[] varargs = new DynValue[len];
-
-					for (int ii = 0; ii < len; ii++, i++)
-					{
-						varargs[ii] = argsList[i].ToScalar().ToDynValue();
-					}
-
-					DynValue[] adjusted = Internal_AdjustTuple(varargs);
-					this.AssignLocal(symbols[symbols.Length - 1], (adjusted.Length == 0 ? DynValue.EmptyTuple : DynValue.NewTuple(adjusted)).ToLuaValue());
-				}
-				else
-				{
-					this.AssignLocal(symbols[i], ParameterValue(argsList[i]));
-				}
-			}
+			m_ValueStack[basePointer + symbols[fixedCount].i_Index] = m_ValueStack.VarArgs(first, count);
 		}
 
 		/// <summary>
@@ -1248,6 +1209,16 @@ namespace MoonSharp.Interpreter.Execution.VM
 			CallbackFunction continuation = null, bool thisCall = false, string debugText = null, DynValue unwindHandler = null,
 			bool metamethod = false, bool returnsToPending = false)
 		{
+			// A last argument holding several values (a call's results, '...') passes them all, and a call
+			// that returned nothing passes none: the callee gets one value per stack slot.
+			if (argsCount > 0)
+			{
+				DataType lastType = m_ValueStack.Peek().Type;
+
+				if (lastType == DataType.Tuple || lastType == DataType.Void)
+					argsCount = ExpandLastArgument(argsCount);
+			}
+
 			LuaValue fn = m_ValueStack.Peek(argsCount);
 			CallStackItemFlags flags = (thisCall ? CallStackItemFlags.MethodCall : CallStackItemFlags.None);
 
@@ -1274,9 +1245,12 @@ namespace MoonSharp.Interpreter.Execution.VM
 						ref CallStackItem csi = ref m_ExecutionStack.Peek();
 
 						// if the current stack item has no "odd" things pending and neither has the new coming one..
-						if (csi.ClrFunction == null && csi.Handlers == null
+						// An entry frame stays: the loop that runs it returns to C# when it returns, and errors
+						// unwind down to it.
+						if (csi.ClrFunction == null && csi.Handlers == null && (csi.Flags & CallStackItemFlags.EntryPoint) == 0
 							&& continuation == null && unwindHandler == null && handler == null)
 						{
+							ScalarizeArguments(argsCount);
 							instructionPtr = PerformTCO(instructionPtr, argsCount);
 							flags |= CallStackItemFlags.TailCall;
 						}
@@ -1294,12 +1268,13 @@ namespace MoonSharp.Interpreter.Execution.VM
 				if (callback.BuiltinId != 0 && handlers == null && TryFastCall(callback.BuiltinId, argsCount))
 					return instructionPtr;
 
-				DynValue[] args = (callback.ReadsArgumentsInPlace && argsCount > 0) ? null : CreateArgsListForFunctionCall(argsCount);
+				DynValue[] args = callback.ReadsArgumentsInPlace ? null : CreateArgsListForFunctionCall(argsCount);
 
 				// instructionPtr - 1: instructionPtr already points to the next instruction at this moment
 				// but we need the current instruction here
 				SourceRef sref = GetCurrentSourceRef(instructionPtr - 1);
 
+				int depth = m_ExecutionStack.Count;
 				ref CallStackItem frame = ref m_ExecutionStack.Push();
 				frame.ClrFunction = callback;
 				frame.ReturnAddress = instructionPtr;
@@ -1310,12 +1285,16 @@ namespace MoonSharp.Interpreter.Execution.VM
 				frame.Flags = flags;
 				frame.CCalls = cCalls;
 
-				var ctx = new ScriptExecutionContext(this, callback, sref);
+				ScriptExecutionContext ctx = CallContext(depth, callback, sref);
 				var ret = args == null
-					? callback.InvokeOnStack(ctx, m_ValueStack, m_ValueStack.Count - argsCount, argsCount, thisCall)
-					: callback.Invoke(ctx, args, isMethodCall: thisCall);
+					? callback.InvokeOnStack(ctx, CallArguments(depth), m_ValueStack, m_ValueStack.Count - argsCount, argsCount, thisCall)
+					: callback.InvokeFromProcessor(ctx, args, thisCall);
 				m_ValueStack.RemoveLast(argsCount + 1);
-				m_ValueStack.Push(ret);
+
+				if (ReferenceEquals(ret, ScriptExecutionContext.ResultInContext))
+					m_ValueStack.Push(ctx.TakeResult());
+				else
+					m_ValueStack.Push(ret);
 
 				if (handlers != null)
 					return ClrCallWithHandlersReturned(instructionPtr);
@@ -1454,6 +1433,16 @@ namespace MoonSharp.Interpreter.Execution.VM
 			else if (i.NumVal == 1)
 			{
 				var retval = m_ValueStack.Pop();
+
+				// return ...: the values live in this frame. One value is returned as it is; none or several
+				// as the DynValue the '...' local used to hold.
+				if (retval.Type == DataType.Tuple && retval.Object is ValueStack)
+				{
+					retval = ValueStack.VarArgsCount(retval.Number) == 1
+						? m_ValueStack.Items[ValueStack.VarArgsStart(retval.Number)]
+						: retval.ToDynValue().ToLuaValue();
+				}
+
 				retpoint = PopScriptFrame(out handlers);
 				m_ValueStack.Push(retval);
 				retpoint = Internal_CheckForTailRequests(i, retpoint);
@@ -1865,6 +1854,17 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			if (tbl.Type != DataType.Table)
 				throw new InternalErrorException("Unexpected type in table ctor : {0}", tbl);
+
+			ValueStack varArgs = val.Object as ValueStack;
+
+			if (varArgs != null && val.Type == DataType.Tuple && i.NumVal != 0)
+			{
+				// {...}: the values in place, without a tuple.
+				for (int k = 0; k < ValueStack.VarArgsCount(val.Number); k++)
+					((Table)tbl.Object).InitNextArrayKeys(varArgs.VarArg(val.Number, k), true);
+
+				return;
+			}
 
 			((Table)tbl.Object).InitNextArrayKeys(val, i.NumVal != 0);
 		}

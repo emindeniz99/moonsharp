@@ -54,6 +54,16 @@ namespace MoonSharp.Interpreter
 		/// <returns></returns>
 		public DynValue Invoke(ScriptExecutionContext executionContext, IList<DynValue> args, bool isMethodCall = false)
 		{
+			DynValue ret = InvokeFromProcessor(executionContext, args, isMethodCall);
+			return executionContext != null ? executionContext.Resolve(ret) : ret;
+		}
+
+		/// <summary>
+		/// <see cref="Invoke"/> for the processor, which takes a result left in the context
+		/// (<see cref="ScriptExecutionContext.Return(double)"/>) itself.
+		/// </summary>
+		internal DynValue InvokeFromProcessor(ScriptExecutionContext executionContext, IList<DynValue> args, bool isMethodCall)
+		{
 			if (isMethodCall)
 			{
 				var colon = executionContext.GetScript().Options.ColonOperatorClrCallbackBehaviour;
@@ -69,9 +79,21 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
-		/// Set for the functions of the standard library, which read their arguments in place on the value
-		/// stack (<see cref="InvokeOnStack"/>) because they never keep a <see cref="CallbackArguments"/>.
+		/// Whether the callback uses its <see cref="CallbackArguments"/> only until it returns. The standard
+		/// library, userdata methods and delegates converted by MoonSharp do; set it for a host callback that
+		/// does too. A Lua call to such a function then reads the arguments in place on the value stack
+		/// through an argument object the processor reuses, instead of copying them into a new array and a new
+		/// argument object: the call allocates nothing for its arguments. The callback must not keep the
+		/// argument object or read it after it returns (copy what it needs, for example with
+		/// <see cref="CallbackArguments.GetArray"/>). Default false: the callback gets arguments of its own,
+		/// which it may keep.
 		/// </summary>
+		public bool UsesArgumentsOnlyDuringCall
+		{
+			get { return ReadsArgumentsInPlace; }
+			set { ReadsArgumentsInPlace = value; }
+		}
+
 		internal bool ReadsArgumentsInPlace;
 
 		/// <summary>
@@ -80,10 +102,11 @@ namespace MoonSharp.Interpreter
 		internal int BuiltinId;
 
 		/// <summary>
-		/// <see cref="Invoke"/> with the arguments read in place from the value stack: the top
-		/// <paramref name="count"/> values from <paramref name="first"/>.
+		/// <see cref="Invoke"/> with the arguments read in place from the value stack, through
+		/// <paramref name="args"/>: the top <paramref name="count"/> values from <paramref name="first"/>.
 		/// </summary>
-		internal DynValue InvokeOnStack(ScriptExecutionContext executionContext, Execution.VM.ValueStack stack, int first, int count, bool isMethodCall)
+		internal DynValue InvokeOnStack(ScriptExecutionContext executionContext, CallbackArguments.StackArguments args,
+			Execution.VM.ValueStack stack, int first, int count, bool isMethodCall)
 		{
 			if (isMethodCall)
 			{
@@ -95,7 +118,8 @@ namespace MoonSharp.Interpreter
 					isMethodCall = (count > 0 && stack.Items[first].Type == DataType.UserData);
 			}
 
-			return ClrCallback(executionContext, new CallbackArguments.StackArguments(stack, first, count, isMethodCall)) ?? DynValue.Nil;
+			args.Reuse(stack, first, count, isMethodCall);
+			return ClrCallback(executionContext, args) ?? DynValue.Nil;
 		}
 
 		/// <summary>

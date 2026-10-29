@@ -69,20 +69,27 @@ and converts the result:
 ```csharp
 case 4: // int Add(int a, int b)
 {
-    DynValue v0 = args.RawGet(j++, false) ?? DynValue.Void;
-    int a0 = ToInt32(v0);
-    DynValue v1 = args.RawGet(j++, false) ?? DynValue.Void;
-    int a1 = ToInt32(v1);
+    int i0 = j++;
+    int a0 = ToInt32(args, i0);
+    int i1 = j++;
+    int a1 = ToInt32(args, i1);
     var r = ((Calc)obj).Add(a0, a1);
-    return FromInt32(script, r);
+    return ReturnInt32(context, script, r);
 }
 ```
 
-`ToInt32` reads a Lua number directly when no custom converter is registered
-for it, and otherwise calls `DynValue.ToObject(typeof(int))`, the conversion
-reflection uses. Results and error messages are therefore the same as with
-reflection (the tests below compare them). Results of primitive types are
-built without boxing; other values go through `DynValue.FromObject`.
+`ToInt32` reads a Lua number in place on the value stack
+(`CallbackArguments.TypeAt` and `NumberAt`) when no custom converter is
+registered for it, and otherwise calls `DynValue.ToObject(typeof(int))` on
+`args.RawGet(i, false) ?? DynValue.Void`, the conversion reflection uses.
+Strings, booleans, tables, Lua functions, userdata and enums are read in place
+the same way. Results and error messages are therefore the same as with
+reflection (the tests below compare them). A number or string result goes
+back through `ScriptExecutionContext.Return`, which hands it to the VM
+without a `DynValue`; other results are built without boxing where they are
+primitive and go through `DynValue.FromObject` otherwise. A method call from
+Lua with such arguments and result allocates nothing (`AllocationBudgetTests`,
+`clr_interop_generated`).
 
 Members are added to the descriptor with `AddMember`, as
 `StandardUserDataDescriptor` adds them, so MoonSharp's own overload
@@ -263,6 +270,18 @@ method and calls Lua from C#, two runs each:
 | C# calls `function(a, b, c) return a * b + c end`, `Script.Call` with `DynValue`s | 346, 351 | 375, 317 | 224 |
 | the same, `Closure.Call<double, double, double, double>` | 205, 212 | 281, 238 | 0 |
 
+On branch `perf/call-path` (2026-10-29, against `next` 5761ae2, two runs each,
+both builds on the same machine one after the other under the benchmark lock;
+ns per iteration):
+
+| Case | JIT `next` | JIT branch | NativeAOT `next` | NativeAOT branch | bytes `next` | bytes branch |
+|---|---:|---:|---:|---:|---:|---:|
+| `obj:Add(i, 2)`, generated | 177, 181 | 113, 119 | 190, 191 | 130, 120 | 248 | 0 |
+| `obj:Pick(i)` (int or string overload), generated | 176, 169 | 120, 111 | 176, 178 | 129, 126 | 240 | 0 |
+| `obj:Add(i, 2)`, reflection | 256, 264 | 214, 212 | 452, 450 | 401, 382 | 360 | 192 |
+| `obj.Value`, generated | 60, 63 | 61, 62 | 61, 65 | 57, 59 | 40 | 40 |
+| `Script.Call` with `DynValue`s | 233, 221 | 172, 163 | 223, 212 | 170, 166 | 224 | 128 |
+
 ## Follow-ups
 
 - Run the Unity matrix once the secrets exist: it is the first real proof
@@ -271,8 +290,7 @@ method and calls Lua from C#, two runs each:
 - Delegate factories for `void` delegates discard the result through
   `Call<..., DynValue>`, which creates a `DynValue` when the function returns
   a string, table or large number; the interpreter's own bridge does not.
-- Calls without the bound callback: a generated colon call could skip
-  `CallbackArguments` once the VM offers a typed call convention (roadmap
-  B7).
+- Property and field reads (`obj.Value`) still return a new `DynValue` for
+  a number, string or table: the index path has no context to return through.
 - Emit a `link.xml` fragment for the members bound by reflection, once
   Unity's linker can be fed one from an analyzer (an Editor build callback).

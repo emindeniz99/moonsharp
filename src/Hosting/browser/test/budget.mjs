@@ -7,9 +7,9 @@
 // - the first paint (the page is usable for typing while the runtime downloads);
 // - one cold load in Chromium under DevTools slow-4G and 4x CPU throttling, files sent as brotli: a check
 //   on the model that needs no assumption about the request chain (reported only, CI machines vary).
-// Exits 1 when the bytes or the start time exceed their entry in budget.json's "enforced". With GITHUB_STEP_SUMMARY set, appends a
-// table to the job summary.
-// usage: node test/budget.mjs <published wwwroot> <fixturesDir> [runs]
+// Exits 1 when the bytes or the start time exceed the build's entry in budget.json's "enforced". With GITHUB_STEP_SUMMARY set,
+// appends a table to the job summary.
+// usage: node test/budget.mjs <published wwwroot> <fixturesDir> [interpreter|aot] [runs]
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -17,9 +17,11 @@ import { fileURLToPath } from "node:url";
 import { serve } from "./serve.mjs";
 
 const { chromium } = createRequire(import.meta.url)("playwright");
-const [root, fixtures, runsArg = "5"] = process.argv.slice(2);
+const [root, fixtures, build = "interpreter", runsArg = "5"] = process.argv.slice(2);
 const budget = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "budget.json"), "utf8"));
 const runs = Number(runsArg);
+const enforced = budget.enforced[build];
+if (!enforced) throw new Error(`unknown build ${build}; budget.json has ${Object.keys(budget.enforced).join(", ")}`);
 
 const server = await serve(root, fixtures);
 const origin = `http://127.0.0.1:${server.address().port}`;
@@ -84,7 +86,7 @@ starts.sort((a, b) => a - b);
 paints.sort((a, b) => a - b);
 const startMs = starts[Math.floor(starts.length / 2)];
 const paintMs = paints[Math.floor(paints.length / 2)];
-const a = budget.target, enforced = budget.enforced;
+const a = budget.target;
 const bytesPerMs = a.throughputKbps * 1024 / 8 / 1000;
 const networkMs = a.roundTrips * a.rttMs + brotli / bytesPerMs;
 const phoneMs = networkMs + a.cpuSlowdown * startMs;
@@ -107,11 +109,11 @@ const rows = [
 const table = ["| Measurement | Now | Budget |", "|---|---|---|", ...rows.map(r => `| ${r.join(" | ")} |`)].join("\n");
 
 console.log(table);
-console.log(JSON.stringify({ files, brotliBytes: brotli, rawBytes: raw, startsMs: starts, paintsMs: paints, phoneMs: Math.round(phoneMs),
+console.log(JSON.stringify({ build, files, brotliBytes: brotli, rawBytes: raw, startsMs: starts, paintsMs: paints, phoneMs: Math.round(phoneMs),
   slow4gReadyMs: slow4g.readyMs, slow4gPaintMs: slow4g.paintMs }));
 if (process.env.GITHUB_STEP_SUMMARY)
-  fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Browser first-load budget\n\n${table}\n\n${failures.length ? "Over budget: " + failures.join("; ") : "Within budget."}\n`);
+  fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Browser first-load budget, ${build} build\n\n${table}\n\n${failures.length ? "Over budget: " + failures.join("; ") : "Within budget."}\n`);
 
 for (const f of failures) console.log(`OVER BUDGET: ${f}`);
-console.log(failures.length === 0 ? "browser budget: within budget" : "browser budget: over budget");
+console.log(failures.length === 0 ? `browser budget (${build}): within budget` : `browser budget (${build}): over budget`);
 process.exit(failures.length === 0 ? 0 : 1);

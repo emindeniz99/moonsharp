@@ -85,6 +85,9 @@ namespace DotNetCoreTestRunner
 			"Descriptor_PreservesEveryModuleType",
 			"Descriptor_PreservesSelfRegisteredUserData",
 			"Descriptor_NamesOnlyTypesThatExist",
+			// The same for ILLink.Substitutions.xml, and NativeAOT keeps no reflection metadata for the
+			// private methods it checks.
+			"Substitutions_StubOnlyMembersThatExist",
 
 			//"RegCollGen_List_ExtMeth_Last",
 			//"VInterop_NIntPropertySetter_None",

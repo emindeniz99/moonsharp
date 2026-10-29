@@ -17,4 +17,5 @@ note; they are not part of this repository.
 | [moonsharp-profile.md](moonsharp-profile.md) | Where MoonSharp spends time and allocations |
 | [table-order.md](table-order.md) | Table array part and `pairs` order, measured |
 | [register-vm-spike.md](register-vm-spike.md) | Register VM prototype (branch `spike/register-vm`): gain over fusion and Lua-CSharp, coverage, what a rewrite needs |
+| [lua52-conformance.md](lua52-conformance.md) | Where the fork differs from Lua 5.2.4: the official test suite and 5,710 differential cases, with causes, fix sizes and a top 10 |
 | [landscape/LANDSCAPE.md](landscape/LANDSCAPE.md) | Every way to run server-delivered logic on Unity, browsers and the JVM, compared |

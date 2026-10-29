@@ -148,7 +148,31 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void AllocationBudget_MethodCall()
 		{
-			AssertLuaBudget("method_call", "local C = {} C.__index = C\nfunction C:inc() self.v = self.v + 1 end\nlocal o = setmetatable({ v = 0 }, C)\nreturn function(n) for i = 1, n do o:inc() end return o.v end", 40);
+			// Tables store numbers as VM values: the update of self.v allocates nothing (40 bytes before).
+			AssertLuaBudget("method_call", "local C = {} C.__index = C\nfunction C:inc() self.v = self.v + 1 end\nlocal o = setmetatable({ v = 0 }, C)\nreturn function(n) for i = 1, n do o:inc() end return o.v end", NoAllocation);
+		}
+
+		[Test]
+		public void AllocationBudget_MethodCallOnManyObjects()
+		{
+			// One call site over eight instances of one class, each with a fractional field.
+			AssertLuaBudget("method_call_many_objects", "local C = {} C.__index = C\nfunction C:get() return self.v end\nlocal objs = {} for k = 1, 8 do objs[k] = setmetatable({ v = k + 0.5 }, C) end\nreturn function(n) local s = 0 for i = 1, n do s = s + objs[i % 8 + 1]:get() end return s end", NoAllocation);
+		}
+
+		[Test]
+		public void AllocationBudget_FloatFieldWrites()
+		{
+			// The nbody pattern: fractional fields of same-shaped tables read and written (40 bytes per
+			// stored number before tables stored VM values).
+			AssertLuaBudget("float_field_writes", "local bodies = {} for k = 1, 4 do bodies[k] = { x = k * 0.5, vx = 0.25 } end\nreturn function(n) for i = 1, n do local b = bodies[i % 4 + 1] b.vx = b.vx * 0.999 b.x = b.x + b.vx * 0.01 end end", NoAllocation);
+		}
+
+		[Test]
+		public void AllocationBudget_Metamethods()
+		{
+			// Lua-CSharp's "metamethods" case per iteration: __add and an __index function. Metamethods are
+			// read from the metatable as VM values, without a DynValue.
+			AssertLuaBudget("metamethods", "local mt = { __add = function(a, b) return a.x + b.x end, __index = function(t, k) return 5 end }\nlocal a, b = setmetatable({ x = 3 }, mt), setmetatable({ x = 4 }, mt)\nreturn function(n) local s = 0 for i = 1, n do s = s + (a + b) + a.missing end return s end", NoAllocation);
 		}
 
 		[Test]
@@ -160,7 +184,8 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void AllocationBudget_TableHashSetGet()
 		{
-			AssertLuaBudget("table_hash_set_get", "local keys = {} for i = 1, 64 do keys[i] = 'key' .. i end\nreturn function(n) local t, s, j = {}, 0, 1 for i = 1, n do local k = keys[j] t[k] = i s = s + t[k] j = j + 1 if j > 64 then j = 1 end end return s end", 40);
+			// 40 bytes before tables stored VM values: the stored number's DynValue.
+			AssertLuaBudget("table_hash_set_get", "local keys = {} for i = 1, 64 do keys[i] = 'key' .. i end\nreturn function(n) local t, s, j = {}, 0, 1 for i = 1, n do local k = keys[j] t[k] = i s = s + t[k] j = j + 1 if j > 64 then j = 1 end end return s end", NoAllocation);
 		}
 
 		[Test]
@@ -202,8 +227,9 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		{
 			// The library reads its arguments in place: no argument array and no DynValue per string or
 			// number argument (368 bytes before). What is left: the call's context and argument view, the
-			// result string and its DynValue, and the DynValue the table stores.
-			AssertLuaBudget("string_format", "local format = string.format\nreturn function(n) local buf, j = {}, 1 for i = 1, n do buf[j] = format('%d:%s', i, 'x') j = j + 1 if j > 64 then j = 1 end end return buf[64] end", 216);
+			// result string and its DynValue (the table stores the string itself since it keeps VM values;
+			// 216 bytes before).
+			AssertLuaBudget("string_format", "local format = string.format\nreturn function(n) local buf, j = {}, 1 for i = 1, n do buf[j] = format('%d:%s', i, 'x') j = j + 1 if j > 64 then j = 1 end end return buf[64] end", 176);
 		}
 
 		[Test]

@@ -1089,3 +1089,35 @@ comparator now stops the script; `table.sort` used to drop it and return a
 half-sorted table.
 
 **Affected:** hosts whose interrupt handler counts its own calls.
+
+## Tables keep values, not `DynValue` objects
+
+Tables store keys and values in the VM's own value struct, so a script that
+stores a number into a table allocates nothing.
+
+**Before:** a table kept the `DynValue` object it was given, and `Get`
+returned that object. A host that stored a writable `DynValue` and later
+called `Assign` on it changed the table, and every read of a field returned
+the same object.
+
+**After:**
+
+- `Set` copies the value. Changing the `DynValue` afterwards does not change
+  the table.
+- `Get`, `RawGet`, `Pairs`, `Keys`, `Values` and `NextKey` return a read-only
+  `DynValue` made for that read, keys included. Nil, booleans and the
+  integers -256..4095 come from shared instances; any other value is a new
+  object on every read, so compare values with `Equals` or by value, not by
+  reference, and expect a different `ReferenceID` from each read.
+- `RawGet(i)` of an array key that a script set to nil returns null, as for
+  any absent key. It returned `DynValue.Nil`.
+
+**Memory:** a slot of the array part takes 24 bytes and an entry of the hash
+part 56 bytes. Before, a slot took 8 bytes and an entry 24, plus a 40-byte
+`DynValue` for each key and each value that was not a shared instance. Tables
+of fractional numbers, strings or tables are smaller than before; tables of
+small integers are larger (a 16-item integer array: 295 to 551 bytes).
+
+**Affected:** hosts that change a stored `DynValue` with `Assign`, that compare
+values read from tables by reference, or that test `RawGet` against
+`DynValue.Nil`.

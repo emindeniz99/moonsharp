@@ -725,5 +725,57 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual(32, q.Table.Pairs.Count());
 			Assert.Less(retained, 64 * 1024, "bytes retained by a queue with 32 live entries after 200k push/pop pairs");
 		}
+
+		[Test]
+		public void StoredValuesAreCopies()
+		{
+			// Tables keep values, not the host's DynValue objects: changing a DynValue after storing it does
+			// not change the table, and what the table returns is read-only.
+			var t = new Table(new Script());
+			DynValue v = DynValue.NewNumber(1);
+			t.Set("a", v);
+			t.Set(1, v);
+			v.Assign(DynValue.NewNumber(2));
+
+			Assert.AreEqual(1, t.Get("a").Number);
+			Assert.AreEqual(1, t.Get(1).Number);
+			Assert.IsTrue(t.Get("a").ReadOnly);
+			Assert.Throws<ScriptRuntimeException>(() => t.Get("a").Assign(DynValue.NewNumber(3)));
+		}
+
+		[Test]
+		public void StoringNumbersFromScriptsDoesNotAllocate()
+		{
+			// Fractional numbers into new and existing keys of the array and hash parts, and the reads back.
+			var script = new Script();
+			DynValue fill = script.DoString(@"local t = { x = 0.5 } for i = 1, 64 do t[i] = 0.5 end
+				return function() for i = 1, 64 do t[i] = t[i] * 1.5 t.x = t.x + i / 3 t[i + 0.5] = i / 7 end return t end");
+
+			long bytes = AllocatedBytes(() => script.Call(fill));
+
+			Assert.Less(bytes, 64 * 24, "bytes allocated by 192 number stores and 128 reads: " + bytes);
+		}
+
+		[Test]
+		public void KeysKeepTheirSignAndDeadArrayKeysReadAsAbsent()
+		{
+			// -0 as a hash key prints as the script wrote it; a dead array key is absent for the host.
+			var script = new Script();
+			DynValue r = script.DoString(@"
+				local t = {}
+				local z = -0.0
+				t[z] = 'zero'
+				local k = next(t)
+				local a = { 1, 2, 3 }
+				a[2] = nil
+				return tostring(k), t[0], a");
+
+			Assert.AreEqual("-0", r.Tuple[0].String);
+			Assert.AreEqual("zero", r.Tuple[1].String);
+			Table a = r.Tuple[2].Table;
+			Assert.IsNull(a.RawGet(2));
+			Assert.IsTrue(a.Get(2).IsNil());
+			Assert.AreEqual(new double[] { 1, 3 }, a.Values.Select(v => v.Number).ToArray());
+		}
 	}
 }

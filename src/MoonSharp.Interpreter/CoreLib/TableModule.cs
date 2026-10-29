@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using MoonSharp.Interpreter.Execution.VM;
 
 namespace MoonSharp.Interpreter.CoreLib
 {
@@ -173,7 +174,7 @@ namespace MoonSharp.Interpreter.CoreLib
 
 			for (int i = len; i >= pos; i--)
 			{
-				list.Set(i + 1, list.Get(i));
+				list.SetValue(i + 1, list.RawGetValue(i));
 			}
 
 			list.Set(pos, vvalue);
@@ -213,7 +214,7 @@ namespace MoonSharp.Interpreter.CoreLib
 				if (i == pos)
 					ret = list.Get(i);
 
-				list.Set(i, list.Get(i + 1));
+				list.SetValue(i, list.RawGetValue(i + 1));
 			}
 
 			return ret;
@@ -253,12 +254,12 @@ namespace MoonSharp.Interpreter.CoreLib
 
 			for (int i = start; i <= end; i++)
 			{
-				DynValue v = list.Get(i);
+				LuaValue v = list.RawGetValue(i);
 
 				if (v.Type != DataType.Number && v.Type != DataType.String)
 					throw new ScriptRuntimeException("invalid value ({1}) at index {0} in table for 'concat'", i, v.Type.ToLuaTypeString());
 
-				string s = v.ToPrintString();
+				string s = v.CastToString();
 
 				if (i != start)
 					sb.Append(sep);

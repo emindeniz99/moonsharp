@@ -40,9 +40,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 		}
 
 		/// <summary>
-		/// The cached value for a lookup of the key starting at <paramref name="t"/>, or null on a miss.
+		/// The cached value for a lookup of the key starting at <paramref name="t"/>; false on a miss.
 		/// </summary>
-		internal DynValue Get(Table t)
+		internal bool TryGet(Table t, out LuaValue value)
 		{
 			int depth = m_Depth;
 
@@ -50,36 +50,41 @@ namespace MoonSharp.Interpreter.Execution.VM
 			{
 				ref Level l = ref m_Levels[k];
 
-				if (t.Shape != l.Shape || (l.DeadEntry >= 0 && t.EntryValue(l.DeadEntry) != null))
-					return null;
+				if (t.Shape != l.Shape || (l.DeadEntry >= 0 && t.EntryValue(l.DeadEntry).Type != DataType.Nil))
+					goto miss;
 
 				Table m = t.MetaTable;
 
 				if (m == null || m.Shape != l.MetaShape)
-					return null;
+					goto miss;
 
-				DynValue h = m.EntryValue(l.IndexEntry);
+				LuaValue h = m.EntryValue(l.IndexEntry);
 
-				if (h == null || h.Type != DataType.Table)
-					return null;
+				if (h.Type != DataType.Table)
+					goto miss;
 
-				t = h.Table;
+				t = (Table)h.Object;
 			}
 
 			if (depth < 0 || t.Shape != m_HolderShape)
-				return null;
+				goto miss;
 
-			// null when the key died or was removed since
-			return t.EntryValue(m_Entry);
+			// nil when the key died or was removed since
+			value = t.EntryValue(m_Entry);
+			return value.Type != DataType.Nil;
+
+			miss:
+			value = default(LuaValue);
+			return false;
 		}
 
 		/// <summary>
 		/// Stores <paramref name="value"/> (not nil) when the key is cached as live in <paramref name="t"/>
 		/// itself; false on a miss.
 		/// </summary>
-		internal bool TrySet(Table t, DynValue value)
+		internal bool TrySet(Table t, LuaValue value)
 		{
-			if (m_Depth != 0 || t.Shape != m_HolderShape || t.EntryValue(m_Entry) == null)
+			if (m_Depth != 0 || t.Shape != m_HolderShape || t.EntryValue(m_Entry).Type == DataType.Nil)
 				return false;
 
 			t.SetEntryValue(m_Entry, value);
@@ -94,7 +99,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		{
 			int e = t.FindStringEntry(m_Key, m_Hash);
 
-			if (e >= 0 && t.EntryValue(e) != null)
+			if (e >= 0 && t.EntryValue(e).Type != DataType.Nil)
 			{
 				SetHolder(0, t, e);
 				return e;
@@ -106,7 +111,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 		/// <summary>
 		/// Stores the key, which <paramref name="t"/> has no value for, with <paramref name="value"/> (not nil).
 		/// </summary>
-		internal void Add(Table t, DynValue value)
+		internal void Add(Table t, LuaValue value)
 		{
 			t.SetString(m_Key, m_Hash, value);
 		}
@@ -119,42 +124,46 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		/// <summary>
 		/// Looks the key up from <paramref name="t"/> through tables only (raw reads, __index tables) and
-		/// caches the path. Returns the value (nil when no table has it and the last has no __index), or
-		/// null when the path reaches something the cache does not cover: the caller then runs the general
-		/// lookup from <paramref name="last"/>, the table whose __index it could not follow.
+		/// caches the path. True with the value (nil when no table has it and the last has no __index); false
+		/// when the path reaches something the cache does not cover: the caller then runs the general lookup
+		/// from <paramref name="last"/>, the table whose __index it could not follow.
 		/// </summary>
-		internal DynValue Lookup(Table t, out Table last)
+		internal bool Lookup(Table t, out Table last, out LuaValue value)
 		{
-
 			for (int depth = 0; ; depth++)
 			{
 				int e = t.FindStringEntry(m_Key, m_Hash);
-				DynValue v = (e >= 0) ? t.EntryValue(e) : null;
 
-				if (v != null)
+				if (e >= 0)
 				{
-					SetHolder(depth, t, e);
-					last = t;
-					return v;
+					value = t.EntryValue(e);
+
+					if (value.Type != DataType.Nil)
+					{
+						SetHolder(depth, t, e);
+						last = t;
+						return true;
+					}
 				}
 
 				Table m = t.MetaTable;
 				int ie = (m != null) ? m.FindStringEntry("__index") : -1;
-				DynValue h = (ie >= 0) ? m.EntryValue(ie) : null;
+				LuaValue h = (ie >= 0) ? m.EntryValue(ie) : LuaValue.Nil;
+				last = t;
 
-				if (h == null)
+				if (h.Type == DataType.Nil)
 				{
 					m_Depth = -1;
-					last = t;
-					return DynValue.Nil;
+					value = LuaValue.Nil;
+					return true;
 				}
 
 				if (h.Type != DataType.Table || depth == MaxDepth)
 				{
 					m_Depth = -1;
 					Disabled = true;
-					last = t;
-					return null;
+					value = default(LuaValue);
+					return false;
 				}
 
 				if (m_Levels == null)
@@ -166,7 +175,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				l.MetaShape = m.StampedShape;
 				l.IndexEntry = ie;
 
-				t = h.Table;
+				t = (Table)h.Object;
 			}
 		}
 

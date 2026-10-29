@@ -1847,7 +1847,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			if (tbl.Type != DataType.Table)
 				throw new InternalErrorException("Unexpected type in table ctor : {0}", tbl);
 
-			((Table)tbl.Object).InitNextArrayKeys(val.ToDynValue(), i.NumVal != 0);
+			((Table)tbl.Object).InitNextArrayKeys(val, i.NumVal != 0);
 		}
 
 		private void ExecTblInitN(Instruction i)
@@ -1860,54 +1860,23 @@ namespace MoonSharp.Interpreter.Execution.VM
 			if (tbl.Type != DataType.Table)
 				throw new InternalErrorException("Unexpected type in table ctor : {0}", tbl);
 
-			TableSet((Table)tbl.Object, ref key, val.ToScalar().ToDynValue());
+			TableSet((Table)tbl.Object, ref key, val.ToScalar());
 		}
 
 		/// <summary>
-		/// t[key] without metamethods, without creating a DynValue key for string and integer keys.
+		/// t[key] without metamethods.
 		/// </summary>
-		private static DynValue TableGet(Table t, ref LuaValue key)
+		private static LuaValue TableGet(Table t, ref LuaValue key)
 		{
-			if (key.Type == DataType.String)
-				return t.Get((string)key.Object);
-
-			if (key.Type == DataType.Number)
-			{
-				// Table's own rule for keys that go to its integer map.
-				double d = key.Number;
-				int idx = (int)d;
-
-				if (d >= 1.0 && d == idx)
-					return t.Get(idx);
-			}
-
-			return t.Get(key.ToDynValue());
+			return t.RawGetValue(ref key);
 		}
 
 		/// <summary>
-		/// t[key] = value without metamethods, without creating a DynValue key for string and integer keys.
+		/// t[key] = value without metamethods.
 		/// </summary>
-		private static void TableSet(Table t, ref LuaValue key, DynValue value)
+		private static void TableSet(Table t, ref LuaValue key, LuaValue value)
 		{
-			if (key.Type == DataType.String)
-			{
-				t.Set((string)key.Object, value);
-				return;
-			}
-
-			if (key.Type == DataType.Number)
-			{
-				double d = key.Number;
-				int idx = (int)d;
-
-				if (d >= 1.0 && d == idx)
-				{
-					t.Set(idx, value);
-					return;
-				}
-			}
-
-			t.Set(key.ToDynValue(), value);
+			t.SetValue(ref key, value);
 		}
 
 		private int ExecIndexSet(Instruction i, int instructionPtr)
@@ -1922,7 +1891,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			LuaValue idx = originalIdx.ToScalar();
 			LuaValue obj = m_ValueStack.Pop().ToScalar();
 			LuaValue value = GetStoreValue(i);
-			DynValue h = null;
+			LuaValue h;
 
 			// A constant string key stored into a table: write the cached entry in place, or find it and
 			// cache it. A new key goes straight in when there is no metatable, else the general path runs.
@@ -1930,22 +1899,21 @@ namespace MoonSharp.Interpreter.Execution.VM
 			{
 				Table table = (Table)obj.Object;
 				FieldCache cache = i.Cache ?? (i.Cache = new FieldCache((string)idx.Object));
-				DynValue v = value.ToDynValue();
 
-				if (cache.TrySet(table, v))
+				if (cache.TrySet(table, value))
 					return instructionPtr;
 
 				int e = cache.FindLive(table);
 
 				if (e >= 0)
 				{
-					table.SetEntryValue(e, v);
+					table.SetEntryValue(e, value);
 					return instructionPtr;
 				}
 
 				if (table.MetaTable == null)
 				{
-					cache.Add(table, v);
+					cache.Add(table, value);
 					return instructionPtr;
 				}
 			}
@@ -1963,18 +1931,16 @@ namespace MoonSharp.Interpreter.Execution.VM
 						// Without a metatable there is no __newindex to find, so skip the lookup of the old value.
 						if (table.MetaTable == null || !TableGet(table, ref idx).IsNil())
 						{
-							TableSet(table, ref idx, value.ToDynValue());
+							TableSet(table, ref idx, value);
 							return instructionPtr;
 						}
 					}
 
-					h = GetMetamethodRaw(obj, "__newindex", MetaNewIndex);
-
-					if (h == null || h.IsNil())
+					if (!GetMetamethodRaw(obj, "__newindex", MetaNewIndex, out h))
 					{
 						if (isMultiIndex) throw new ScriptRuntimeException("cannot multi-index a table. userdata expected");
 
-						TableSet(table, ref idx, value.ToDynValue());
+						TableSet(table, ref idx, value);
 						return instructionPtr;
 					}
 				}
@@ -1991,9 +1957,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				}
 				else
 				{
-					h = GetMetamethodRaw(obj, "__newindex", MetaNewIndex);
-
-					if (h == null || h.IsNil())
+					if (!GetMetamethodRaw(obj, "__newindex", MetaNewIndex, out h))
 						throw ScriptRuntimeException.IndexType(obj.ToDynValue());
 				}
 
@@ -2010,8 +1974,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				}
 				else
 				{
-					obj = h.ToLuaValue();
-					h = null;
+					obj = h;
 				}
 			}
 			throw ScriptRuntimeException.LoopInNewIndex();
@@ -2030,7 +1993,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			LuaValue idx = originalIdx.ToScalar();
 			LuaValue obj = m_ValueStack.Pop().ToScalar();
 
-			DynValue h = null;
+			LuaValue h;
 
 			// A constant string key read from a table: the cached path, or a lookup through __index tables
 			// that caches it.
@@ -2041,22 +2004,16 @@ namespace MoonSharp.Interpreter.Execution.VM
 				if (!cache.Disabled)
 				{
 					Table table = (Table)obj.Object;
-					DynValue v = cache.Get(table);
+					LuaValue v;
 
-					if (v == null)
-					{
-						v = cache.Lookup(table, out table);
-
-						// an __index the cache does not follow: the general lookup goes on from there
-						if (v == null)
-							obj = LuaValue.FromObject(DataType.Table, table);
-					}
-
-					if (v != null)
+					if (cache.TryGet(table, out v) || cache.Lookup(table, out table, out v))
 					{
 						m_ValueStack.Push(v);
 						return instructionPtr;
 					}
+
+					// an __index the cache does not follow: the general lookup goes on from there
+					obj = LuaValue.FromObject(DataType.Table, table);
 				}
 			}
 
@@ -2077,9 +2034,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 						}
 					}
 
-					h = GetMetamethodRaw(obj, "__index", MetaIndex);
-
-					if (h == null || h.IsNil())
+					if (!GetMetamethodRaw(obj, "__index", MetaIndex, out h))
 					{
 						if (isMultiIndex) throw new ScriptRuntimeException("cannot multi-index a table. userdata expected");
 
@@ -2107,9 +2062,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				}
 				else
 				{
-					h = GetMetamethodRaw(obj, "__index", MetaIndex);
-
-					if (h == null || h.IsNil())
+					if (!GetMetamethodRaw(obj, "__index", MetaIndex, out h))
 						throw ScriptRuntimeException.IndexType(obj.ToDynValue());
 				}
 
@@ -2123,8 +2076,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				}
 				else
 				{
-					obj = h.ToLuaValue();
-					h = null;
+					obj = h;
 				}
 			}
 

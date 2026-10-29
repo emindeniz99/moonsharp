@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Standalone: not part of any solution. The MoonSharp builds are loaded at run time. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework><OutputType>Exe</OutputType><Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion><Optimize>true</Optimize><InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../Benchmarks/LuaCSharpScripts.cs" Link="LuaCSharpScripts.cs" />
+    <!-- LuaCsDir: the folder holding a Lua-CSharp build's Lua.dll and Lua.Annotations.dll (main@a8d84c7, net8.0, Release). -->
+    <Reference Include="Lua"><HintPath>$(LuaCsDir)/Lua.dll</HintPath></Reference>
+    <Reference Include="Lua.Annotations"><HintPath>$(LuaCsDir)/Lua.Annotations.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>

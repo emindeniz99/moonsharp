@@ -3,8 +3,10 @@ name: Hosting
 # Runs the conformance corpus (src/Hosting/fixtures) on every host: .NET CLI from source and from
 # precompiled bytecode, browsers (headless Chromium, Firefox and WebKit) and Java (worker, CoreCLR and
 # NativeAOT in process). Each runner checks its results against fixtures/known-failures/<host>.json and
-# fails on a new, changed or fixed failure. The per-host counts go to the job summary, and so does the
-# browser first-load budget (src/Hosting/browser/budget.json), which fails the job when exceeded.
+# fails on a new, changed or fixed failure. The browser package has two builds, the default interpreter
+# build and the AOT build (docs/hosting.md, "Two browser builds"); each runs the corpus in all three
+# browsers. The per-host counts go to the job summary, and so does each build's first-load budget
+# (src/Hosting/browser/budget.json), which fails the job when exceeded.
 on:
   push:
     branches:
@@ -78,12 +80,15 @@ jobs:
       - name: Install the wasm-tools workload
         run: dotnet workload install wasm-tools --version 10.0.402
 
+      # The interpreter build (bin/Release/net10.0/publish/wwwroot), then the AOT build
+      # (bin/Release-aot/net10.0/publish/wwwroot), each with its own bin and obj folders.
       - name: Build browser package
         working-directory: src/Hosting/browser
         run: |
           npm ci
           npx tsc -p tsconfig.json
           dotnet publish -c Release
+          dotnet publish -c Release -p:RunAOTCompilation=true
 
       # The browser builds pinned by the Playwright version in package-lock.json.
       - name: Fixtures in headless Chromium, Firefox and WebKit
@@ -93,6 +98,13 @@ jobs:
           npx playwright install --with-deps chromium firefox webkit
           node test/smoke.mjs bin/Release/net10.0/publish/wwwroot ../fixtures chromium firefox webkit | tee fixtures.log
           grep '^browser-' fixtures.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fixtures in headless Chromium, Firefox and WebKit, AOT build
+        working-directory: src/Hosting/browser
+        run: |
+          set -o pipefail
+          node test/smoke.mjs bin/Release-aot/net10.0/publish/wwwroot ../fixtures chromium firefox webkit | tee fixtures.log
+          grep '^browser-' fixtures.log | sed 's/^/- AOT build: /' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build the in-process variants (CoreCLR component, NativeAOT library, JNI shim)
         run: |
@@ -109,7 +121,12 @@ jobs:
           mvn -B test -Dmoonsharp.inprocess.required=true | tee fixtures.log
           grep -E '^java-(worker|coreclr|nativeaot): ' fixtures.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
 
-      # Last, so that a budget overrun does not hide the Java results. Writes its table to the job summary.
+      # Last, so that a budget overrun does not hide the Java results. Each build writes its table to the
+      # job summary; both are measured even when the first is over budget.
       - name: Browser first-load budget
         working-directory: src/Hosting/browser
-        run: node test/budget.mjs bin/Release/net10.0/publish/wwwroot ../fixtures
+        run: |
+          status=0
+          node test/budget.mjs bin/Release/net10.0/publish/wwwroot ../fixtures interpreter || status=1
+          node test/budget.mjs bin/Release-aot/net10.0/publish/wwwroot ../fixtures aot || status=1
+          exit "$status"

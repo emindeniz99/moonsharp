@@ -122,11 +122,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			ValueStack stack = Object as ValueStack;
 
-			// A ref, not a LuaValue: a struct returned by a call that is not inlined made the JIT keep the
-			// result of every inlined ToScalar in memory, which slowed the instruction loop by about 10%
-			// (TableInsertLookup1K in the A/B run, which calls nothing).
+			// By reference, see ValueStack.VarArg.
 			if (stack != null)
-				return stack.FirstVarArg(Number);
+				return stack.VarArg(Number, 0);
 
 			DynValue[] values = ((DynValue)Object).Tuple;
 

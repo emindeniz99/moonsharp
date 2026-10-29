@@ -757,7 +757,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				ValueStack varArgs = v.Object as ValueStack;
 
 				if (varArgs != null)
-					return ParameterValue(varArgs.VarArgsItem(v.Number, tupleidx));
+					return ParameterValue(varArgs.VarArg(v.Number, tupleidx));
 
 				DynValue[] tuple = v.TupleValue.Tuple;
 				DynValue e = (tupleidx < tuple.Length) ? tuple[tupleidx] : null;
@@ -874,7 +874,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				else if (varArgs != null)
 				{
 					for (int idx = 0; idx < ValueStack.VarArgsCount(t.Number); idx++)
-						m_ValueStack.Push(varArgs.VarArgsItem(t.Number, idx));
+						m_ValueStack.Push(varArgs.VarArg(t.Number, idx));
 				}
 				else
 				{
@@ -1861,7 +1861,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 			{
 				// {...}: the values in place, without a tuple.
 				for (int k = 0; k < ValueStack.VarArgsCount(val.Number); k++)
-					((Table)tbl.Object).InitNextArrayKeys(varArgs.VarArgsItem(val.Number, k).ToDynValue(), true);
+					((Table)tbl.Object).InitNextArrayKeys(varArgs.VarArg(val.Number, k).ToDynValue(), true);
 
 				return;
 			}

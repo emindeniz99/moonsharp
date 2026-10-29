@@ -97,7 +97,7 @@ namespace MoonSharp.Interpreter
 					ValueStack varArgs = v.Object as ValueStack;
 
 					if (varArgs != null)
-						return ValueStack.VarArgsCount(v.Number) > 0 ? varArgs.VarArgsItem(v.Number, 0) : LuaValue.Nil;
+						return ValueStack.VarArgsCount(v.Number) > 0 ? varArgs.VarArg(v.Number, 0) : LuaValue.Nil;
 
 					DynValue[] tuple = v.TupleValue.Tuple;
 					v = tuple.Length > 0 ? tuple[0].ToLuaValue() : LuaValue.Nil;

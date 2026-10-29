@@ -143,28 +143,22 @@ namespace MoonSharp.Interpreter.Execution.VM
 			return (int)(packed % VARARGS_SCALE);
 		}
 
-		/// <summary>
-		/// The value at <paramref name="index"/> of a '...' Tuple from this stack (its Number is
-		/// <paramref name="packed"/>), void past its end.
-		/// </summary>
-		public LuaValue VarArgsItem(double packed, int index)
-		{
-			return index < VarArgsCount(packed) ? Items[VarArgsStart(packed) + index] : LuaValue.Void;
-		}
-
 		static LuaValue s_Void = LuaValue.Void;
 
 		/// <summary>
-		/// The first value of a '...' Tuple from this stack, void when it has none, by reference (see
-		/// LuaValue.ToScalar). Callers only read it.
+		/// The value at <paramref name="index"/> of a '...' Tuple from this stack (its Number is
+		/// <paramref name="packed"/>), void past its end, by reference; callers only read it. A reference, not
+		/// a LuaValue: a struct returned by a call that is not inlined, inside ToScalar or GetStoreValue,
+		/// made the JIT keep their results in memory at every site the instruction loop inlines them, which
+		/// slowed the whole loop by about 10% (TableInsertLookup1K in the A/B run, which calls nothing).
 		/// </summary>
 		[MethodImpl(MethodImplOptions.NoInlining)]
-		public ref LuaValue FirstVarArg(double packed)
+		public ref LuaValue VarArg(double packed, int index)
 		{
-			if (VarArgsCount(packed) == 0)
+			if (index >= VarArgsCount(packed))
 				return ref s_Void;
 
-			return ref Items[VarArgsStart(packed)];
+			return ref Items[VarArgsStart(packed) + index];
 		}
 
 		/// <summary>

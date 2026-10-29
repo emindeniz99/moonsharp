@@ -1,0 +1,22 @@
+io.input missing	OK	2	false "cannot open file 'this-file-does-not-exist' (No such file or directory)"
+io.output bad directory	OK	2	false "cannot open file '/this-dir-does-not-exist/x' (No such file or directory)"
+io.lines missing	OK	2	false "cannot open file 'this-file-does-not-exist' (No such file or directory)"
+io.lines exhausted	OK	4	"function" "ab" false "file is already closed"
+file:lines *a is lazy	OK	1	3
+seek before start	OK	3	nil "Invalid argument" 22
+read negative count	OK	1	"boolean"
+open w+ creates	OK	1	"x"
+open a and a+	OK	1	"xyz"
+open r+ missing	OK	2	nil "this-file-does-not-exist: No such file or directory"
+open invalid mode	OK	2	false "bad argument #2 to 'open' (invalid mode)"
+dofile empty name	OK	2	false "cannot open : No such file or directory"
+loadfile empty name	OK	2	nil "cannot open : No such file or directory"
+string.rep 2^31	OK	1	false
+string.rep huge with separator	OK	1	false
+os.time month 13	OK	1	true
+os.time day 0	OK	1	true
+os.date 2^53	OK	1	nil
+os.date nan	OK	1	nil
+format %99.99f of 1e308	OK	1	409
+format zero padding to width 0	OK	1	"+1|0x1|01"
+format %c of 65536	OK	1	"\0"

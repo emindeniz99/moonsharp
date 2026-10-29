@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Collections.Generic;
+using System.Text;
 
 namespace MoonSharp.Interpreter.Tree
 {
@@ -14,11 +15,14 @@ namespace MoonSharp.Interpreter.Tree
 		int m_SourceId;
 		bool m_AutoSkipComments = false;
 		bool m_Json = false;
+		// One string per identifier (Script.CompiledNames); null for JSON.
+		Dictionary<string, string> m_Names;
 
-		public Lexer(int sourceID, string scriptContent, bool autoSkipComments)
+		public Lexer(int sourceID, string scriptContent, bool autoSkipComments, Dictionary<string, string> names = null)
 		{
 			m_Code = scriptContent;
 			m_SourceId = sourceID;
+			m_Names = names;
 
 			// remove unicode BOM if any
 			if (m_Code.Length > 0 && m_Code[0] == 0xFEFF)
@@ -563,6 +567,16 @@ namespace MoonSharp.Interpreter.Tree
 			}
 			else
 			{
+				if (m_Names != null)
+				{
+					string known;
+
+					if (m_Names.TryGetValue(name, out known))
+						name = known;
+					else
+						m_Names.Add(name, name);
+				}
+
 				return CreateToken(TokenType.Name, fromLine, fromCol, name);
 			}
 		}
@@ -581,17 +595,15 @@ namespace MoonSharp.Interpreter.Tree
 
 		private string ReadNameToken()
 		{
-			StringBuilder name = new StringBuilder(32);
+			int start = m_Cursor;
 
 			for (char c = CursorChar(); CursorNotEof(); c = CursorCharNext())
 			{
-				if (char.IsLetterOrDigit(c) || c == '_')
-					name.Append(c);
-				else
+				if (!char.IsLetterOrDigit(c) && c != '_')
 					break;
 			}
 
-			return name.ToString();
+			return m_Code.Substring(start, m_Cursor - start);
 		}
 
 

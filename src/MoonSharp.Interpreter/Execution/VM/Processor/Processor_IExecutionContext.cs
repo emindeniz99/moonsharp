@@ -26,7 +26,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		internal DynValue GetBinaryMetamethod(DynValue op1, DynValue op2, string eventName)
 		{
-			return GetBinaryMetamethod(op1.ToLuaValue(), op2.ToLuaValue(), eventName);
+			LuaValue meta;
+			return GetBinaryMetamethod(op1.ToLuaValue(), op2.ToLuaValue(), eventName, 0, out meta) ? meta.ToDynValue() : null;
 		}
 
 		// Bits of Table.MetaAbsent, one per metamethod the VM looks up on its hot paths. A metatable found
@@ -37,61 +38,63 @@ namespace MoonSharp.Interpreter.Execution.VM
 			MetaMul = 2048, MetaDiv = 4096, MetaMod = 8192, MetaPow = 16384;
 
 		/// <summary>
-		/// The metamethod <paramref name="eventName"/> of <paramref name="metatable"/>, or null.
+		/// The metamethod <paramref name="eventName"/> of <paramref name="metatable"/>; false when it has none.
 		/// </summary>
-		internal static DynValue RawGetMetamethod(Table metatable, string eventName, int bit)
+		internal static bool RawGetMetamethod(Table metatable, string eventName, int bit, out LuaValue meta)
 		{
 			if ((metatable.MetaAbsent & bit) != 0)
-				return null;
+			{
+				meta = default(LuaValue);
+				return false;
+			}
 
-			DynValue meta = metatable.RawGet(eventName);
+			meta = metatable.RawGetValue(eventName);
 
-			if (meta == null || meta.IsNil())
+			if (meta.Type == DataType.Nil)
 			{
 				metatable.MetaAbsent |= bit;
-				return null;
+				return false;
 			}
 
-			return meta;
+			return true;
 		}
 
-		internal DynValue GetBinaryMetamethod(LuaValue op1, LuaValue op2, string eventName, int bit = 0)
+		internal bool GetBinaryMetamethod(LuaValue op1, LuaValue op2, string eventName, int bit, out LuaValue meta)
 		{
 			var op1_MetaTable = GetMetatable(op1);
-			if (op1_MetaTable != null)
-			{
-				DynValue meta1 = RawGetMetamethod(op1_MetaTable, eventName, bit);
-				if (meta1 != null)
-					return meta1;
-			}
+			if (op1_MetaTable != null && RawGetMetamethod(op1_MetaTable, eventName, bit, out meta))
+				return true;
 
 			var op2_MetaTable = GetMetatable(op2);
-			if (op2_MetaTable != null)
-			{
-				DynValue meta2 = RawGetMetamethod(op2_MetaTable, eventName, bit);
-				if (meta2 != null)
-					return meta2;
-			}
+			if (op2_MetaTable != null && RawGetMetamethod(op2_MetaTable, eventName, bit, out meta))
+				return true;
 
 			if (op1.Type == DataType.UserData)
 			{
 				UserData ud = (UserData)op1.Object;
-				DynValue meta = ud.Descriptor.MetaIndex(this.m_Script, ud.Object, eventName);
+				DynValue m = ud.Descriptor.MetaIndex(this.m_Script, ud.Object, eventName);
 
-				if (meta != null)
-					return meta;
+				if (m != null)
+				{
+					meta = m.ToLuaValue();
+					return true;
+				}
 			}
 
 			if (op2.Type == DataType.UserData)
 			{
 				UserData ud = (UserData)op2.Object;
-				DynValue meta = ud.Descriptor.MetaIndex(this.m_Script, ud.Object, eventName);
+				DynValue m = ud.Descriptor.MetaIndex(this.m_Script, ud.Object, eventName);
 
-				if (meta != null)
-					return meta;
+				if (m != null)
+				{
+					meta = m.ToLuaValue();
+					return true;
+				}
 			}
 
-			return null;
+			meta = default(LuaValue);
+			return false;
 		}
 
 		internal DynValue GetMetamethod(DynValue value, string metamethod)
@@ -109,18 +112,22 @@ namespace MoonSharp.Interpreter.Execution.VM
 					return v;
 			}
 
-			return GetMetamethodRaw(value, metamethod, bit);
+			LuaValue meta;
+			return GetMetamethodRaw(value, metamethod, bit, out meta) ? meta.ToDynValue() : null;
 		}
 
 
-		internal DynValue GetMetamethodRaw(LuaValue value, string metamethod, int bit = 0)
+		internal bool GetMetamethodRaw(LuaValue value, string metamethod, int bit, out LuaValue meta)
 		{
 			var metatable = GetMetatable(value);
 
 			if (metatable == null)
-				return null;
+			{
+				meta = default(LuaValue);
+				return false;
+			}
 
-			return RawGetMetamethod(metatable, metamethod, bit);
+			return RawGetMetamethod(metatable, metamethod, bit, out meta);
 		}
 
 		internal Script GetScript()

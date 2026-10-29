@@ -102,6 +102,13 @@ namespace MoonSharp.Interpreter
 		public PerformanceStatistics PerformanceStats { get; private set; }
 
 		/// <summary>
+		/// The identifiers of the code this script compiled, one string per name, so equal field names in
+		/// different places of the code are the same string and the VM's field caches compare them by
+		/// reference. Created by the first compile.
+		/// </summary>
+		internal Dictionary<string, string> CompiledNames;
+
+		/// <summary>
 		/// Gets the default global table for this script. Unless a different table is intentionally passed (or setfenv has been used)
 		/// execution uses this table.
 		/// </summary>

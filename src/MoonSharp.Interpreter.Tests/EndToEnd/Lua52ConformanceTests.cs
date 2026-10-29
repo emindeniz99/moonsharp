@@ -106,5 +106,21 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.IsTrue(r.Tuple[2].IsNil());
 			Assert.AreEqual("1970-01-02", r.Tuple[3].String);
 		}
+
+		// Entry 1: the right operand of and/or kept every result of a call or '...' (the left one too when it was
+		// returned): x or f() passed all of f's results on, and nil or f() with no results gave no value.
+		[Test]
+		public void AndOr_GiveOneValue()
+		{
+			Assert.AreEqual("1|1|1|1|1|1|7|1|0",
+				RunString(@"
+					local function f() return 1, 2, 3 end
+					local function none() end
+					local function count(...) return select('#', ...) end
+					local function va(...) return false or ... end
+					local t = {nil or f()}
+					return table.concat({ count(nil or f()), count(true and f()), count(f() or 1), count(f() and f()),
+						count(nil or none()), count(va(7, 8)), va(7, 8), #t, count() }, '|')"));
+		}
 	}
 }

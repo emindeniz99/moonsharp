@@ -49,7 +49,7 @@ namespace MoonSharp.Interpreter.CoreLib
 			{
 				try
 				{
-					DynValue ret = v.Callback.Invoke(executionContext, a);
+					DynValue ret = v.Callback.Invoke(executionContext.For(v.Callback), a);
 					if (ret.Type == DataType.TailCallRequest && ret.TailCallData.Continuation == null && ret.TailCallData.ErrorHandler == null)
 					{
 						return DynValue.NewTailCallReq(new TailCallData()

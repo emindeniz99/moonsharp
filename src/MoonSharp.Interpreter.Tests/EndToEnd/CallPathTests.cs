@@ -566,5 +566,22 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				Assert.AreEqual(7, script.Call(script.Globals.Get("add"), 3, 4).Number);
 			}
 		}
+			[Test]
+		public void CallPath_CSharpFunctionsCalledByPcallSeeTheirOwnAdditionalData()
+		{
+			// pcall and ScriptExecutionContext.Call ran a C# function with the caller's context, so
+			// AdditionalData was pcall's (null) or the calling callback's.
+			Script script = new Script();
+			var tagged = new CallbackFunction((ctx, args) => DynValue.NewString((string)ctx.AdditionalData), "tagged") { AdditionalData = "mine" };
+			var caller = new CallbackFunction((ctx, args) => ctx.Call(args[0]), "caller") { AdditionalData = "caller" };
+			script.Globals["tagged"] = tagged;
+			script.Globals["caller"] = caller;
+
+			DynValue r = script.DoString("local ok, v = pcall(tagged) return v, caller(tagged), tagged()");
+
+			Assert.AreEqual("mine", r.Tuple[0].String);
+			Assert.AreEqual("mine", r.Tuple[1].String);
+			Assert.AreEqual("mine", r.Tuple[2].String);
+		}
 	}
 }

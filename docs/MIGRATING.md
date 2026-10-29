@@ -1426,3 +1426,16 @@ call does as before.
 
 **Affected:** scripts that ran with a low threshold or a value stack deeper
 than the threshold.
+
+## C# functions called by `pcall` or `ScriptExecutionContext.Call` get their own context
+
+**Before:** `pcall(f)` with a C# function `f`, and `context.Call(f)` from a
+C# function, ran `f` with the caller's `ScriptExecutionContext`, so
+`context.AdditionalData` in `f` was the caller's (`pcall`'s: null).
+
+**After:** `f` gets a context with its own `AdditionalData`; the processor,
+calling location and everything else are the caller's, as before. Error texts
+do not change.
+
+**Affected:** host callbacks that read `AdditionalData` and are called through
+`pcall`, `xpcall` or `ScriptExecutionContext.Call`.

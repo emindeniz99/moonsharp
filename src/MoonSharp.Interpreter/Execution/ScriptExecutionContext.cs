@@ -87,6 +87,16 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
+		/// A context for <paramref name="callback"/>, called from the function this context belongs to (pcall,
+		/// <see cref="Call"/>): the same processor and calling location, with the callee's own
+		/// <see cref="AdditionalData"/>.
+		/// </summary>
+		internal ScriptExecutionContext For(CallbackFunction callback)
+		{
+			return new ScriptExecutionContext(m_Processor, callback, CallingLocation, IsDynamicExecution, StackFrameIndex);
+		}
+
+		/// <summary>
 		/// The result a callback left with Return, as a VM value; the context lets go of it.
 		/// </summary>
 		internal LuaValue TakeResult()
@@ -249,7 +259,7 @@ namespace MoonSharp.Interpreter
 			{
 				while (true)
 				{
-					DynValue ret = func.Callback.Invoke(this, args, false);
+					DynValue ret = func.Callback.Invoke(For(func.Callback), args, false);
 
 					if (ret.Type == DataType.YieldRequest)
 					{

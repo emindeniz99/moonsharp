@@ -616,7 +616,7 @@ that are noise.
 | Relinked, `DynamicCodeSupport=false` | 1,123,477 | 460,370 | 300 ms | 7.0 s |
 | Relinked, `RunAOTCompilation=true` | 2,694,066 | 2,091,079 | 301 ms | 14.9 s |
 | Relinked, `DynamicCodeSupport=false`, `WasmNativeDebugSymbols=false` | 1,095,321 | 449,796 | 304 ms | 6.9 s |
-| The same with the preloads in `index.html` (**shipped**) | 1,095,468 | 449,796 | 302 ms | 6.5 s |
+| The same with the preloads in `index.html` (**shipped**) | 1,095,488 | 449,796 | 302 ms | 6.5 s |
 | Shipped, `WasmEnableSIMD=false` | 1,071,847 | 446,868 | 285 ms | 6.4 s |
 
 The shipped build against `next`: 682 KB brotli less (−38%), 10.2 s → 6.5 s

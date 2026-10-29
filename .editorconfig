@@ -1,0 +1,24 @@
+# Matches the style the existing files use. Settings that the files do not agree
+# on (charset: most C# files start with a byte order mark, some do not; trailing
+# whitespace; TypeScript, JavaScript and JSON indentation, which differs per
+# package) are left out, so an editor does not rewrite lines a change does not
+# touch.
+root = true
+
+[*]
+end_of_line = lf
+
+[*.cs]
+indent_style = tab
+indent_size = 4
+
+[*.sln]
+indent_style = tab
+
+[*.{csproj,props,targets,java}]
+indent_style = space
+indent_size = 4
+
+[*.{xml,yml,yaml,sh}]
+indent_style = space
+indent_size = 2

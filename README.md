@@ -51,6 +51,14 @@ Java hosts. [docs/luacats.md](docs/luacats.md) generates LuaCATS definitions of 
 host's C# API for lua-language-server, and [docs/registration.md](docs/registration.md)
 shows how a host exposes only the types it lists.
 
+## For contributors and agents
+
+[CONTRIBUTING.md](CONTRIBUTING.md) covers setup, tests, commits and pull requests;
+[AGENTS.md](AGENTS.md) adds the rules and exact test commands for coding agents.
+Plans and decisions are in [docs/ROADMAP.md](docs/ROADMAP.md), behaviour changes in
+[docs/MIGRATING.md](docs/MIGRATING.md) and [CHANGELOG.md](CHANGELOG.md), and
+security reports go through [SECURITY.md](SECURITY.md).
+
 ## Unity Package (UPM)
 
 ### Build package locally

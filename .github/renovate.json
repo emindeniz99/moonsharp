@@ -1,0 +1,124 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "Dependency update pull requests. Runs once the Renovate GitHub app is installed on the repository (docs/ROADMAP.md, 'Needs the owner').",
+    "Covers GitHub Actions (SHA pins), the jdx/mise-action 'version:' inputs, mise.toml, the npm packages of the browser package and the VS Code extension, NuGet and Maven.",
+    "Updated by hand: the Unity Mono download in the Dockerfile and lua-language-server in tools/luals/install.sh (both checked against a SHA-256), the Unity editor images in unity.yml (pinned by digest), the wasm-tools workload version in hosting.yml, and the Unity package manifests."
+  ],
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "ignorePresets": [":semanticPrefixFixDepsChoreOthers"],
+  "enabledManagers": ["github-actions", "mise", "npm", "nuget", "maven", "custom.regex"],
+  "baseBranchPatterns": ["next"],
+  "ignorePaths": ["**/node_modules/**", "src/Xamarin/**", "src/Tutorial/**", "src/Unity/**"],
+  "dependencyDashboard": true,
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+  "automerge": false,
+  "platformAutomerge": false,
+  "prHourlyLimit": 0,
+  "prConcurrentLimit": 10,
+  "labels": ["dependencies"],
+  "semanticCommits": "enabled",
+  "semanticCommitType": "build",
+  "semanticCommitScope": "deps",
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "description": "Security fixes skip the waiting period and are never merged automatically.",
+    "enabled": true,
+    "minimumReleaseAge": null,
+    "automerge": false,
+    "labels": ["dependencies", "security"]
+  },
+  "customManagers": [
+    {
+      "description": "The mise release that jdx/mise-action installs. Every workflow writes it under the same comment.",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": ["# A mise release older than seven days\\.\\s+version: (?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "jdx/mise",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)$",
+      "versioningTemplate": "loose"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Majors are separate PRs that wait for approval on the Dependency Dashboard.",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "A 0.x minor can break like a major.",
+      "matchCurrentVersion": "/^0\\./",
+      "matchUpdateTypes": ["minor"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Workflow changes use the ci type.",
+      "matchManagers": ["github-actions", "custom.regex"],
+      "semanticCommitType": "ci"
+    },
+    {
+      "description": "One PR for non-major workflow updates.",
+      "matchManagers": ["github-actions", "custom.regex"],
+      "groupName": "GitHub Actions",
+      "matchUpdateTypes": ["minor", "patch", "digest", "pinDigest"]
+    },
+    {
+      "description": "The .NET SDK in mise.toml and the wasm-tools workload in hosting.yml move together.",
+      "matchManagers": ["mise"],
+      "matchDepNames": ["dotnet"],
+      "prBodyNotes": ["Also set `dotnet workload install wasm-tools --version` in `.github/workflows/hosting.yml`, `AGENTS.md` and `CONTRIBUTING.md` to the workload set of the new SDK, and build the browser package before merging."]
+    },
+    {
+      "description": "The source generator must load in Unity 2021.3's compiler, which needs Microsoft.CodeAnalysis 3.8 (docs/source-generator.md).",
+      "matchManagers": ["nuget"],
+      "matchPackageNames": ["Microsoft.CodeAnalysis.CSharp"],
+      "enabled": false
+    },
+    {
+      "description": "NUnit 3.5.0 is the net45 test runner's version and 3.13.3 the netstandard2.0 one; both are moved by hand with the Mono and Unity runs.",
+      "matchManagers": ["nuget"],
+      "matchPackageNames": ["NUnit"],
+      "enabled": false
+    },
+    {
+      "description": "NLua is the old comparison baseline of PerformanceComparison.",
+      "matchManagers": ["nuget"],
+      "matchPackageNames": ["NLua"],
+      "enabled": false
+    },
+    {
+      "description": "@types/vscode must match engines.vscode, the oldest VS Code the extension supports.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["@types/vscode"],
+      "enabled": false
+    },
+    {
+      "description": "engines fields are support floors, not pins.",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["engines"],
+      "enabled": false
+    },
+    {
+      "description": "One PR for non-major updates of the browser package.",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["src/Hosting/browser/**"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "browser package"
+    },
+    {
+      "description": "One PR for non-major updates of the VS Code extension.",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["src/moonsharp-vscode-debug/**"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "VS Code extension"
+    },
+    {
+      "description": "One PR for non-major updates of the Java client and sample.",
+      "matchManagers": ["maven"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "Java hosting"
+    }
+  ]
+}

@@ -350,5 +350,7 @@ what is left and what "done" means.
   5. Record the numbers in [register-vm-spike.md](research/register-vm-spike.md#how-to-measure-on-il2cpp) and decide.
 - Android and iOS devices for IL2CPP player runs.
 - Table memory after `perf/table-layout`: tables of fractional numbers, strings and tables are 30% smaller, tables of small integers up to 1.9x larger (a 16-item integer array 295 to 551 bytes). Accept, or try 16-byte slots (follow-up under "Later")?
+- Renovate: install the [Renovate GitHub app](https://github.com/apps/renovate) on this repository (Only select repositories). It reads `.github/renovate.json`: pull requests against `next`, a seven-day wait for new releases, majors and 0.x minors only after approval on the Dependency Dashboard issue, actions pinned to SHAs. Pull requests to `next` do not run `ci.yml` (it runs on pull requests to `master`), so the local checks in AGENTS.md apply before merging them. Nothing updates the pinned action SHAs until it runs.
+- Private vulnerability reporting (Settings, Code security), which [SECURITY.md](../SECURITY.md) points reporters to.
 - Approval before any upstream pull request.
 - Per-script type registries (#181), postponed; details in [upstream-issues.md](upstream-issues.md#decisions-for-the-owner).

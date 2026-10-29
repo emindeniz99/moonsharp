@@ -164,5 +164,28 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 					w[k], k = 'v', 'other'
 					return table.concat({ r1, r2, r3, table.concat(calls, ','), table.concat(log, ','), z, w.key .. ',' .. tostring(w.other) }, '|')"));
 		}
+
+
+		// Entry 4: goto to a label at the end of a block was rejected after a local ("jumps into the scope of
+		// local"); Lua 5.2 treats such a label as outside the block's locals, except before 'until'.
+		[Test]
+		public void Goto_LabelAtTheEndOfABlock()
+		{
+			Assert.AreEqual("10,30,50",
+				RunString(@"
+					local out = {}
+					for i = 1, 5 do
+						if i % 2 == 0 then goto continue end
+						local x = i * 10
+						out[#out + 1] = x
+						::continue::
+					end
+					return table.concat(out, ',')"));
+
+			StringAssert.Contains("jumps into the scope of local 'x'",
+				RunString("local f, e = load('repeat goto e; local x = 1; ::e:: until x') return e"));
+			StringAssert.Contains("jumps into the scope of local 'x'",
+				RunString("local f, e = load('do goto e; local x = 1; ::e:: print(x) end') return e"));
+		}
 	}
 }

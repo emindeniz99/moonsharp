@@ -77,7 +77,7 @@ namespace MoonSharp.Interpreter.Interop
 
 		private static DynValue Meta(Func<ScriptExecutionContext, CallbackArguments, DynValue> f, string name)
 		{
-			return DynValue.NewCallback(f, name).AsReadOnly();
+			return CallbackFunction.NewInternal(f, name).AsReadOnly();
 		}
 
 		private enum Op { Add, Sub, Mul, Div, Mod }

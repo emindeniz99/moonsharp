@@ -73,11 +73,11 @@ namespace MoonSharp.Interpreter.Interop
 				}
 				else if (idx == "MoveNext" || idx == "moveNext" || idx == "move_next")
 				{
-					return DynValue.NewCallback((ctx, args) => DynValue.NewBoolean(m_Enumerator.MoveNext()));
+					return CallbackFunction.NewInternal((ctx, args) => DynValue.NewBoolean(m_Enumerator.MoveNext()));
 				}
 				else if (idx == "Reset" || idx == "reset")
 				{
-					return DynValue.NewCallback((ctx, args) => { Reset(); return DynValue.Nil; });
+					return CallbackFunction.NewInternal((ctx, args) => { Reset(); return DynValue.Nil; });
 				}
 			}
 			return null;
@@ -91,7 +91,7 @@ namespace MoonSharp.Interpreter.Interop
 		public DynValue MetaIndex(Script script, string metaname)
 		{
 			if (metaname == "__call")
-				return DynValue.NewCallback(LuaIteratorCallback);
+				return CallbackFunction.NewInternal(LuaIteratorCallback);
 			else
 				return null;
 		}

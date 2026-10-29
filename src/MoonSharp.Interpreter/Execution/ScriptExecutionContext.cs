@@ -97,6 +97,16 @@ namespace MoonSharp.Interpreter
 		}
 
 		/// <summary>
+		/// This context, or a copy for code that may keep it after the call (a userdata method with a
+		/// ScriptExecutionContext parameter): the processor lends a context it reuses for later calls. The
+		/// copy is not lent, so Return in that code gives an ordinary DynValue.
+		/// </summary>
+		internal ScriptExecutionContext ToKeep()
+		{
+			return LentByProcessor ? new ScriptExecutionContext(m_Processor, m_Callback, CallingLocation, IsDynamicExecution, StackFrameIndex) : this;
+		}
+
+		/// <summary>
 		/// The result a callback left with Return, as a VM value; the context lets go of it.
 		/// </summary>
 		internal LuaValue TakeResult()

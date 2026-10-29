@@ -162,7 +162,7 @@ namespace MoonSharp.Interpreter.Interop
 
 			// common case, let's optimize for it
 			if (m_Overloads.Count == 1 && m_ExtOverloads.Count == 0 && extMethodCacheNotExpired)
-				return m_Overloads[0].Execute(script, obj, context, args);
+				return Execute(m_Overloads[0], script, obj, context, args);
 
 			// Arguments whose weights depend only on their type (and, for numbers, on having a fraction)
 			// choose the same overload every time: look the choice up by that signature. It holds only
@@ -181,10 +181,21 @@ namespace MoonSharp.Interpreter.Interop
 					AddSignature(signature, known);
 				}
 
-				return known.Execute(script, obj, context, args);
+				return Execute(known, script, obj, context, args);
 			}
 
-			return Resolve(obj, context, args, extMethodCacheNotExpired).Execute(script, obj, context, args);
+			return Execute(Resolve(obj, context, args, extMethodCacheNotExpired), script, obj, context, args);
+		}
+
+		/// <summary>
+		/// Runs <paramref name="overload"/>, with a context of its own when it may keep the context
+		/// (<see cref="FunctionMemberDescriptorBase.ReusesContext"/>): the processor reuses the one it lent
+		/// this call.
+		/// </summary>
+		private static DynValue Execute(IOverloadableMemberDescriptor overload, Script script, object obj, ScriptExecutionContext context, CallbackArguments args)
+		{
+			FunctionMemberDescriptorBase f = overload as FunctionMemberDescriptorBase;
+			return overload.Execute(script, obj, f != null && f.ReusesContext ? context : context?.ToKeep(), args);
 		}
 
 		/// <summary>
@@ -598,7 +609,8 @@ namespace MoonSharp.Interpreter.Interop
 		{
 			// Argument conversion reads the arguments during the call only; a CallbackArguments parameter gets
 			// a copy (CallbackArguments.SkipMethodCall).
-			return new CallbackFunction(GetCallback(script, obj), this.Name) { UsesArgumentsOnlyDuringCall = true };
+			// The overload that runs gets a context of its own if it may keep it (see Execute).
+			return new CallbackFunction(GetCallback(script, obj), this.Name) { UsesArgumentsOnlyDuringCall = true, ReusesContext = true };
 		}
 
 		/// <summary>

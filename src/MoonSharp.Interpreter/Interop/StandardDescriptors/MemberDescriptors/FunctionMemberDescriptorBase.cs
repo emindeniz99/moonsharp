@@ -68,6 +68,28 @@ namespace MoonSharp.Interpreter.Interop
 			}
 
 			SortDiscriminant = string.Join(":", Parameters.Select(pi => pi.Type.FullName).ToArray());
+			m_TakesCallObjects = Parameters.Any(pi => pi.Type == typeof(ScriptExecutionContext) || pi.Type == typeof(CallbackArguments));
+		}
+
+		bool m_TakesCallObjects;
+
+		/// <summary>
+		/// For generated descriptors: set it when <see cref="Execute"/> hands the context only to a
+		/// ScriptExecutionContext parameter of the described member and keeps it nowhere else, as
+		/// MoonSharp's reflection, hardwired and source-generated descriptors do. A call of a member that
+		/// takes neither a ScriptExecutionContext nor a CallbackArguments then gets the context the processor
+		/// reuses for every C# call at the same call depth. False by default: every call gets a context of
+		/// its own, which Execute may keep.
+		/// </summary>
+		[System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+		protected bool ExecuteKeepsNoContext { get; set; }
+
+		/// <summary>
+		/// Whether a call may get the context the processor reuses (<see cref="ExecuteKeepsNoContext"/>).
+		/// </summary>
+		internal bool ReusesContext
+		{
+			get { return ExecuteKeepsNoContext && !m_TakesCallObjects; }
 		}
 
 
@@ -93,7 +115,7 @@ namespace MoonSharp.Interpreter.Interop
 		{
 			// Argument conversion reads the arguments during the call only; a CallbackArguments parameter gets
 			// a copy (CallbackArguments.SkipMethodCall).
-			return new CallbackFunction(GetCallback(script, obj), this.Name) { UsesArgumentsOnlyDuringCall = true };
+			return new CallbackFunction(GetCallback(script, obj), this.Name) { UsesArgumentsOnlyDuringCall = true, ReusesContext = ReusesContext };
 		}
 
 		/// <summary>

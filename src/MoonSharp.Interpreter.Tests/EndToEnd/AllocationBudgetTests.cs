@@ -284,27 +284,28 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 		[Test]
 		public void AllocationBudget_LuaToCsCall1()
 		{
-			// What a host callback may keep: its own context (72 bytes; a context reused per call depth showed a
+			// What a host callback may keep: its own context (48 bytes; a context reused per call depth showed a
 			// kept context the values of later calls, so only MoonSharp's own functions share one) and its own
 			// argument list (an array and its CallbackArguments). Left besides: the DynValue of i and the
-			// result's DynValue. 192 bytes before contexts were reused, 144 while host callbacks shared them.
+			// result's DynValue. 144 bytes while host callbacks shared contexts, 216 with the 72-byte context
+			// that kept Return's result itself.
 			SkipUnlessMeasurable();
 			Script script = new Script();
 			script.Globals["f"] = DynValue.NewCallback((ctx, args) => DynValue.NewNumber(args[0].Number + 1));
-			AssertBudget("lua_to_cs_call1", LuaLoop(script, "local f = f\nreturn function(n) local s = 0 for i = 1, n do s = s + f(i) end return s end"), N, 216);
+			AssertBudget("lua_to_cs_call1", LuaLoop(script, "local f = f\nreturn function(n) local s = 0 for i = 1, n do s = s + f(i) end return s end"), N, 192);
 		}
 
 		[Test]
 		public void AllocationBudget_LuaToCsCall1InPlace()
 		{
 			// A host callback that uses its arguments only during the call reads them in place through a
-			// reused view, but still gets a context of its own (72 bytes), which it may keep: the flag is about
+			// reused view, but still gets a context of its own (48 bytes), which it may keep: the flag is about
 			// arguments only. Left besides: the DynValue args[0] creates for i and the result's DynValue (80
 			// while host callbacks shared contexts).
 			SkipUnlessMeasurable();
 			Script script = new Script();
 			script.Globals["f"] = new CallbackFunction((ctx, args) => DynValue.NewNumber(args[0].Number + 1)) { UsesArgumentsOnlyDuringCall = true };
-			AssertBudget("lua_to_cs_call1_in_place", LuaLoop(script, "local f = f\nreturn function(n) local s = 0 for i = 1, n do s = s + f(i) end return s end"), N, 152);
+			AssertBudget("lua_to_cs_call1_in_place", LuaLoop(script, "local f = f\nreturn function(n) local s = 0 for i = 1, n do s = s + f(i) end return s end"), N, 128);
 		}
 
 		[Test]
@@ -313,11 +314,12 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			// Lua-CSharp's host-calls case written against the DynValue-free API: arguments read in place with
 			// NumberAt and the result returned with ScriptExecutionContext.Return (240 bytes with
 			// DynValue.NewCallback, args[i].Number and DynValue.NewNumber). Left: the callback's own context,
-			// which a host callback may keep (0 while host callbacks shared the context reused per depth).
+			// which a host callback may keep (0 while host callbacks shared the context reused per depth; 72
+			// while the context kept Return's result itself).
 			SkipUnlessMeasurable();
 			Script script = new Script();
 			script.Globals["add"] = new CallbackFunction((ctx, args) => ctx.Return(args.NumberAt(0) + args.NumberAt(1))) { UsesArgumentsOnlyDuringCall = true };
-			AssertBudget("host_calls_no_dynvalues", LuaLoop(script, "local add = add\nreturn function(n) local s = 0 for i = 1, n do s = add(s, i) end return s end"), N, 72);
+			AssertBudget("host_calls_no_dynvalues", LuaLoop(script, "local add = add\nreturn function(n) local s = 0 for i = 1, n do s = add(s, i) end return s end"), N, 48);
 		}
 
 		[Test]

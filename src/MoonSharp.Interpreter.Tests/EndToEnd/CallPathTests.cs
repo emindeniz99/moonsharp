@@ -567,6 +567,27 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			}
 		}
 			[Test]
+		public void CallPath_ReturnNestsAcrossCallsAndCoroutines()
+		{
+			// Return keeps the result in one slot per coroutine, which the VM empties as the callback returns:
+			// a callback that calls Lua (and through it other callbacks using Return) before its own Return, and
+			// coroutine.wrap handing over a value that a callback inside the coroutine gave with Return, each
+			// get their own result.
+			Script script = new Script();
+			script.Globals["add"] = new CallbackFunction((ctx, args) => ctx.Return(args.NumberAt(0) + args.NumberAt(1)), "add");
+			script.Globals["outer"] = new CallbackFunction((ctx, args) => ctx.Return(ctx.Call(args[0]).Number + 100), "outer");
+
+			DynValue r = script.DoString(@"
+				local co = coroutine.wrap(function() coroutine.yield(add(1, 2)) return outer(function() return add(3, 4) end) end)
+				return outer(function() return add(1, 2) end), co(), co(), add(5, 6)");
+
+			Assert.AreEqual(103, r.Tuple[0].Number);
+			Assert.AreEqual(3, r.Tuple[1].Number);
+			Assert.AreEqual(107, r.Tuple[2].Number);
+			Assert.AreEqual(11, r.Tuple[3].Number);
+		}
+
+		[Test]
 		public void CallPath_CSharpFunctionsCalledByPcallSeeTheirOwnAdditionalData()
 		{
 			// pcall and ScriptExecutionContext.Call ran a C# function with the caller's context, so

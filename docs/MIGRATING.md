@@ -1453,11 +1453,9 @@ reads the value stack, which later calls overwrite. The flag is about the
 arguments only: the callback still gets a context of its own.
 
 Bytes per call (`AllocationBudgetTests`): `string.format` 216 to 120, a host
-callback with one argument 192 to 216 (152 with
-`UsesArgumentsOnlyDuringCall`; the context grew by the slot that keeps a
-result given with `ScriptExecutionContext.Return`), a userdata method call and
-a property read through reflection 424 to 256, `coroutine.wrap` plus
-`coroutine.yield` 248 to 72.
+callback with one argument 192 (128 with `UsesArgumentsOnlyDuringCall`), a
+userdata method call and a property read through reflection 424 to 256,
+`coroutine.wrap` plus `coroutine.yield` 248 to 72.
 
 A descriptor class of your own derived from `FunctionMemberDescriptorBase`
 can set the protected `ExecuteKeepsNoContext` when its `Execute` hands the
@@ -1481,7 +1479,8 @@ New, opt-in API for callbacks that run often:
   callback's result to the VM without a `DynValue` when Lua called the
   callback. Use them only as the return value of the callback the context was
   passed to (`return ctx.Return(x);`): the `DynValue` they return is a
-  placeholder for the value kept in the context. Called from C# (for example
+  placeholder for the value, which the coroutine keeps until the callback
+  returns and the next `Return` replaces. Called from C# (for example
   through `Script.Call` or `CallbackFunction.Invoke`), the callback's result is
   an ordinary `DynValue`.
 
@@ -1491,9 +1490,9 @@ script.Globals["add"] = new CallbackFunction(
     { UsesArgumentsOnlyDuringCall = true };
 ```
 
-This callback allocates only its own context per call (72 bytes; see above);
+This callback allocates only its own context per call (48 bytes; see above);
 written with `args[0].Number` and `DynValue.NewNumber` it allocates 240 bytes
-per call with two large numbers on `next` before this change, 264 now (192
+per call with two large numbers on `next` before this change, 240 now (168
 with `UsesArgumentsOnlyDuringCall`).
 
 **Affected:** nobody; existing callbacks behave as before.

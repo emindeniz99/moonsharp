@@ -15,6 +15,14 @@ namespace MoonSharp.Interpreter.Execution.VM
 		CallbackArguments.StackArguments[] m_CallArguments;
 
 		/// <summary>
+		/// The result a C# function called by this processor gave with ScriptExecutionContext.Return, until the
+		/// processor takes it as the function returns. One slot per processor (per coroutine) is enough: the
+		/// function returns the placeholder right after Return, before any other call on this processor; in
+		/// the context it would make every context 24 bytes larger.
+		/// </summary>
+		internal LuaValue CallResult;
+
+		/// <summary>
 		/// The execution context for a call of <paramref name="callback"/> whose frame is at
 		/// <paramref name="depth"/>.
 		/// </summary>

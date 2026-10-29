@@ -267,5 +267,95 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.IsTrue(r.Tuple[6].IsNil());
 			StringAssert.Contains("no file './no" + System.IO.Path.DirectorySeparatorChar + "such" + System.IO.Path.DirectorySeparatorChar + "mod.lua'", r.Tuple[7].String);
 		}
+
+		// Entry 10: collectgarbage("count") returned nothing, so scripts that log memory failed with "attempt to
+		// perform arithmetic on a nil value". It is now the managed heap of the process, in KB, plus the
+		// remainder in bytes as Lua 5.2's second result.
+		[Test]
+		public void CollectGarbage_CountIsTheManagedHeapInKilobytes()
+		{
+			// Settle the heap, so that collecting earlier tests' garbage cannot hide the growth measured below.
+			System.GC.Collect();
+			System.GC.WaitForPendingFinalizers();
+			System.GC.Collect();
+
+			DynValue r = Run(@"
+				local before = collectgarbage('count')
+				local t = {}
+				for i = 1, 1000000 do t[i] = i end
+				local after, bytes = collectgarbage('count')
+				return before, after, bytes, select('#', collectgarbage('count')), #t");
+
+			double before = r.Tuple[0].Number, after = r.Tuple[1].Number, bytes = r.Tuple[2].Number;
+
+			Assert.Greater(before, 0);
+			// A million live array slots take at least 8 bytes each on every runtime.
+			Assert.Greater(after - before, 1000000 * 8 / 1024.0, "the count must grow with what the script allocates");
+			Assert.AreEqual(2, r.Tuple[3].Number);
+			// As in Lua 5.2: the KB as a float, and the bytes past the last whole KB as an integer.
+			Assert.AreEqual(System.Math.Floor(bytes), bytes);
+			Assert.IsTrue(bytes >= 0 && bytes < 1024);
+			Assert.AreEqual(after * 1024, System.Math.Floor(after) * 1024 + bytes);
+			Assert.AreEqual(1000000, r.Tuple[4].Number);
+		}
+
+		// Entry 10: collectgarbage() and "collect" returned nothing and forced a blocking full collection, a
+		// stall for a script that calls it every frame. They ask for an optimized collection and return 0.
+		[Test]
+		public void CollectGarbage_CollectReturnsZero()
+		{
+			Assert.AreEqual("0 0 1 0",
+				RunString("return table.concat({ collectgarbage(), collectgarbage('collect'), select('#', collectgarbage()), collectgarbage(nil) }, ' ')"));
+		}
+
+		// Entry 10: the options that tune or stop Lua's collector have nothing to act on in the CLR. They return
+		// what Lua 5.2 returns for them, so code written for it runs; the differences are commented.
+		[Test]
+		public void CollectGarbage_TuningOptionsAreNoOpsWithLua52Results()
+		{
+			Assert.AreEqual("true true 0 true 0 200 200 200 200 0 0 1",
+				RunString(@"
+					local r = {
+						-- Lua 5.2: false until a step ends a cycle. True here, so loops that wait for one end.
+						tostring(collectgarbage('step')),
+						tostring(collectgarbage('isrunning')),
+						collectgarbage('stop'),
+						-- Lua 5.2: false after 'stop'. The CLR collector cannot be stopped.
+						tostring(collectgarbage('isrunning')),
+						collectgarbage('restart'),
+						-- Lua 5.2 returns the previous setting (200 at first); nothing is stored here.
+						collectgarbage('setpause', 100),
+						collectgarbage('setpause'),
+						collectgarbage('setstepmul', 400),
+						collectgarbage('setmajorinc'),
+						collectgarbage('generational'),
+						collectgarbage('incremental'),
+					}
+					local n = 0
+					repeat n = n + 1 until collectgarbage('step') or n > 10
+					r[#r + 1] = n
+					return table.concat(r, ' ')"));
+		}
+
+		// Entry 10: any option was accepted, so a typo went unnoticed. Lua 5.2 checks the option before the
+		// second argument, and the second argument for every option.
+		[Test]
+		public void CollectGarbage_InvalidArgumentsAreErrors()
+		{
+			Assert.AreEqual(
+				"bad argument #1 to 'collectgarbage' (invalid option 'x')|" +
+				"bad argument #1 to 'collectgarbage' (invalid option 'COUNT')|" +
+				"bad argument #1 to 'collectgarbage' (invalid option '1')|" +
+				"bad argument #1 to 'collectgarbage' (string expected, got table)|" +
+				"bad argument #1 to 'collectgarbage' (string expected, got boolean)|" +
+				"bad argument #2 to 'collectgarbage' (number expected, got string)|" +
+				"bad argument #2 to 'collectgarbage' (number expected, got table)|" +
+				"bad argument #1 to 'collectgarbage' (invalid option 'x')|" +
+				"true true",
+				RunString(@"
+					local function e(...) local ok, m = pcall(collectgarbage, ...) return ok and 'no error' or m end
+					return table.concat({ e('x'), e('COUNT'), e(1), e({}), e(true), e('count', 'x'), e(nil, {}), e('x', {}),
+						tostring(pcall(collectgarbage, 'count', '10')) .. ' ' .. tostring(pcall(collectgarbage, 'collect', 2.7)) }, '|')"));
+		}
 	}
 }

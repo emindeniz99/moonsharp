@@ -28,9 +28,9 @@ _VERSION = nil
 ---@return any ...
 function assert(v, message, ...) end
 
----@param opt? string
+---@param opt? "collect"|"count"|"step"|"isrunning"|"stop"|"restart"|"setpause"|"setstepmul"|"setmajorinc"|"generational"|"incremental"
 ---@param arg? integer
----@return any
+---@return any ...
 function collectgarbage(opt, arg) end
 
 ---@param message any

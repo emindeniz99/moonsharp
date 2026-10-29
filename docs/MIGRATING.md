@@ -1501,3 +1501,38 @@ do not change.
 
 **Affected:** host callbacks that read `AdditionalData` and are called through
 `pcall`, `xpcall` or `ScriptExecutionContext.Call`.
+
+## `collectgarbage` follows Lua 5.2's options and results
+
+**Before:** `collectgarbage` returned nothing for every option and accepted
+any option, so `collectgarbage("count")` was `nil` and `collectgarbage("cont")`
+went unnoticed. `collectgarbage()`, `"collect"` and `"restart"` forced a
+blocking collection of every generation.
+
+**After:** Lua 5.2's options, results and errors. The CLR collector cannot be
+stopped or tuned from a script, so the options that would do that do nothing:
+
+| Option | Result | Lua 5.2 |
+|---|---|---|
+| `"collect"`, or none | 0. Asks for an optimized, non-blocking collection of every generation (`GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized, false)`); the runtime decides whether to run one | 0, after a full collection |
+| `"count"` | The managed heap of the whole process (`GC.GetTotalMemory(false)`) in KB as a float, and the bytes past the last whole KB | The same two results for the Lua state |
+| `"step"` | `true`, without doing anything | `true` when the step ended a cycle |
+| `"isrunning"` | `true` | `false` after `"stop"` |
+| `"stop"`, `"restart"`, `"generational"`, `"incremental"` | 0, without doing anything | 0 |
+| `"setpause"`, `"setstepmul"`, `"setmajorinc"` | 200, Lua's default, without storing the argument | The previous value |
+
+An option outside the list is an error ("bad argument #1 to 'collectgarbage'
+(invalid option 'x')"), and so is a second argument that is not a number, for
+every option, as in Lua 5.2.
+
+`"count"` measures the process, not the `Script`: every script and the host
+share one managed heap, so the number grows with what any of them allocates.
+What `"collect"` does depends on the runtime: .NET 8 skipped the collection
+in a test with 77 MB on the heap, almost all of it garbage, while Mono 6.8
+and the Unity Mono 6.13 build the CI uses (Boehm and SGen) ran a full
+blocking one. IL2CPP was not measured.
+
+**Affected:** scripts that call `collectgarbage()` to free memory before
+measuring it (on .NET the collection may not happen); scripts that pass an
+option Lua 5.2 does not have, which now fail; scripts that wait for
+`collectgarbage("isrunning")` to become `false` after `"stop"`.

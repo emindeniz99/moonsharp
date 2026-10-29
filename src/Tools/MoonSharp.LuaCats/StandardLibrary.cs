@@ -39,7 +39,7 @@ namespace MoonSharp.LuaCats
 		{
 			// Global functions of Lua 5.2 and MoonSharp (loadsafe, loadfilesafe, pack, unpack).
 			{ "assert", "---@generic T\n---@param v T\n---@param message? any\n---@param ... any\n---@return T\n---@return any ...\nfunction assert(v, message, ...) end\n" },
-			{ "collectgarbage", "---@param opt? string\n---@param arg? integer\n---@return any\nfunction collectgarbage(opt, arg) end\n" },
+			{ "collectgarbage", "---@param opt? \"collect\"|\"count\"|\"step\"|\"isrunning\"|\"stop\"|\"restart\"|\"setpause\"|\"setstepmul\"|\"setmajorinc\"|\"generational\"|\"incremental\"\n---@param arg? integer\n---@return any ...\nfunction collectgarbage(opt, arg) end\n" },
 			{ "dofile", "---@param filename? string\n---@return any ...\nfunction dofile(filename) end\n" },
 			{ "error", "---@param message any\n---@param level? integer\nfunction error(message, level) end\n" },
 			{ "getmetatable", "---@param object any\n---@return table metatable\nfunction getmetatable(object) end\n" },

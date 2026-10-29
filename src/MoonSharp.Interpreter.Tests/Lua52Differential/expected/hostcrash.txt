@@ -20,3 +20,5 @@ os.date nan	OK	1	nil
 format %99.99f of 1e308	OK	1	409
 format zero padding to width 0	OK	1	"+1|0x1|01"
 format %c of 65536	OK	1	"\0"
+read from a write-only file	OK	3	nil "Bad file descriptor" 9
+write to a read-only file	OK	3	nil "Bad file descriptor" 9

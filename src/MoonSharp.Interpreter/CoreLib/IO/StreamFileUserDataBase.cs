@@ -147,5 +147,15 @@ namespace MoonSharp.Interpreter.CoreLib.IO
 			return !m_Closed;
 		}
 
+		protected override bool CanRead
+		{
+			get { return m_Reader != null; }
+		}
+
+		protected override bool CanWrite
+		{
+			get { return m_Writer != null; }
+		}
+
 	}
 }

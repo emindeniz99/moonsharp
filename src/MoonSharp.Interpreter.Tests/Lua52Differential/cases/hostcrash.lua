@@ -53,3 +53,7 @@ return #string.format("%99.99f", 1e308)
 return string.format("%+00d|%#00x|%#0o", 1, 1, 1)
 --@@ format %c of 65536
 return string.format("%c", 65536)
+--@@ read from a write-only file
+local n = os.tmpname() local f = io.open(n, "w") local a, b, c = f:read() f:close() os.remove(n) return a, b, c
+--@@ write to a read-only file
+local n = os.tmpname() local f = io.open(n, "w") f:close() f = io.open(n) local a, b, c = f:write("x") f:close() os.remove(n) return a, b, c

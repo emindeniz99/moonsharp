@@ -47,8 +47,18 @@ namespace MoonSharp.Interpreter.CoreLib.IO
 			}, "lines");
 		}
 
+		// What C's stdio gives for a read from a file opened only for writing, or the reverse: EBADF.
+		static DynValue BadFileDescriptor()
+		{
+			return DynValue.NewTuple(DynValue.Nil, DynValue.NewString("Bad file descriptor"), DynValue.NewNumber(9));
+		}
+
 		public DynValue read(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
+			// The reader of a write-only file is null: a NullReferenceException ended the host.
+			if (isopen() && !CanRead)
+				return BadFileDescriptor();
+
 			if (args.Count == 0)
 			{
 				string str = ReadLine();
@@ -131,6 +141,9 @@ namespace MoonSharp.Interpreter.CoreLib.IO
 
 		public DynValue write(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
+			if (isopen() && !CanWrite)
+				return BadFileDescriptor();
+
 			try
 			{
 				for (int i = 0; i < args.Count; i++)
@@ -230,6 +243,8 @@ namespace MoonSharp.Interpreter.CoreLib.IO
 
 
 		protected internal abstract bool isopen();
+		protected abstract bool CanRead { get; }
+		protected abstract bool CanWrite { get; }
 		protected abstract string Close();
 
 		public abstract bool flush();

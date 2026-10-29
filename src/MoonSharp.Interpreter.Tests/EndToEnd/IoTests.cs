@@ -219,6 +219,28 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual("12 ab\n3\n", r.Tuple[9].String);
 		}
 
+		// The reader of a write-only file and the writer of a read-only one are null: reading or writing ended
+		// the host with a NullReferenceException. Lua 5.2 returns nil, "Bad file descriptor", 9 (EBADF).
+		[Test]
+		public void ReadWriteOnTheWrongMode_IsBadFileDescriptor()
+		{
+			DynValue r = InTempDirectory(@"
+				local f = io.open(dir .. 'f', 'w')
+				local a, b, c = f:read('*l')
+				f:close()
+				f = io.open(dir .. 'f')
+				local d, e, g = f:write('x')
+				f:close()
+				return a, b, c, d, e, g");
+
+			Assert.IsTrue(r.Tuple[0].IsNil());
+			Assert.AreEqual("Bad file descriptor", r.Tuple[1].String);
+			Assert.AreEqual(9, r.Tuple[2].Number);
+			Assert.IsTrue(r.Tuple[3].IsNil());
+			Assert.AreEqual("Bad file descriptor", r.Tuple[4].String);
+			Assert.AreEqual(9, r.Tuple[5].Number);
+		}
+
 		// io.lines and file:lines read as they go and return a function, as in Lua 5.2. They read the whole file
 		// into a list first, and the exhausted iterator threw NotSupportedException; file:lines('*a'), whose
 		// result never ends, filled the memory.

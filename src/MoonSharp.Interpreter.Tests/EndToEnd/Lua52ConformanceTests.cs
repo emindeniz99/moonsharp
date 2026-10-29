@@ -203,5 +203,20 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 					local D = setmetatable({ v = 1 }, {})
 					return table.concat({ tostring(A == B), tostring(A == C), tostring(A == D), tostring(D == A) }, '|')"));
 		}
+
+
+		// Entries 21 and 22: math.fmod used Math.IEEERemainder (fmod(7, 4) was -1) and math.modf floored.
+		[Test]
+		public void MathFmodAndModf_FollowC()
+		{
+			Assert.AreEqual("3|-3|3|1.5|2|-0|-3|-0.7|3|0.7|-inf|-0",
+				RunString(@"
+					local function s(x) if x == 0 then return 1 / x < 0 and '-0' or '0' end return string.format('%.14g', x) end
+					local a, b = math.modf(-3.7)
+					local c, d = math.modf(3.7)
+					local e, f = math.modf(-1/0)
+					return table.concat({ s(math.fmod(7, 4)), s(math.fmod(-7, 4)), s(math.fmod(7, -4)), s(math.fmod(5.5, 2)),
+						s(math.fmod(2^53, 3)), s(math.fmod(-0.0, 1)), s(a), s(b), s(c), s(d), s(e), s(f) }, '|')"));
+		}
 	}
 }

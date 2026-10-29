@@ -122,5 +122,17 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 					return table.concat({ count(nil or f()), count(true and f()), count(f() or 1), count(f() and f()),
 						count(nil or none()), count(va(7, 8)), va(7, 8), #t, count() }, '|')"));
 		}
+
+
+		// Entry 2: a unary operator after a binary one closed before '^' joined: 1 + -x^2 was 1 + (-x)^2.
+		[Test]
+		public void UnaryMinus_BindsLooserThanPowerEverywhere()
+		{
+			Assert.AreEqual("-8|-18|-4|6|true|false|-255|-0.25|-4",
+				RunString(@"
+					local x = 3
+					return table.concat({ 1 + -x^2, 2 * -x^2, tostring(true and -2^2), 2 - -2^2, tostring(2^-3^2 == 2^-9),
+						tostring(1 == not 2^2), 1 + -2^2^3, -2^-2, - -2^2 * -1 }, '|')"));
+		}
 	}
 }

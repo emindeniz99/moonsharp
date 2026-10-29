@@ -26,6 +26,41 @@ difference says whether its fix touches either.
   `f` fails, `dofile`/`loadfile`/`io.input` of a missing file, `file:seek` before the start and an
   exhausted `io.lines` iterator [C].
 
+## After `fix/lua52-batch1`
+
+Measured 2026-10-29 on branch `fix/lua52-batch1` with the same runner, cases and workarounds;
+`observed/` now holds this output, the tables further down stay as measured at `03a5536` [C].
+
+| Differential cases (the 14 files) | `03a5536` | `fix/lua52-batch1` |
+|---|---:|---:|
+| Same as Lua 5.2 | 3,620 | 5,338 |
+| Different values | 1,176 | 272 |
+| Message only | 142 | 62 |
+| Errors where Lua 5.2 returns | 451 | 20 |
+| Results where Lua 5.2 raises | 203 | 15 |
+| End the host process | 118 | 3 |
+
+- `string.format` 2,244 to 3,908 of 3,989 (the 81 left are `%s` and `%q` of numbers, whose text is
+  MoonSharp's `tostring`); `bit32` 4 to 15 of 17 (2 message names); `load` 12 to 21 of 31; `syntax`
+  27 to 41 of 63.
+- The 3 crashes left are `table.unpack` with `i > j + 1` (entry 15, `TableModule`, the Table work).
+  The 20 errors are `math.log10` (14, owner question with `loadstring`), `table.remove` and
+  `table.insert` (5, Table work) and `tostring` of a `__tostring` returning a table (1). The 15
+  accepts are `string.char` out of range (11) and `table.insert`/`table.sort` (4).
+- A new file, `cases/hostcrash.lua`, holds 24 calls a library fuzzer found ending the host; on `next`
+  13 of them crashed and one hung. Now 20 match Lua 5.2 and 4 differ by design (`string.rep` past a
+  CLR string and `os.date` past `DateTime` raise or return nil where Lua 5.2 on Linux returns a value;
+  `io.open`'s message names `open`, not `io.open`).
+- `Lua52DifferentialGuardTests` runs every case in the unit runners and fails on any that ends the
+  host, with the three `table.unpack` cases listed until they are fixed.
+- Official suite, distinct failing assertion lines with the same workarounds (lua5.2 fails only
+  `errors.lua` 51 and 52, not counted): 69 to 38. `bitwise`, `constructs`, `events` and `math` now pass
+  every assertion they reach, `strings` fails only lines 82 and 84 (Latin-1 source bytes, entry 28).
+  `files.lua` no longer ends the host at the exhausted `io.lines` iterator; it now stops at line 97,
+  whose failure (the `os.rename` of line 88 failed first) the harness writes to a default output the
+  test has closed. With failures written to `io.stderr` it runs to line 272, failing on Latin-1 bytes
+  and on `seek` positions, which count the bytes the reader buffered.
+
 ## How it was measured
 
 Reference: `lua5.2` from Debian (`Lua 5.2.4  Copyright (C) 1994-2015 Lua.org, PUC-Rio`), built with
@@ -168,6 +203,7 @@ owner. "Plain bug" means Lua 5.2 behaviour is the only sensible one; it still go
    Cause: the right operand is compiled as a plain call and nothing adjusts it to one value after the
    `JtOrPop`/`JfOrPop` jump (`Tree/Expressions/BinaryOperatorExpression.cs:331-338`) [S for the exact fix
    point]. S. Compiler, VM-core agent's area; not `Table`. Plain bug.
+   **Fixed** on `fix/lua52-batch1`: an operand that is a call or `...` is cut to one value.
 2. **Unary operators bind looser than `^` only at the start of an expression** [C].
    `local x = 3; return 1 + -x^2, 2 * -x^2, true and -2^2, 2 - -2^2` gives `-8 -18 -4 6` on 5.2 and
    `10 18 4 -2` on the fork (`-x^2` alone is right); `not 2^2` after a binary operator becomes `(not 2)^2` and fails.
@@ -175,6 +211,7 @@ owner. "Plain bug" means Lua 5.2 behaviour is the only sensible one; it still go
    (`Tree/Expression_.cs:120`, `:125`); an operand of a binary chain is parsed with `isPrimary = false`,
    so `-x` is closed before `^` joins the chain. This is also what fails `constructs.lua:15` and
    `math.lua:77,126`. S. Parser only. Plain bug.
+   **Fixed** on `fix/lua52-batch1`: the power chain follows every unary operand.
 3. **Multiple assignment evaluates table and key after earlier targets are stored** [C].
    `local a, i = {}, 1; i, a[i] = i + 1, 20` stores `a[1]` on 5.2 and `a[2]` on the fork;
    `t, t.x = {}, 1` writes into the new table. Cause: `AssignmentStatement.Compile` calls
@@ -183,11 +220,15 @@ owner. "Plain bug" means Lua 5.2 behaviour is the only sensible one; it still go
    (`Tree/Expressions/IndexExpression.cs:57-74`). Lua evaluates all prefixes and keys first. M (stack
    offsets and the `__newindex` scratch slot change). Compiler, VM-core area. Plain bug; the manual
    leaves the order undefined, but reference Lua and its suite (`attrib.lua:382-403`) rely on it.
+   **Fixed** on `fix/lua52-batch1`: tables and keys of every target are evaluated first, then the values,
+   and the stores run from the last target to the first, as in reference Lua.
 4. **`goto` to a label at the end of a block after a `local`** [C].
    `do goto e; local x = 1; ::e:: end` compiles on 5.2 ("this restriction does not apply to labels at the
    end of blocks") and raises "jumps into the scope of local 'x'" on the fork. Cause:
    `Execution/Scopes/BuildTimeScopeBlock.cs:130` compares defined-variable counts without the end-of-block
    exception. S. Compiler. Plain bug (scripts that compile on 5.2 are rejected).
+   **Fixed** on `fix/lua52-batch1`: a label followed only by void statements up to the end of its block
+   counts no locals of the block (not before `until`).
 5. **Syntax the fork accepts** [C]: `return;;`, `function f(..., ...) end`, `\u{48}` escapes, a leading
    `#!` line in `load`, bytes >= 128 in names, more than 200 locals or 255 upvalues. S each. Low
    priority; the `\u{}` escape and wider limits are compatibility questions (scripts may use them).
@@ -205,10 +246,13 @@ owner. "Plain bug" means Lua 5.2 behaviour is the only sensible one; it still go
 8. **`pcall()` with no arguments ends the process** with `OverflowException` [C]:
    `new DynValue[args.Count - firstArg]` with a count of 0 (`CoreLib/ErrorHandlingModule.cs:40`). Lua
    5.2: "bad argument #1 to 'pcall' (value expected)". S. Call path (`pcall`). Plain bug.
+   **Fixed** on `fix/lua52-batch1`: "bad argument #1 to 'pcall' (value expected)".
 9. **`pcall(coroutine.wrap(f))` ends the process when `f` fails** (`NullReferenceException`) [C]. Also
    for a dead wrapped coroutine. `pcall(function() return w() end)` works. Cause: `__wrap_wrapper` reads
    `executionContext.AdditionalData` (`CoreLib/CoroutineModule.cs:39`), which is not set when `pcall`
    invokes the callback directly (`ErrorHandlingModule.cs:49`). S. Call path. Plain bug.
+   **Fixed** on `fix/lua52-batch1` in `CoroutineModule` (the wrapper keeps its coroutine in its delegate);
+   `pcall` still runs a C# function with its own context.
 10. **`collectgarbage` returns nothing for every option** [C]. `collectgarbage("count")` is `nil` (5.2:
     KB as a number plus a remainder), `"step"`, `"isrunning"`, `"setpause"` are `nil`, an invalid option
     is accepted; `collectgarbage()` and `"collect"` run `GC.Collect(2, GCCollectionMode.Forced)`
@@ -260,20 +304,27 @@ owner. "Plain bug" means Lua 5.2 behaviour is the only sensible one; it still go
     4-element array 4 / 1. Lua 5.2 returns the array part's size when its last slot is set; the fork
     returns the first border. Scripts that build `{...}` and loop to `#t` see fewer elements. Table
     internals. Compatibility question.
+    Checked for `fix/lua52-batch1`: Lua 5.2 3.4.6 defines the length only for a sequence ("the length of a
+    table t is only defined if the table is a sequence"), so both results are allowed; nothing changed.
+    Scripts that need the count of `...` with nils should use `select('#', ...)` or `table.pack(...).n`.
 19. **`next` returns two values at the end, `pairs` returns two, `__pairs` results are not cut to
     three** (already in ROADMAP) [C]. `pairs(5)` and `ipairs(nil)` are accepted and the loop fails at its
     first step, naming `next` or the internal `!!next_i!!` instead of `pairs`/`ipairs`
     (`CoreLib/TableIteratorsModule.cs:20-43`). S. Iterators; not `Table` internals.
 20. **`package.loaded` has no `_G` and no `package` entry**; `package.cpath`, `searchpath`, `loadlib`
     are absent [C]. S. Neither path.
+    **Fixed** on `fix/lua52-batch1`: `loaded._G` and `loaded.package`, `cpath = ""`, `loadlib` answers as
+    a build without C libraries, `searchpath` searches through the script loader.
 
 ### Math and `bit32`
 
 21. **`math.fmod` uses `Math.IEEERemainder`** [C]: `math.fmod(7, 4)` is -1 (5.2: 3), `fmod(5.5, 2)`
     -0.5 (1.5), `fmod(2^53, 3)` -1 (2). Any quotient whose fraction is .5 or more gives a wrong result
     (`CoreLib/MathModule.cs:151`). C# `%` on doubles is C's `fmod`. S. Plain bug.
+    **Fixed** on `fix/lua52-batch1` (C#'s `%`).
 22. **`math.modf` floors instead of truncating** [C]: `math.modf(-3.7)` is `-4, 0.3` (5.2: `-3, -0.7`);
     `modf(1/0)` returns `nan` for the fraction (5.2: 0) (`CoreLib/MathModule.cs:241`). S. Plain bug.
+    **Fixed** on `fix/lua52-batch1`.
 23. **`math.huge` is `Double.MaxValue`** (already in ROADMAP) [C]; `math.log10` is absent (5.2 compat
     build has it); `math.frexp` of `inf`/`nan`/`-0`, `math.ldexp` with a fractional exponent,
     `math.max(1, 0/0, 3)`, `math.random(0)` and `math.random(2, 1)` differ [C]. S each.
@@ -292,6 +343,8 @@ owner. "Plain bug" means Lua 5.2 behaviour is the only sensible one; it still go
       players on phones are likely affected too [S, not run].
     S-M for the module (a port of `lbitlib.c`'s `luaL_checkunsigned` rounding). Neither path. Plain bugs;
     the runtime dependence makes the last one the most urgent.
+    **Fixed** on `fix/lua52-batch1` (a port of `lbitlib.c`, with an exact modulo instead of a cast); the
+    names in messages remain.
 
 ### Strings and `string.format`
 
@@ -300,15 +353,23 @@ owner. "Plain bug" means Lua 5.2 behaviour is the only sensible one; it still go
     `CoreLib/StringLib/LuaFormatter.cs:473`), and `%c` outside 0..65535 (`Convert.ToChar`, `:191`;
     `%c` of 0 also returns an empty string). 5.2 prints `[ab]` and the low byte. S. String library, the
     string agent's files. Plain bugs.
+    **Fixed** on `fix/lua52-batch1`, with the other crashes of the formatter found by a fuzzer (zero
+    padding to width 0 or 1, items over 512 characters).
 26. **`string.format` accepts what 5.2 rejects and ignores some flags** [C]: `%d`/`%x`/`%u`/`%o` of
     out-of-range or negative values wrap (already in ROADMAP for `%d`); `%.3d` ignores the precision
     (`7` for `007`); `%s` rejects `nil`, booleans and tables (already in ROADMAP); `%a`/`%A` are not
     implemented; `%q` writes `\r` where 5.2 writes `\13`, and numbers in `%s`/`%q` follow the fork's
     `tostring`. S-M. String agent's files. The number text is the known `tostring` question for the
     owner.
+    **Fixed** on `fix/lua52-batch1` (a formatter that follows Lua 5.2.4 and glibc, with exact float
+    digits), except the number text of `%s`/`%q` (owner question) and `%c` of 256 to 65535, kept as a
+    UTF-16 character.
 27. **`string.rep("", n, sep)` returns `""`** (5.2: `n - 1` separators); string indices of 2^31 or
     more wrap through an `int` cast (`string.sub("abc", 2^53)` is "abc", 5.2: ""); `string.char(256)`
     and `string.char(-1)` return "?" instead of raising; `string.sub(s, nil)` is accepted [C]. S each.
+    **Partly fixed** on `fix/lua52-batch1`: `string.rep` keeps the separators and raises "resulting string
+    too large" past a CLR string; the indices of 2^31 or more, `string.char(256)` and `string.sub(s, nil)`
+    remain.
 28. **Source files are decoded as UTF-8**: a Latin-1 byte in a string literal becomes `?` (63), so
     `strings.lua:82,84` fail [C]. By design (strings are UTF-16 text); worth a line in the docs.
 
@@ -322,6 +383,8 @@ owner. "Plain bug" means Lua 5.2 behaviour is the only sensible one; it still go
     reader propagates instead of `nil, msg`; pieces are joined with `+=` (quadratic). The `mode` argument
     is ignored (text loads under `"b"`, binary under `"t"`), `env` must be a table (5.2: any value, and an
     explicit `nil`), and a number chunk raises. S. Neither path. Plain bugs.
+    **Fixed** on `fix/lua52-batch1` for the reader, `mode`, `env` and number chunks; the default chunk
+    name and error positions remain (13).
 31. **`dofile`, `loadfile` and `io.input` of a missing file end the process** with
     `FileNotFoundException` instead of returning or raising a Lua error [C] (measured with
     `FileSystemScriptLoader`; the CLI's `ReplInterpreterScriptLoader` extends it [S]). `io.open` handles it.
@@ -331,6 +394,9 @@ owner. "Plain bug" means Lua 5.2 behaviour is the only sensible one; it still go
     bugs. The common cause is that a CLR exception from a library callback is not turned into a script
     error, so `pcall` cannot catch it; one conversion point in the callback invocation would fix the
     whole class, and that is call path.
+    **Fixed** on `fix/lua52-batch1` with the fixed library crash points: missing files, `seek`, `io.lines`
+    (now a function that reads as it goes), reads and writes on the wrong mode (EBADF) and `io.open`'s
+    modes; the `errno` value of `io.open` failures remains.
 32. **`debug.getinfo`, `getlocal`, `setlocal`, `sethook`, `gethook` are absent** (`CoreLib/DebugModule.cs:247`,
     `:297` are commented out) [C]. They block most of `db.lua` (596 lines) and every use of
     `debug.getinfo(1).currentline`. `debug.upvalueid` returns different ids for shared upvalues and
@@ -349,6 +415,8 @@ owner. "Plain bug" means Lua 5.2 behaviour is the only sensible one; it still go
     each class metatable). Also a userdata compared with a value of another type calls `__eq`; 5.2
     returns false. Cause: `Execution/VM/Processor/Processor_InstructionLoop.cs:1696-1718`. S. VM core
     (VM agent's file). Plain bug.
+    **Fixed** on `fix/lua52-batch1` for tables; a userdata compared with another type still calls `__eq`
+    (interop dispatches it to `Equals`).
 36. `__le` falling back to `not __lt(b, a)`, `__lt` with mixed types, `__concat` with numbers on either
     side, `__len` on strings (not consulted), `__index`/`__newindex` chains, `__call`, `__metatable`
     and `__pairs`/`__ipairs` all match 5.2 [C].
@@ -372,10 +440,15 @@ Ranked by how common the idiom is in application and game scripts, then by how q
 | 9 | `math.fmod` wrong for most non-exact quotients; `math.modf` floors negatives | 21, 22 | silently wrong numbers | S | neither | no |
 | 10 | `i, t[i] = i + 1, v` uses the new `i` | 3 | silently wrong table slot | M | compiler (VM area) | no |
 
+On `fix/lua52-batch1`: ranks 1, 3, 7, 9 and 10 are fixed; 2, 6 and 8 wait for the Table and call path
+work; 4 and 5 are owner questions.
+
 Next in line: `#{...}` with `nil` arguments (18), `pcall(coroutine.wrap(f))` crash (9), `bit32` with
 negative numbers on .NET 9+ and likely ARM64 (24), error message positions that scripts parse (13),
 `goto continue` before a `local` at the end of a loop body (4), `__eq` across class metatables (35),
 `dofile`/`loadfile` of a missing file (31), `debug.getinfo` (32).
+Of these, 9, 24, 4, 35 and 31 are fixed on `fix/lua52-batch1`; 18 is a border both versions may return
+(an owner question), and 13 and 32 remain.
 
 Fixes that touch neither the call path nor `Table` and can start now (entry numbers):
 `collectgarbage` (10), `loadstring` once the owner decides (29), `math.fmod`/`modf` (21, 22), `bit32`

@@ -287,16 +287,16 @@ math.rad("3.7")	OK	1	4653276388000929p-56
 math.rad("x")	ERR	"bad argument #1 to 'rad' (number expected, got string)"
 math.rad(nil)	ERR	"bad argument #1 to 'rad' (number expected, got nil)"
 math.modf(0)	OK	2	0 0
-math.modf(-0.0)	OK	2	-0 0
+math.modf(-0.0)	OK	2	-0 -0
 math.modf(1)	OK	2	1 0
-math.modf(-1)	OK	2	-1 0
+math.modf(-1)	OK	2	-1 -0
 math.modf(2.5)	OK	2	2 4503599627370496p-53
-math.modf(-2.5)	OK	2	-3 4503599627370496p-53
+math.modf(-2.5)	OK	2	-2 -4503599627370496p-53
 math.modf(0.5)	OK	2	0 4503599627370496p-53
-math.modf(-0.5)	OK	2	-1 4503599627370496p-53
+math.modf(-0.5)	OK	2	-0 -4503599627370496p-53
 math.modf(1e300)	OK	2	6724873095247260p944 0
-math.modf(1/0)	OK	2	inf nan
-math.modf(-1/0)	OK	2	-inf nan
+math.modf(1/0)	OK	2	inf 0
+math.modf(-1/0)	OK	2	-inf -0
 math.modf(0/0)	OK	2	nan nan
 math.modf(2^53)	OK	2	4503599627370496p1 0
 math.modf("3.7")	OK	2	3 6305039478318696p-53
@@ -322,8 +322,8 @@ math.fmod(7, 3)	OK	1	1
 math.fmod(-7, 3)	OK	1	-1
 math.fmod(7, -3)	OK	1	1
 math.fmod(-7, -3)	OK	1	-1
-math.fmod(5.5, 2)	OK	1	-4503599627370496p-53
-math.fmod(-5.5, 2)	OK	1	4503599627370496p-53
+math.fmod(5.5, 2)	OK	1	6755399441055744p-52
+math.fmod(-5.5, 2)	OK	1	-6755399441055744p-52
 math.fmod(1, 0)	OK	1	nan
 math.fmod(0, 0)	OK	1	nan
 math.fmod(-1, 0)	OK	1	nan
@@ -331,7 +331,7 @@ math.fmod(1/0, 2)	OK	1	nan
 math.fmod(2, 1/0)	OK	1	2
 math.fmod(0/0, 1)	OK	1	nan
 math.fmod(7, 0.5)	OK	1	0
-math.fmod(2^53, 3)	OK	1	-1
+math.fmod(2^53, 3)	OK	1	2
 math.fmod("7", "3")	OK	1	1
 math.fmod(1, nil)	ERR	"bad argument #2 to 'fmod' (number expected, got nil)"
 math.pow(7, 3)	OK	1	343
@@ -494,8 +494,8 @@ randomseed none	ERR	"bad argument #1 to 'randomseed' (number expected, got no va
 tointeger absent	OK	4	nil nil nil nil
 deprecated math present	OK	3	"function" "function" "function"
 floor -0	OK	2	-inf -inf
-modf negative	OK	2	-4 5404319552844592p-54
-modf inf	OK	2	inf nan
+modf negative	OK	2	-3 -6305039478318696p-53
+modf inf	OK	2	inf 0
 unary minus zero	OK	2	-inf -inf
 number literal hex float	OK	4	16 4503599627370496p-53 21 16
 number literal big	OK	3	4503599627370496p12 inf 4503599627370496p1

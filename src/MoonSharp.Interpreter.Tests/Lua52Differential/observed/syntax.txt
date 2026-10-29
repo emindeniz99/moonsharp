@@ -1,25 +1,25 @@
-unary minus power right operand	OK	3	10 18 -8
-unary minus power after and	OK	1	4
-unary minus power in comparison	OK	2	false true
-not power	ERR	"attempt to perform arithmetic on a boolean value"
+unary minus power right operand	OK	3	-8 -18 10
+unary minus power after and	OK	1	-4
+unary minus power in comparison	OK	2	true true
+not power	OK	2	false false
 unary minus power primary	OK	3	-9 -9 -4503599627370496p-54
 length power	ERR	"attempt to perform arithmetic on a table value"
-and truncates call results	OK	3	1 2 3
-or truncates call results	OK	3	1 2 3
-and/or truncate in assignment	OK	2	1 2
-and/or truncate in table constructor	OK	1	2
-and/or truncate as argument	OK	1	2
+and truncates call results	OK	1	1
+or truncates call results	OK	1	1
+and/or truncate in assignment	OK	2	1 nil
+and/or truncate in table constructor	OK	1	1
+and/or truncate as argument	OK	1	1
 parenthesis truncates	OK	1	1
 comparison truncates	OK	1	true
-multiple assignment evaluates prefixes first	OK	3	2 nil 20
+multiple assignment evaluates prefixes first	OK	3	2 20 nil
 multiple assignment swap	OK	2	2 1
-multiple assignment table replaced	OK	2	nil 1
-multiple assignment upvalue order	OK	3	2 nil 20
+multiple assignment table replaced	OK	2	1 nil
+multiple assignment upvalue order	OK	3	2 20 nil
 multiple assignment extra values	OK	2	1 2
 multiple assignment call expands last	OK	3	1 1 2
 goto continue	OK	1	9
-goto end of block after local	SYNTAX	"<goto e> at line 1 jumps into the scope of local 'x'"
-goto end of block after local with semicolons	SYNTAX	"<goto e> at line 1 jumps into the scope of local 'x'"
+goto end of block after local	OK	1	"ok"
+goto end of block after local with semicolons	OK	1	"ok"
 goto into local scope rejected	OK	2	nil "=(load):(1,3-7): <goto e> at line 1 jumps into the scope of local 'x'"
 goto out of nested for	OK	1	3
 goto backwards loop	OK	1	5

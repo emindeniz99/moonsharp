@@ -74,12 +74,14 @@ abstract class InProcessBehaviourTest {
     }
 
     // A .NET exception that is not a Lua error would end the JVM if it crossed the native boundary.
+    // string.rep past the CLR string limit threw ArgumentOutOfRangeException until the library
+    // checked it; it is now a Lua error, as in Lua 5.2, and the context keeps working.
     @Test
-    void dotnetExceptionsBecomeHostErrors() {
+    void oversizedResultsAreLuaErrors() {
         HostResult r = host.run("exc", "rep", "return string.rep('x', 2^31)", null);
         assertFalse(r.ok());
-        assertEquals("host", r.error().kind());
-        assertTrue(r.error().message().startsWith("System.ArgumentOutOfRangeException"), r.error().message());
+        assertEquals("runtime", r.error().kind());
+        assertTrue(r.error().message().endsWith("resulting string too large"), r.error().message());
         assertEquals(2, host.run("exc", "after", "return 1 + 1", null).valueOrThrow().asInt());
     }
 

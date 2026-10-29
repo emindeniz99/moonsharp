@@ -1,0 +1,56 @@
+error string	ERR	"boom"
+error level 0	ERR	"boom"
+error level 2 has position	OK	2	true "boom"
+error level 3	OK	1	true
+error level 1 position	OK	1	"boom"
+error number value	OK	3	false "string" "42"
+error number with level	OK	2	"string" "=c:(1,36-40): 42"
+error table value	OK	2	false false
+error table from function	OK	2	"string" false
+error nil	OK	2	false "bad argument #1 to 'error' (string expected, got no value)"
+error explicit nil	OK	2	false "bad argument #1 to 'error' (string expected, got nil)"
+error boolean	OK	2	false "bad argument #1 to 'error' (string expected, got boolean)"
+error with __tostring object	OK	1	"string"
+error rethrow keeps object	OK	1	false
+error string coerced number keeps type	OK	1	"string"
+pcall nil	OK	2	false "attempt to pcall a non-function"
+pcall no args	CRASH	System.OverflowException
+pcall number	OK	2	false "attempt to pcall a non-function"
+pcall result count	OK	1	4
+pcall passes args	OK	5	true 3 1 nil 3
+pcall nested	OK	3	true false "x"
+pcall callable table	OK	2	true 42
+xpcall basic	OK	2	false "handled: string"
+xpcall no handler	ERR	"bad argument #2 to 'xpcall' (function expected, got no value)"
+xpcall handler nil	OK	2	false "=c:(1,30-35): e"
+xpcall args	OK	2	true 5
+xpcall handler gets table	OK	2	false "false"
+xpcall handler error	OK	2	false "b\10=c:(1,30-35): a"
+xpcall handler result count	OK	1	2
+xpcall traceback handler	OK	3	false "string" true
+assert false	ERR	"assertion failed!"
+assert nil message	ERR	"msg"
+assert table message	OK	1	false
+assert number message	OK	2	"string" "42"
+assert returns all	OK	3	1 2 3
+assert no args	ERR	"assertion failed!"
+runtime error call nil global	OK	1	"=c:(1,43-45): attempt to call a nil value"
+runtime error call nil field	OK	1	"=c:(1,47-49): attempt to call a nil value"
+runtime error call nil method	OK	1	"=c:(1,46-49): attempt to call a nil value"
+runtime error index nil local	OK	1	"=c:(1,39-46): attempt to index a nil value"
+runtime error arith nil upvalue	OK	1	"=c:(1,39-51): attempt to perform arithmetic on a nil value"
+runtime error compare	OK	1	"=c:(1,31-45): attempt to compare two table values"
+runtime error compare mixed	OK	1	"=c:(1,31-45): attempt to compare number with string"
+runtime error concat	OK	1	"=c:(1,31-47): attempt to concatenate a table value"
+runtime error concat nil	OK	1	"=c:(1,39-54): attempt to concatenate a nil value"
+runtime error length	OK	1	"=c:(1,31-40): attempt to get length of a number value"
+bad argument message	OK	2	false "bad argument #1 to 'rep' (string expected, got no value)"
+bad argument method self	OK	2	false "=c:(1,36-60): bad argument #1 to 'rep' (string expected, got nil)"
+bad argument method call	OK	1	"=c:(1,31-51): bad argument #2 to 'rep' (number expected, got table)"
+stack overflow message	OK	2	false true
+error in __index	OK	1	"=c:(1,54-61): idx"
+error in __tostring via tostring	OK	2	false "=c:(1,70-76): ts"
+chunkname in message	OK	1	"=mychunk:(1,5-10): x"
+default load chunkname in message	OK	1	"=(load):(1,5-10): x"
+syntax error message from load	OK	2	nil "=src:(1,4-5): unexpected symbol near '='"
+syntax error default chunkname	OK	2	nil "=(load):(1,4-5): unexpected symbol near '='"

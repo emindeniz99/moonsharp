@@ -94,22 +94,22 @@ math.log(2^53)	OK	1	5170245042386938p-47
 math.log("3.7")	OK	1	5892207199053136p-52
 math.log("x")	ERR	"bad argument #1 to 'log' (number expected, got string)"
 math.log(nil)	ERR	"bad argument #1 to 'log' (number expected, got nil)"
-math.log10(0)	ERR	"attempt to call a nil value"
-math.log10(-0.0)	ERR	"attempt to call a nil value"
-math.log10(1)	ERR	"attempt to call a nil value"
-math.log10(-1)	ERR	"attempt to call a nil value"
-math.log10(2.5)	ERR	"attempt to call a nil value"
-math.log10(-2.5)	ERR	"attempt to call a nil value"
-math.log10(0.5)	ERR	"attempt to call a nil value"
-math.log10(-0.5)	ERR	"attempt to call a nil value"
-math.log10(1e300)	ERR	"attempt to call a nil value"
-math.log10(1/0)	ERR	"attempt to call a nil value"
-math.log10(-1/0)	ERR	"attempt to call a nil value"
-math.log10(0/0)	ERR	"attempt to call a nil value"
-math.log10(2^53)	ERR	"attempt to call a nil value"
-math.log10("3.7")	ERR	"attempt to call a nil value"
-math.log10("x")	ERR	"attempt to call a nil value"
-math.log10(nil)	ERR	"attempt to call a nil value"
+math.log10(0)	OK	1	-inf
+math.log10(-0.0)	OK	1	-inf
+math.log10(1)	OK	1	0
+math.log10(-1)	OK	1	nan
+math.log10(2.5)	OK	1	7168649899084802p-54
+math.log10(-2.5)	OK	1	nan
+math.log10(0.5)	OK	1	-5422874305198591p-54
+math.log10(-0.5)	OK	1	nan
+math.log10(1e300)	OK	1	300
+math.log10(1/0)	OK	1	inf
+math.log10(-1/0)	OK	1	nan
+math.log10(0/0)	OK	1	nan
+math.log10(2^53)	OK	1	8981635567985166p-49
+math.log10("3.7")	OK	1	5117906145558784p-53
+math.log10("x")	ERR	"bad argument #1 to 'log10' (number expected, got string)"
+math.log10(nil)	ERR	"bad argument #1 to 'log10' (number expected, got nil)"
 math.sin(0)	OK	1	0
 math.sin(-0.0)	OK	1	-0
 math.sin(1)	OK	1	7579296827247854p-53

@@ -224,6 +224,13 @@ namespace MoonSharp.Interpreter.CoreLib
 			return exec2n(args, "log", Math.E, (d1, d2) => Math.Log(d1, d2));
 		}
 
+		// Lua 5.1's function, which Lua 5.2's default build (LUA_COMPAT_ALL) keeps.
+		[MoonSharpModuleMethod]
+		public static DynValue log10(ScriptExecutionContext executionContext, CallbackArguments args)
+		{
+			return exec1(args, "log10", d => Math.Log10(d));
+		}
+
 		[MoonSharpModuleMethod]
 		public static DynValue max(ScriptExecutionContext executionContext, CallbackArguments args)
 		{

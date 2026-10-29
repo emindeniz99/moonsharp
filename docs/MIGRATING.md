@@ -1536,3 +1536,19 @@ blocking one. IL2CPP was not measured.
 measuring it (on .NET the collection may not happen); scripts that pass an
 option Lua 5.2 does not have, which now fail; scripts that wait for
 `collectgarbage("isrunning")` to become `false` after `"stop"`.
+
+## `loadstring`, `table.maxn` and `math.log10` exist
+
+**Before:** these Lua 5.1 functions were `nil`.
+
+**After:** they exist where Lua 5.2's default build (`LUA_COMPAT_ALL`) has
+them: `loadstring` with `load` (`CoreModules.LoadMethods`, so the sandbox
+presets without `load` do not get it either), `table.maxn` with `table`,
+`math.log10` with `math`. `loadstring` is `load` under another name, as in Lua
+5.2: it also takes a reader function, `mode` and `env`, but `loadstring ==
+load` is false (Lua 5.2: true). `table.maxn` returns the largest positive
+numeric key, fractional ones included, reading the table raw. `module` and
+`package.seeall` are still absent.
+
+**Affected:** scripts that test for these names to detect Lua 5.1
+(`if loadstring then`), and hosts that list the globals of a preset.

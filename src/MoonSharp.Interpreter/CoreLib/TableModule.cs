@@ -279,6 +279,28 @@ namespace MoonSharp.Interpreter.CoreLib
 			return DynValue.NewString(sb.ToString());
 		}
 
+		//table.maxn (table)
+		//Lua 5.1's function, which Lua 5.2's default build (LUA_COMPAT_ALL) keeps: the largest positive numerical
+		//index of the table, or zero. It reads the table raw and counts fractional keys too, as Lua does.
+		[MoonSharpModuleMethod]
+		public static DynValue maxn(ScriptExecutionContext executionContext, CallbackArguments args)
+		{
+			Table t = args.AsType(0, "maxn", DataType.Table, false).Table;
+			double max = 0;
+			int n = 0;
+
+			foreach (DynValue key in t.Keys)
+			{
+				if (key.Type == DataType.Number && key.Number > max)
+					max = key.Number;
+
+				if ((++n & 1023) == 0)
+					executionContext.LibraryWork(1024);
+			}
+
+			return DynValue.NewNumber(max);
+		}
+
 		private static int GetTableLength(ScriptExecutionContext executionContext, DynValue vlist)
 		{
 			DynValue __len = executionContext.GetMetamethod(vlist, "__len");

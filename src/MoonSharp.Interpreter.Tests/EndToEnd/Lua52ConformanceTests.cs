@@ -357,5 +357,78 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 					return table.concat({ e('x'), e('COUNT'), e(1), e({}), e(true), e('count', 'x'), e(nil, {}), e('x', {}),
 						tostring(pcall(collectgarbage, 'count', '10')) .. ' ' .. tostring(pcall(collectgarbage, 'collect', 2.7)) }, '|')"));
 		}
+
+		// Entry 29: Lua 5.2's default build (LUA_COMPAT_ALL) keeps loadstring as another name of load, and
+		// 5.1-era scripts call it everywhere; here it was nil.
+		[Test]
+		public void Loadstring_IsLoadUnderItsLua51Name()
+		{
+			Assert.AreEqual("2|4 5|nil string|7|nil attempt to load a text chunk (mode is 'b')|" +
+				"bad argument #1 to 'loadstring' (function expected, got no value)|" +
+				// Lua 5.2: "(string expected, got table)"; MoonSharp names nil for every optional argument (entry 13).
+				"bad argument #2 to 'loadstring' (nil or string expected, got table)",
+				RunString(@"
+					local f, e = loadstring('x x')
+					local i = 0
+					local g = loadstring(function() i = i + 1 if i == 1 then return 'return 7' end end)
+					local h, he = loadstring('return 1', '=n', 'b')
+					return table.concat({ loadstring('return 1 + 1')(), table.concat({ loadstring('return ...', '=x')(4, 5) }, ' '),
+						tostring(f) .. ' ' .. type(e), g(), tostring(h) .. ' ' .. he,
+						select(2, pcall(loadstring)), select(2, pcall(loadstring, 'return 1', {})) }, '|')"));
+		}
+
+		// Entry 29: loadstring compiles code, so it comes with load (CoreModules.LoadMethods): a sandbox without
+		// load must not gain it. table.maxn and math.log10 come with their libraries.
+		[Test]
+		public void Lua51Names_FollowTheirLibraries()
+		{
+			Script soft = new Script(CoreModules.Preset_SoftSandbox);
+			Assert.IsTrue(soft.Globals.Get("load").IsNil());
+			Assert.IsTrue(soft.Globals.Get("loadstring").IsNil());
+
+			Script full = new Script(CoreModules.Preset_Default);
+			Assert.AreEqual(DataType.ClrFunction, full.Globals.Get("loadstring").Type);
+
+			Script hard = new Script(CoreModules.Preset_HardSandbox);
+			Assert.AreEqual(DataType.ClrFunction, hard.Globals.Get("table").Table.Get("maxn").Type);
+			Assert.AreEqual(DataType.ClrFunction, hard.Globals.Get("math").Table.Get("log10").Type);
+
+			Assert.IsTrue(new Script(CoreModules.Preset_HardSandbox & ~CoreModules.Table).Globals.Get("table").IsNil());
+		}
+
+		// Entry 29: table.maxn, from Lua 5.1 and kept by Lua 5.2's default build: the largest positive numeric key,
+		// fractional keys included, read raw.
+		[Test]
+		public void TableMaxn_FollowsLua52()
+		{
+			Assert.AreEqual("0 3 1.5 0 100 0 0 true 2 9007199254740992|" +
+				"bad argument #1 to 'maxn' (table expected, got no value)|" +
+				"bad argument #1 to 'maxn' (table expected, got number)",
+				RunString(@"
+					local m = table.maxn
+					local t = { 1, 2, 3 } t[3] = nil
+					local r = { m({}), m({ 1, 2, 3 }), m({ [1.5] = 1 }), m({ [-3] = 1 }), m({ [100] = 1, 2 }), m({ a = 1, ['5'] = 2 }),
+						m(setmetatable({}, { __index = { [5] = 1 }, __len = function() return 9 end })), m({ [1/0] = 1 }) == 1/0, m(t) }
+					for i = 1, #r do r[i] = tostring(r[i]) end
+					r[#r + 1] = string.format('%.0f', m({ [2^53] = 1, [-1] = 2, [0.5] = 3 }))
+					return table.concat(r, ' ') .. '|' .. select(2, pcall(m)) .. '|' .. select(2, pcall(m, 5))"));
+		}
+
+		// Entry 29: math.log10, from Lua 5.1 and kept by Lua 5.2's default build.
+		[Test]
+		public void MathLog10_FollowsLua52()
+		{
+			DynValue r = Run(@"
+				return math.log10(1000), math.log10(1e-3), math.log10('100'), math.log10(0), math.log10(-1),
+					select(2, pcall(math.log10)), select(2, pcall(math.log10, 'a'))");
+
+			Assert.AreEqual(3, r.Tuple[0].Number);
+			Assert.AreEqual(-3, r.Tuple[1].Number);
+			Assert.AreEqual(2, r.Tuple[2].Number);
+			Assert.AreEqual(double.NegativeInfinity, r.Tuple[3].Number);
+			Assert.IsTrue(double.IsNaN(r.Tuple[4].Number));
+			Assert.AreEqual("bad argument #1 to 'log10' (number expected, got no value)", r.Tuple[5].String);
+			Assert.AreEqual("bad argument #1 to 'log10' (number expected, got string)", r.Tuple[6].String);
+		}
 	}
 }

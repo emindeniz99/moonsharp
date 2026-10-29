@@ -35,6 +35,26 @@ return load("return ...")(1, 2)
 return type(loadstring)
 --@@ loadstring works
 return loadstring and loadstring("return 3")()
+--@@ loadstring chunkname
+return select(2, loadstring("x x", "=name"))
+--@@ loadstring syntax error result count
+return select("#", loadstring("x ="))
+--@@ loadstring varargs
+return loadstring("return ...")(1, 2)
+--@@ loadstring reader
+local parts = {"return ", "4", "2"} local i = 0 return loadstring(function() i = i + 1 return parts[i] end)()
+--@@ loadstring mode
+return loadstring("return 1", "=e", "b")
+--@@ loadstring env
+return loadstring("return x", "=e", "t", {x = 5})()
+--@@ loadstring no argument
+return loadstring()
+--@@ loadstring table
+return loadstring({})
+--@@ loadstring number
+return loadstring(42)
+--@@ loadstring is load
+return loadstring == load
 --@@ setfenv absent
 return setfenv, getfenv
 --@@ module absent

@@ -6,7 +6,7 @@ its source and conditions.
 
 **Inputs (all read in full):**
 
-| Survey | Path (scratchpad `research/`) |
+| Survey | File (under `docs/research/`) |
 |---|---|
 | Lua family | `landscape/lua-family.md` |
 | JavaScript / TypeScript family | `landscape/js-family.md` |

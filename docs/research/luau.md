@@ -13,7 +13,7 @@ code that was read), **[U]** unconfirmed (needs a test or a measurement).
 | Upstream | https://github.com/luau-lang/luau |
 | Commit read | `32c28089305f488f901aaf1dbf3fd1cb65fa3d11` ("Sync to upstream/release/744 (#3071)", 2026-10-23), shallow clone of 50 commits |
 | Licence | `LICENSE.txt`, MIT, "Copyright (c) 2019-2026 Roblox Corporation / Copyright (c) 1994–2019 Lua.org, PUC-Rio"; `lua_LICENSE.txt` (MIT, Lua). SPDX: `MIT` |
-| MoonSharp read | `/home/user/moonsharp` at `d212945` (fork master). `src/MoonSharp.Interpreter` is identical to upstream `moonsharp-devs/moonsharp@fbd03678d5c0f731d731d099211c7f4a3a1ae8b7` (the two fork commits touch only `src/DevTools`), so MoonSharp permalinks below point at upstream `fbd0367`. MoonSharp licence: BSD-3-Clause (`LICENSE`, "Copyright (c) 2014-2016, Marco Mastropaolo") |
+| MoonSharp read | the fork's master at `d212945`. `src/MoonSharp.Interpreter` is identical to upstream `moonsharp-devs/moonsharp@fbd03678d5c0f731d731d099211c7f4a3a1ae8b7` (the two fork commits touch only `src/DevTools`), so MoonSharp permalinks below point at upstream `fbd0367`. MoonSharp licence: BSD-3-Clause (`LICENSE`, "Copyright (c) 2014-2016, Marco Mastropaolo") |
 
 Permalink prefixes used below:
 

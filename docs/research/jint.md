@@ -3,9 +3,9 @@
 Date: 2026-10-28. Analyst read-only pass.
 
 - **Engine:** Jint, a managed JavaScript interpreter (tree-walking, not bytecode).
-- **Repo / commit read:** `sebastienros/jint@9ec2352c222dff6b7bff806d16b087cf0f1e6384` (2026-10-27). Clone at
-  `/tmp/claude-0/-home-user/49abf7c9-632c-52bb-859e-20c0836e18dc/scratchpad/ext/jint`. Full history fetched (`--filter=blob:none`) to date the techniques.
-- **MoonSharp read:** `/home/user/moonsharp` `master` = `fbd03678d5c0f731d731d099211c7f4a3a1ae8b7` (via `git show master:<path>`).
+- **Repo / commit read:** `sebastienros/jint@9ec2352c222dff6b7bff806d16b087cf0f1e6384` (2026-10-27), read from a
+  clone with full history (`--filter=blob:none`, not kept) to date the techniques.
+- **MoonSharp read:** the fork's `master`, then `fbd03678d5c0f731d731d099211c7f4a3a1ae8b7` (via `git show master:<path>`).
 - **Permalink base:** `J = https://github.com/sebastienros/jint/blob/9ec2352c222dff6b7bff806d16b087cf0f1e6384`
   and `M = https://github.com/moonsharp-devs/moonsharp/blob/fbd03678d5c0f731d731d099211c7f4a3a1ae8b7`.
   Labels: [C] confirmed in source, [S] secondary (commit message or doc), [U] unconfirmed.

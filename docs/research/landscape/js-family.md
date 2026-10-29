@@ -4,7 +4,7 @@ Date: 2026-10-28. Scope: whether a TypeScript-first route could replace or sit b
 
 Evidence marks: **[C]** confirmed by reading source, docs or release artefacts. **[S]** secondary source (vendor blog, forum, third-party article, or a vendor's own benchmark). **[U]** unconfirmed, or my inference.
 
-Clones read, all shallow and never built: `/tmp/claude-0/-home-user/49abf7c9-632c-52bb-859e-20c0836e18dc/scratchpad/research/landscape/clones/<name>`. Permalinks below pin the commit that was read.
+Clones read, all shallow and never built (not kept). Permalinks below pin the commit that was read.
 
 ## The need, restated
 

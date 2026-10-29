@@ -210,7 +210,7 @@ namespace MoonSharp.Interpreter
 						Execution.VM.ValueStack stack = v.Object as Execution.VM.ValueStack;
 
 						if (stack != null)
-							return stack.VarArgsToDynValue(ref v);
+							return stack.VarArgsToDynValue(v.Number);
 
 						// The generic for's iterator state.
 						Execution.VM.LuaValue[] values = (Execution.VM.LuaValue[])v.Object;

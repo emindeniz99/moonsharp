@@ -131,32 +131,50 @@ namespace MoonSharp.Interpreter.Execution.VM
 			return v;
 		}
 
-		public static int VarArgsStart(ref LuaValue v)
+		// These take the Tuple's Number, so callers pass a field instead of a reference to a local LuaValue,
+		// which would keep the JIT from holding that local in registers.
+		public static int VarArgsStart(double packed)
 		{
-			return (int)(v.Number / VARARGS_SCALE);
+			return (int)(packed / VARARGS_SCALE);
 		}
 
-		public static int VarArgsCount(ref LuaValue v)
+		public static int VarArgsCount(double packed)
 		{
-			return (int)(v.Number % VARARGS_SCALE);
+			return (int)(packed % VARARGS_SCALE);
 		}
 
 		/// <summary>
-		/// The value at <paramref name="index"/> of a '...' Tuple from this stack, void past its end.
+		/// The value at <paramref name="index"/> of a '...' Tuple from this stack (its Number is
+		/// <paramref name="packed"/>), void past its end.
 		/// </summary>
-		public LuaValue VarArgsItem(ref LuaValue varArgs, int index)
+		public LuaValue VarArgsItem(double packed, int index)
 		{
-			return index < VarArgsCount(ref varArgs) ? Items[VarArgsStart(ref varArgs) + index] : LuaValue.Void;
+			return index < VarArgsCount(packed) ? Items[VarArgsStart(packed) + index] : LuaValue.Void;
+		}
+
+		static LuaValue s_Void = LuaValue.Void;
+
+		/// <summary>
+		/// The first value of a '...' Tuple from this stack, void when it has none, by reference (see
+		/// LuaValue.ToScalar). Callers only read it.
+		/// </summary>
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public ref LuaValue FirstVarArg(double packed)
+		{
+			if (VarArgsCount(packed) == 0)
+				return ref s_Void;
+
+			return ref Items[VarArgsStart(packed)];
 		}
 
 		/// <summary>
 		/// The values of a '...' Tuple from this stack as a DynValue, as the '...' local held them before:
 		/// an empty tuple, the value itself, or a tuple.
 		/// </summary>
-		public DynValue VarArgsToDynValue(ref LuaValue varArgs)
+		public DynValue VarArgsToDynValue(double packed)
 		{
-			int start = VarArgsStart(ref varArgs);
-			int count = VarArgsCount(ref varArgs);
+			int start = VarArgsStart(packed);
+			int count = VarArgsCount(packed);
 
 			if (count == 0)
 				return DynValue.EmptyTuple;

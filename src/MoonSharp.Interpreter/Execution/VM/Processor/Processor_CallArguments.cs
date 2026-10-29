@@ -19,8 +19,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 			if (varArgs != null)
 			{
-				int first = ValueStack.VarArgsStart(ref last);
-				int count = ValueStack.VarArgsCount(ref last);
+				int first = ValueStack.VarArgsStart(last.Number);
+				int count = ValueStack.VarArgsCount(last.Number);
 
 				// Items is read again on every push, which may move the array.
 				for (int k = 0; k < count; k++)

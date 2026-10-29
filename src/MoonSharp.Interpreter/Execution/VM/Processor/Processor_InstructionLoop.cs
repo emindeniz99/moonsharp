@@ -757,7 +757,7 @@ namespace MoonSharp.Interpreter.Execution.VM
 				ValueStack varArgs = v.Object as ValueStack;
 
 				if (varArgs != null)
-					return ParameterValue(varArgs.VarArgsItem(ref v, tupleidx));
+					return ParameterValue(varArgs.VarArgsItem(v.Number, tupleidx));
 
 				DynValue[] tuple = v.TupleValue.Tuple;
 				DynValue e = (tupleidx < tuple.Length) ? tuple[tupleidx] : null;
@@ -873,8 +873,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 				}
 				else if (varArgs != null)
 				{
-					for (int idx = 0; idx < ValueStack.VarArgsCount(ref t); idx++)
-						m_ValueStack.Push(varArgs.VarArgsItem(ref t, idx));
+					for (int idx = 0; idx < ValueStack.VarArgsCount(t.Number); idx++)
+						m_ValueStack.Push(varArgs.VarArgsItem(t.Number, idx));
 				}
 				else
 				{
@@ -1438,8 +1438,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 				// as the DynValue the '...' local used to hold.
 				if (retval.Type == DataType.Tuple && retval.Object is ValueStack)
 				{
-					retval = ValueStack.VarArgsCount(ref retval) == 1
-						? m_ValueStack.Items[ValueStack.VarArgsStart(ref retval)]
+					retval = ValueStack.VarArgsCount(retval.Number) == 1
+						? m_ValueStack.Items[ValueStack.VarArgsStart(retval.Number)]
 						: retval.ToDynValue().ToLuaValue();
 				}
 
@@ -1860,8 +1860,8 @@ namespace MoonSharp.Interpreter.Execution.VM
 			if (varArgs != null && val.Type == DataType.Tuple && i.NumVal != 0)
 			{
 				// {...}: the values in place, without a tuple.
-				for (int k = 0; k < ValueStack.VarArgsCount(ref val); k++)
-					((Table)tbl.Object).InitNextArrayKeys(varArgs.VarArgsItem(ref val, k).ToDynValue(), true);
+				for (int k = 0; k < ValueStack.VarArgsCount(val.Number); k++)
+					((Table)tbl.Object).InitNextArrayKeys(varArgs.VarArgsItem(val.Number, k).ToDynValue(), true);
 
 				return;
 			}

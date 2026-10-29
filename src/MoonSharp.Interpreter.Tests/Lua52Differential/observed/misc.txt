@@ -1,0 +1,38 @@
+collectgarbage count type	OK	1	"nil"
+collectgarbage count results	OK	1	1
+collectgarbage collect result	OK	2	nil nil
+collectgarbage step	OK	1	"nil"
+collectgarbage isrunning	OK	1	nil
+collectgarbage setpause	OK	1	"nil"
+collectgarbage invalid	OK	1	true
+type no arg	OK	1	false
+type values	OK	7	"nil" "number" "string" "table" "function" "function" "thread"
+
+print returns nothing	OK	1	1
+select and varargs in main chunk	OK	1	0
+rawlen non table	OK	1	false
+next is pairs iterator	OK	1	false
+os.time table	OK	1	3600
+os.time default hour	OK	1	true
+os.time missing field	OK	2	false "field 'day' missing in date table"
+os.date fields	OK	3	"number" "boolean" true
+os.date utc format	OK	1	"1970-01-02 01:01:01"
+os.date formats	OK	1	"Thu Thursday Jan January 01 001 AM 70 %"
+os.date invalid conversion	OK	2	true "+00:00"
+os.difftime	OK	2	6 10
+os.clock type	OK	1	"number"
+os.getenv missing	OK	1	nil
+os.setlocale unknown	OK	1	"n/a"
+os.setlocale query	OK	1	"n/a"
+string.len non string	OK	3	true false "bad argument #1 to 'len' (string expected, got nil)"
+string.format integer float arg	OK	3	"3" true "3"
+string.find plain special	OK	3	2 2 2
+string.find init negative	OK	3	5 2 2
+string.gsub repl count	OK	2	"bbaa" 2
+string.gsub repl percent	OK	3	"a%c" false "invalid capture index"
+string.gsub table __index	OK	2	"x y" 2
+string.gmatch anchor	OK	1	0
+tostring integer float	OK	3	true true nil
+number keys 2^53	OK	1	1
+string comparison	OK	5	true true true true true
+concat number formatting	OK	4	"12" "1.5" "-0" "9.223372036854776E+18"

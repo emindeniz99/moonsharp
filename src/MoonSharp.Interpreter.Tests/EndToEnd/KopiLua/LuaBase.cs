@@ -10,7 +10,7 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 	/// <summary>
 	/// The helpers MoonSharp's KopiLua ports (string.format, the pattern matcher) were written against, moved
 	/// here from the interpreter's public LuaStateInterop namespace (at a3f40d2) when the last port left it.
-	/// The test oracles KopiLuaFormatOracle and KopiLuaPatternOracle still use them.
+	/// The test oracle KopiLuaPatternOracle still uses them.
 	/// </summary>
 	internal partial class LuaBase
 	{

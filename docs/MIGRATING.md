@@ -333,6 +333,24 @@ for, `_MOONSHARP.is_aot` is true and the platform name ends in `.aot`.
 Affected: hosts published with NativeAOT that checked these values or
 counted adapter compilations.
 
+## The browser package runs without dynamic code
+
+`src/Hosting/browser` now sets `DynamicCodeSupport=false`, so the browser
+counts as an AOT platform: `_MOONSHARP.is_aot` is true, the platform name
+changes from `core.dotnet.clr4.netcore` to `core.dotnet.clr4.netcore.aot`, and
+CLR interop descriptors use `InteropAccessMode.Reflection` instead of compiled
+expression trees (which the browser interpreted anyway). With the interpreter's
+new `ILLink.Substitutions.xml`, the trimmer then drops `System.Linq.Expressions`
+from the download (docs/hosting.md, "Browser budget"). The same substitutions
+apply to any trimmed app that turns dynamic code off, NativeAOT included; such
+apps already ran with `IsRunningOnAOT()` true, so only their size changes.
+
+A Release build of the browser package also needs the `wasm-tools` workload
+(`dotnet workload install wasm-tools --version 10.0.402`); without it the
+build stops with NETSDK1147 instead of shipping the 976 KB prebuilt runtime.
+Affected: browser hosts that read `is_aot` or the platform name, and anyone who
+builds the browser package.
+
 ## Generic extension overloads that AOT cannot instantiate are skipped
 
 When a script calls an extension method by name, MoonSharp instantiates each
@@ -1089,6 +1107,242 @@ comparator now stops the script; `table.sort` used to drop it and return a
 half-sorted table.
 
 **Affected:** hosts whose interrupt handler counts its own calls.
+
+## Library calls raise Lua errors instead of ending the host
+
+**Before:** some library calls threw a CLR exception that `pcall` could not
+catch, so a script could end the host process: `pcall()`,
+`pcall(coroutine.wrap(f))` when `f` failed or was dead, `dofile` and
+`loadfile` of a missing file (or of `""`), `io.input`, `io.output` and
+`io.lines` of a file that does not open, `file:seek` before the start of the
+file, `file:read` with a negative count, reading a file opened only for
+writing (and writing one opened only for reading), calling an exhausted
+`io.lines` iterator, `string.rep` with 2^31 copies or a result longer than a
+CLR string, `os.time` with a field out of range (`month = 13`, `day = 0`),
+and `os.date` with a time `DateTime` cannot hold or NaN.
+
+**After:** each is a Lua error or a Lua result, with Lua 5.2's text where
+Lua 5.2 has one:
+
+| Call | Result |
+|---|---|
+| `pcall()` | error "bad argument #1 to 'pcall' (value expected)" |
+| `pcall(nil)` | `false, "attempt to call a nil value"` (was "attempt to pcall a non-function") |
+| `pcall(coroutine.wrap(f))` | `false` and `f`'s error, or "cannot resume dead coroutine" |
+| `dofile(name)`, `loadfile(name)` of a missing file | error, or `nil` and the message: "cannot open name: No such file or directory" |
+| `io.input(name)`, `io.output(name)`, `io.lines(name)` | error "cannot open file 'name' (No such file or directory)" |
+| `f:seek("set", -1)` | `nil, "Invalid argument", 22` |
+| `f:read(-1)` | the rest of the file (Lua 5.2 tries to allocate (size_t)-1 bytes and fails) |
+| `f:read()` on a write-only file, `f:write(s)` on a read-only one | `nil, "Bad file descriptor", 9` |
+| `string.rep("x", 2^31)` | error "resulting string too large" |
+| `os.time{year = 2020, month = 13, day = 1}` | January 2021, as C's `mktime` normalises; `nil` for a date `DateTime` cannot hold |
+| `os.date("%Y", 2^53)`, `os.date("%Y", 0/0)` | `nil` (Lua 5.2 on Linux gives year 285428751 for 2^53) |
+
+The message of a loader that fails is the loader's: `FileSystemScriptLoader`
+gives "No such file or directory", the Unity loader its own text.
+
+**Affected:** scripts that relied on these calls failing in another way.
+Hosts that caught `FileNotFoundException` from `dofile` or `loadfile` now see
+a `ScriptRuntimeException` (or `loadfile`'s `nil` result).
+
+## `io.lines` and `file:lines` return functions that read as they go
+
+**Before:** they read the whole file up front and returned an enumerator
+userdata; calling it after the end threw `NotSupportedException`, and
+`f:lines("*a")`, whose result never ends, filled the memory.
+
+**After:** as in Lua 5.2 they return a function that reads one item per call
+with the given formats and returns nothing at the end of the file.
+`io.lines(name)` closes the file there, so a further call raises "file is
+already closed"; `io.lines()` without a name reads the default input.
+
+**Affected:** scripts that checked `type(io.lines(name))` (now `"function"`).
+
+## `io.open` modes follow C's `fopen`
+
+**Before:** `"w+"` failed on a file that did not exist, `"a"` and `"a+"`
+always failed ("Append access can be requested only in write-only mode"),
+`"r+"` created a missing file, and `"rw"`, `"rt"` and other strings made of
+`rwab+t` were accepted.
+
+**After:** `"r"` and `"r+"` need the file, `"w"` and `"w+"` create or truncate
+it, `"a"` and `"a+"` create it and write at its end (`"a+"` reads too). A mode
+other than one of `r`, `w`, `a`, an optional `+` and then only `b`s raises
+"bad argument #2 to 'open' (invalid mode)", as in Lua 5.2, so `"rt"` is now
+an error.
+
+**Affected:** scripts that pass `"t"` in a mode; drop it.
+
+## `string.rep` keeps the separators of an empty string
+
+`string.rep("", 3, ".")` was `""`; it is `".."`, as in Lua 5.2.
+
+## `string.format` follows Lua 5.2 and C's printf
+
+**Before:** `string.format` reproduced a port of C's `sprintf` byte for byte,
+with its quirks: .NET number formats (`1.000000e+004`), the precision of
+`%d` ignored, the width of `%c` ignored, `%a` unknown, `%s` refusing `nil`,
+booleans and tables, `%d` and `%x` wrapping out-of-range numbers (and, for
+negative numbers, giving 0 on .NET 9 and later), and several inputs ending
+the host (`%.10s` of a shorter string, `%c` outside 0..65535, zero padding
+with `+` or `#` to a width of 0 or 1, items over 512 characters).
+
+**After:** the output is that of Lua 5.2.4 with glibc's printf, checked
+against `lua5.2` on 709,800 generated cases and a golden file recorded from
+it (`Lua52Differential/gen_format_golden.py`):
+
+```lua
+string.format("%e", 12345.678)   -- before: 1.234568e+004   now: 1.234568e+04
+string.format("%.3d", 7)         -- before: 7               now: 007
+string.format("%s %s", nil, true)-- before: error          now: nil true (and __tostring)
+string.format("%x", -1)          -- before: ffffffffffffffff (0 on .NET 9+)   now: error "not a non-negative number in proper range"
+string.format("%d", 2^63)        -- before: -9223372036854775808   now: error "not a number in proper range"
+string.format("%a", 1)           -- before: error           now: 0x1p+0
+string.format("%q", "\r")        -- before: "\r"            now: "\13"
+string.format("[%5c]", 65)       -- before: [A]             now: [    A]
+```
+
+Floating-point conversions use the exact value of the double, rounded half
+to even, so the text is the same on every runtime: before, .NET Framework,
+Mono and Unity printed `%.2f` of 1.005 as `1.01` and `%.0f` of 2.5 as `3`,
+where Lua and .NET Core print `1.00` and `2`.
+
+Kept on purpose: `%s` and `%q` of a number use MoonSharp's `tostring` text
+(an open question for the owner, see docs/ROADMAP.md); `%c` of 256 to 65535
+gives that UTF-16 character, where Lua gives the low byte (other values give
+the low byte, as in Lua: `%c` of -1 is `"\255"`); `%#g` keeps its zeros
+after a rounding carry ("1.00000e+06" for 999999.5), as C specifies, where
+glibc drops them.
+
+**Affected:** scripts and hosts that compare `string.format` output with
+`%e`, `%E`, `%g` or `%G` exponents, `%d` precisions, `%q` of control
+characters, or that format negative or huge numbers with `%x`, `%o`, `%u`,
+`%d`.
+
+## `and` and `or` give one value
+
+**Before:** a call or `...` as an operand of `and`/`or` passed all its
+results on: `print(nil or f())` printed every result of `f`,
+`table.insert(t, x or f())` passed extra arguments, and `select('#', nil or
+g())` was 0 when `g` returned nothing.
+
+**After:** as in Lua 5.2 (3.4, "In all other contexts, Lua adjusts the result
+list to one element") each operand is cut to one value, nil when a call
+returns nothing.
+
+**Affected:** scripts that relied on the extra values, which Lua drops.
+
+## `^` binds tighter than a unary operator inside an expression
+
+**Before:** `local x = 3; print(1 + -x^2)` printed 10: after a binary
+operator, `-x` was closed before `^` joined, so it computed `(-x)^2`. `-x^2`
+at the start of an expression was already right.
+
+**After:** `1 + -x^2` is `1 + -(x^2)`, -8, as in Lua 5.2; so are
+`2 * -x^2`, `true and -2^2` and `2^-x^2`.
+
+**Affected:** arithmetic written with a unary minus after an operator and
+before `^`, which gave the wrong sign.
+
+## Multiple assignment evaluates every target first
+
+**Before:** in `i, a[i] = i + 1, 20` the key of `a[i]` was read after `i`
+had been assigned, so `a[2]` was set, and `t, t.x = {}, 1` wrote into the new
+table. Targets were stored left to right.
+
+**After:** as Lua 5.2 3.3.3 says ("The assignment statement first evaluates
+all its expressions and only then are the assignments performed"), the tables
+and keys of all targets are evaluated, left to right, before the values;
+then the stores run from the last target to the first, as in reference Lua.
+So `a[1]` is set, `a, a = 1, 2` leaves 1, and `__newindex` sees `T.B` before
+`T.A` in `T.A, T.B = 1, 2`. A single assignment is unchanged.
+
+**Affected:** scripts whose multiple assignments read a variable they also
+assign, or whose `__newindex` depends on the order of the stores.
+
+## `goto` may jump to a label at the end of a block
+
+**Before:** `do goto e; local x = 1; ::e:: end`, and so `goto continue` past
+a `local` to `::continue::` at the end of a loop body, raised "jumps into the
+scope of local 'x'".
+
+**After:** as in Lua 5.2 (3.5: a local's scope lasts until the last non-void
+statement of its block), a label followed only by labels and `;` up to the
+end of its block is outside the block's locals. Before `until` it is not,
+because the condition still sees them; there the error stays, as in Lua.
+
+## `__eq` runs for two metatables with the same handler
+
+**Before:** two tables compared with `==` called `__eq` only when they had
+the same metatable.
+
+**After:** as in Lua 5.2, `__eq` also runs when the two metatables are
+different but their `__eq` fields are the same function. Userdata keep
+MoonSharp's rule (`__eq` whenever either side is a userdata).
+
+**Affected:** class hierarchies that copy `__eq` into each class: instances
+of different classes now compare with it.
+
+## `math.fmod` and `math.modf` follow C
+
+**Before:** `math.fmod` rounded the quotient (`math.fmod(7, 4)` was -1) and
+`math.modf` floored (`math.modf(-3.7)` was -4, 0.3; `math.modf(1/0)` gave
+NaN as the fraction).
+
+**After:** C's `fmod` and `modf`, as Lua 5.2: `math.fmod(7, 4)` is 3,
+`math.fmod(-7, 4)` is -3, `math.modf(-3.7)` is -3, -0.7, `math.modf(1/0)` is
+inf, 0.
+
+## `bit32` follows Lua 5.2
+
+**Before:** arguments went through a cast of the double to `uint`, which
+.NET 9 and later and ARM64 saturate, so `bit32.band(-1)` was 0 there
+(4294967295 on .NET 8 x64); fractions were truncated (`band(1.5)` was 1);
+shifts by 32 or more wrapped (`lshift(1, 33)` was 2); `arshift` returned
+negative numbers; `extract` and `replace` refused fields ending at bit 31,
+and `replace` did not shift its value into place; `band()`, `bor()`,
+`bxor()` and `btest()` needed an argument.
+
+**After:** as Lua 5.2's lbitlib on every runtime: arguments rounded to the
+nearest integer (halves to even) and reduced modulo 2^32, shifts of 32 or
+more give 0, `arshift(-1, 1)` is 4294967295, `extract(x, 28, 4)` and
+`replace(0, 1, 2)` (4) work, and `band()` is 4294967295, `bor()` and `bxor()`
+0, `btest()` true. The public helper `Bit32Module.Bitwise` is gone.
+
+**Affected:** scripts that used `bit32` with negative numbers, fractions,
+shifts of 32 or more, or relied on the old `replace`; hosts that called
+`Bit32Module.Bitwise`.
+
+## `load` readers, `mode` and `env`, and `package`
+
+**Before:** `load` with a reader treated `""` (the end of the chunk) as an
+error, let an error raised in the reader propagate, ignored `mode`, accepted
+only a table as `env` (an explicit `nil` meant the global table), and
+refused a number as the chunk. `package.loaded` had no `_G` and no `package`
+entry, and `package.cpath`, `package.loadlib` and `package.searchpath` did
+not exist.
+
+**After:** as in Lua 5.2: `nil`, nothing or `""` from the reader ends the
+chunk, a reader's error is returned as `nil` and the message, `mode` `"t"`
+or `"b"` refuses the other kind of chunk ("attempt to load a binary chunk
+(mode is 't')"; MoonSharp's binary chunks are `string.dump` text), any value
+given as `env` becomes the chunk's `_ENV`, `nil` included, and a number is
+loaded as its text. `package.loaded._G` and `package.loaded.package` are set,
+`package.cpath` is `""`, `package.loadlib` returns `nil`, "dynamic libraries
+not enabled; check your Lua installation", "absent", and
+`package.searchpath(name, path)` tries each template through the script
+loader and returns the first file found, or `nil` and the files tried.
+
+**Affected:** scripts that called `load(s, name, mode, nil)` expecting the
+global table, and hosts that list the fields of `package` (the globals
+snapshot gained three).
+
+## `coroutine.wrap` functions keep their coroutine in the delegate
+
+The function `coroutine.wrap` returns no longer stores its coroutine in
+`CallbackFunction.AdditionalData` (`pcall` runs a C# function with its own
+context, where that data was not found). Hosts that read the coroutine from
+there should keep their own reference.
 
 ## Tables keep values, not `DynValue` objects
 

@@ -12,6 +12,24 @@
              71 KB brotli (docs/hosting.md, "Browser budget"). -->
     </PropertyGroup>
 
+    <!-- Download size, measured option by option in docs/hosting.md, "Browser budget". -->
+    <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+        <!-- Relink dotnet.native.wasm with only what this app uses: 976 KB brotli becomes 468 KB.
+             Needs the wasm-tools workload (`dotnet workload install wasm-tools`); without it the
+             publish fails here instead of shipping the prebuilt runtime. -->
+        <WasmBuildNative>true</WasmBuildNative>
+        <!-- The relinked JavaScript keeps its comments and the wasm its function names otherwise
+             (28 KB brotli). Native stack traces then show function indexes instead of names. -->
+        <WasmNativeDebugSymbols>false</WasmNativeDebugSymbols>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <!-- No code generation at run time: the interpreter's CLR interop uses reflection instead of
+             compiled expression trees, and its ILLink.Substitutions.xml then lets the trimmer drop
+             System.Linq.Expressions (112 KB brotli) and the emit support in CoreLib (37 KB). -->
+        <DynamicCodeSupport>false</DynamicCodeSupport>
+    </PropertyGroup>
+
     <ItemGroup>
         <ProjectReference Include="..\MoonSharp.Hosting\MoonSharp.Hosting.csproj" />
     </ItemGroup>

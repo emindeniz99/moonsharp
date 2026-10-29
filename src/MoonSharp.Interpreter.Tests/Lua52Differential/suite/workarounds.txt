@@ -1,0 +1,52 @@
+# Workarounds that let MoonSharp run past an error in the Lua 5.2 suite; see
+# docs/research/lua52-conformance.md for what each one hides.
+attrib.lua:382-403  # multiple assignment evaluation order
+bitwise.lua:3-8  # zero-arg band/btest/bor/bxor
+bitwise.lua:97-100  # extract pos+width == 32 rejected
+bitwise.lua:107-108  # replace pos+width == 32 rejected
+bitwise.lua:111-111  # replace pos+width == 32 rejected
+calls.lua:217-222  # load reader returning "" ; mode ignored
+calls.lua:231-233  # #{nil,"a","b"} border + table.remove(t,#t+1)
+calls.lua:240-244  # reader "" again + binary/text mode
+calls.lua:248-250  # reader error propagates instead of nil,msg
+calls.lua:253-253  # load env must be a table
+calls.lua:256-266  # string.dump with upvalues refused
+calls.lua:286-301  # string.dump with upvalues refused
+calls.lua:282-283  # reader "" again
+closure.lua:162-189  # goto to label at end of block after local
+closure.lua:23-39  # __mode weak table never collected -> loop hangs
+constructs.lua:201-201  # debug.getinfo missing
+constructs.lua:228-250  # math.fmod IEEERemainder
+coroutine.lua:151-172  # debug.getinfo + error(non-string)
+db.lua:8-343  # debug.getinfo/sethook/getlocal absent
+db.lua:373-473  # getinfo/sethook
+db.lua:485-629  # getinfo/sethook/getlocal
+db.lua:358-371  # _ENV always upvalue 1
+errors.lua@20: if not string.find(tostring(m), msg, 1, true) then print("CHECKMSG", ("%q"):format(prog), "EXPECT", msg, "GOT", tostring(m)) end
+errors.lua@30: if not string.find(tostring(msg), pt) then print("CHECKSYNTAX", ("%q"):format(prog), "EXPECT", pt, "GOT", tostring(msg)) end
+errors.lua@31: 
+errors.lua@196: if not msg or msg:len() > idsize then print("CHECKSIZE", source, tostring(msg)) end
+errors.lua@211: if (line and line+0) ~= l then print("LINEERROR", ("%q"):format(s), l, tostring(msg)) end
+errors.lua@408: print("LIMIT-UPVALUES", tostring(b))
+errors.lua@409: 
+errors.lua@418: print("LIMIT-LOCALS", tostring(b))
+files.lua:6-6  # io.input missing file -> CLR FileNotFoundException
+files.lua:54-54  # loadfile missing -> CLR exception
+files.lua:59-65  # seek -> CLR IOException
+gc.lua:138-139  # collectgarbage("count") returns one value
+goto.lua:69-91  # goto to label at end of block after local
+literals.lua@31: local f = assert(load('return '..x))
+literals.lua@33: if s ~= y then print("LEXSTRING", ("%q"):format(x), ("%q"):format(tostring(s))) end
+literals.lua@54: if st or not string.find(msg, "near "..err, 1, true) then print("LEXERROR", s, tostring(msg)) end
+literals.lua@181: local ok, m = pcall(function() error("z") end) return tonumber(m:match(":%(?(%d+)"))
+literals.lua@186: local r = dostring(prog) if r ~= nn then print("LINEENDS", ("%q"):format(n), r, nn) end
+literals.lua:184-188  # \r, \n\r line endings
+nextvar.lua:229-239  # package.loaded lacks _G/package -> loop clears package
+nextvar.lua@320:   assert((pcall(table.remove, a, 1)))
+nextvar.lua@353: assert((pcall(table.remove, a, 1)))
+nextvar.lua@357: assert((pcall(table.remove, a, #a + 1)))
+sort.lua:17-20  # unpack i>j+1 -> OverflowException
+strings.lua@144: assert(pcall(string.format, "%s %s", nil, true))
+strings.lua@145: assert(pcall(string.format, "%s %.4s", false, true))
+strings.lua@146: assert(pcall(string.format, "%.3s %.3s", false, true))
+strings.lua@148: assert(select(2, pcall(string.format, "%s %.10s", m, m)) == "hello hello")

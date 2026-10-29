@@ -168,6 +168,8 @@ async function main() {
   runtime = await createMoonSharp("./_framework");
   context = runtime.createContext(limits);
   $("engine").textContent = runtime.version;
+  // The page is drawn and editable while the runtime downloads; the buttons need it.
+  document.querySelectorAll("button").forEach(button => { button.disabled = false; });
   status.className = "status ok";
   status.textContent = `Runtime ready in ${(performance.now() - start).toFixed(0)} ms`;
   (window as any).moonsharp = { runtime, runSuite };   // used by the Playwright smoke test

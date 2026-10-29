@@ -18,6 +18,8 @@
     <ItemGroup>
         <!-- Read by the .NET trimmer/NativeAOT when an app references this assembly. See the file for why. -->
         <EmbeddedResource Include="ILLink.Descriptors.xml" LogicalName="ILLink.Descriptors.xml" />
+        <!-- Drops the expression-tree interop accessors when the app turns dynamic code off. See the file. -->
+        <EmbeddedResource Include="ILLink.Substitutions.xml" LogicalName="ILLink.Substitutions.xml" />
     </ItemGroup>
 
     <ItemGroup>
@@ -52,6 +54,11 @@
     <PropertyGroup Condition="'$(DebugType)' == 'portable'">
         <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
     </PropertyGroup>
+
+    <!-- BigInteger, for string.format's exact number conversions (part of netstandard2.0). -->
+    <ItemGroup Condition=" '$(TargetFramework)' == 'net45' ">
+        <Reference Include="System.Numerics" />
+    </ItemGroup>
 
     <PropertyGroup Condition=" $(TargetFramework.StartsWith('netstandard')) ">
         <DefineConstants>$(DefineConstants);DOTNET_CORE</DefineConstants>

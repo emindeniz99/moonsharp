@@ -23,6 +23,9 @@ namespace MoonSharp.Interpreter.CoreLib
 			CallbackArguments args,
 			DynValue handlerBeforeUnwind)
 		{
+			if (args.Count == 0)
+				throw ScriptRuntimeException.BadArgument(0, funcName, "value expected");
+
 			DynValue v = args[0];
 			int firstArg = 1;
 
@@ -92,7 +95,7 @@ namespace MoonSharp.Interpreter.CoreLib
 			}
 			else if (v.Type != DataType.Function)
 			{
-				return DynValue.NewTupleNested(DynValue.False, DynValue.NewString("attempt to " + funcName + " a non-function"));
+				return DynValue.NewTupleNested(DynValue.False, DynValue.NewString(ScriptRuntimeException.AttemptToCallNonFunc(v.Type).Message));
 			}
 			else
 			{

@@ -1,0 +1,22 @@
+<linker>
+  <!--
+    Applied only when the app turns dynamic code off (DynamicCodeSupport=false; NativeAOT does by default).
+    Then IsRunningOnAOT is true at run time and interop descriptors use reflection, so the expression-tree
+    accessors, and System.Linq.Expressions with them, are dead code. TrimDescriptorTests checks the names.
+  -->
+  <assembly fullname="MoonSharp.Interpreter" feature="System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported" featurevalue="false">
+    <type fullname="MoonSharp.Interpreter.Platforms.PlatformAutoDetector">
+      <method signature="System.Boolean get_IsRunningOnAOT()" body="stub" value="true" />
+    </type>
+    <type fullname="MoonSharp.Interpreter.Interop.MethodMemberDescriptor">
+      <method signature="System.Void MoonSharp.Interpreter.Interop.BasicDescriptors.IOptimizableDescriptor.Optimize()" body="stub" />
+    </type>
+    <type fullname="MoonSharp.Interpreter.Interop.PropertyMemberDescriptor">
+      <method signature="System.Void OptimizeGetter()" body="stub" />
+      <method signature="System.Void OptimizeSetter()" body="stub" />
+    </type>
+    <type fullname="MoonSharp.Interpreter.Interop.FieldMemberDescriptor">
+      <method signature="System.Void OptimizeGetter()" body="stub" />
+    </type>
+  </assembly>
+</linker>

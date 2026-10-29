@@ -165,6 +165,10 @@
         <None Include="TestMore\Modules\Test\More.lua">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
+        <!-- Read by Lua52DifferentialGuardTests. -->
+        <None Include="Lua52Differential\cases\*.lua">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
     </ItemGroup>
 
     <ItemGroup>

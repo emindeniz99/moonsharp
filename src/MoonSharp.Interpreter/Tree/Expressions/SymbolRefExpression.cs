@@ -14,6 +14,7 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 
 			if (T.Type == TokenType.VarArgs)
 			{
+				IsVarArgs = true;
 				m_Ref = lcontext.Scope.Find(WellKnownSymbols.VARARGS);
 
 				if (!lcontext.Scope.CurrentFunctionHasVarArgs())
@@ -41,6 +42,9 @@ namespace MoonSharp.Interpreter.Tree.Expressions
 				throw new DynamicExpressionException("Unsupported symbol reference expression detected.");
 			}
 		}
+
+		/// <summary>True for '...', which gives every vararg.</summary>
+		internal bool IsVarArgs { get; private set; }
 
 		public override void Compile(Execution.VM.ByteCode bc)
 		{

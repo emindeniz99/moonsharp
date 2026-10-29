@@ -124,10 +124,8 @@ the hash is cached in the `DynValue`.
 
 ### Strings
 
-`tostring(x)`, `print(x)` and `..` give the decimal digits. MoonSharp's
-`string.format("%s", x)` accepts only strings and numbers, so use
-`string.format("%s", tostring(x))`. `string.format("%d", x)` is an error, not
-a rounded number.
+`tostring(x)`, `print(x)`, `..` and `string.format("%s", x)` give the decimal
+digits. `string.format("%d", x)` is an error, not a rounded number.
 
 The global `tonumber(x)` returns `nil` for an int64, as for any userdata. Use
 `int64.tonumber`.

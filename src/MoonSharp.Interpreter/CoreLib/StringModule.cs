@@ -239,7 +239,7 @@ namespace MoonSharp.Interpreter.CoreLib
 		[MoonSharpModuleMethod]
 		public static DynValue format(ScriptExecutionContext executionContext, CallbackArguments args)
 		{
-			return LuaFormatter.Format(args);
+			return LuaFormatter.Format(executionContext, args);
 		}
 
 

@@ -123,7 +123,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 						count(nil or none()), count(va(7, 8)), va(7, 8), #t, count() }, '|')"));
 		}
 
-
 		// Entry 2: a unary operator after a binary one closed before '^' joined: 1 + -x^2 was 1 + (-x)^2.
 		[Test]
 		public void UnaryMinus_BindsLooserThanPowerEverywhere()
@@ -134,7 +133,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 					return table.concat({ 1 + -x^2, 2 * -x^2, tostring(true and -2^2), 2 - -2^2, tostring(2^-3^2 == 2^-9),
 						tostring(1 == not 2^2), 1 + -2^2^3, -2^-2, - -2^2 * -1 }, '|')"));
 		}
-
 
 		// Entry 3: a multiple assignment evaluated each target's table and key right before storing into it, after
 		// the earlier targets were stored. Lua 5.2, 3.3.3: "The assignment statement first evaluates all its
@@ -165,7 +163,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 					return table.concat({ r1, r2, r3, table.concat(calls, ','), table.concat(log, ','), z, w.key .. ',' .. tostring(w.other) }, '|')"));
 		}
 
-
 		// Entry 4: goto to a label at the end of a block was rejected after a local ("jumps into the scope of
 		// local"); Lua 5.2 treats such a label as outside the block's locals, except before 'until'.
 		[Test]
@@ -188,7 +185,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 				RunString("local f, e = load('do goto e; local x = 1; ::e:: print(x) end') return e"));
 		}
 
-
 		// Entry 35: __eq ran only when both tables had the same metatable; Lua 5.2 runs it when the two metatables'
 		// __eq fields are the same value, as in class hierarchies that copy it into each class.
 		[Test]
@@ -204,7 +200,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 					return table.concat({ tostring(A == B), tostring(A == C), tostring(A == D), tostring(D == A) }, '|')"));
 		}
 
-
 		// Entries 21 and 22: math.fmod used Math.IEEERemainder (fmod(7, 4) was -1) and math.modf floored.
 		[Test]
 		public void MathFmodAndModf_FollowC()
@@ -218,7 +213,6 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 					return table.concat({ s(math.fmod(7, 4)), s(math.fmod(-7, 4)), s(math.fmod(7, -4)), s(math.fmod(5.5, 2)),
 						s(math.fmod(2^53, 3)), s(math.fmod(-0.0, 1)), s(a), s(b), s(c), s(d), s(e), s(f) }, '|')"));
 		}
-
 
 		// Entry 24: bit32 as Lua 5.2's lbitlib. Negative numbers went through a (uint) cast of a double, which
 		// .NET 9 and ARM64 saturate to 0 (bit32.band(-1) was 0 there); fractions truncated instead of rounding;
@@ -234,6 +228,44 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 						b.lshift(1, 32), b.rshift(1, -32), b.lshift(1, 1.9), b.lshift(-1, 64), b.arshift(-1, 1),
 						b.arshift(0x80000000, 4), b.extract(0xa0001111, 28, 4), b.extract(0xa0001111, 31),
 						b.replace(0, 1, 2), b.replace(0, 3, 4), b.band(), b.bor(), tostring(b.btest()) }, '|')"));
+		}
+
+		// Entry 30: load treated "" from a reader as an error, let a reader's error through, ignored mode and
+		// took only a table as env.
+		[Test]
+		public void Load_ReaderModeAndEnv()
+		{
+			Assert.AreEqual("5|nil rd|nil attempt to load a text chunk (mode is 'b')|nil attempt to load a binary chunk (mode is 't')|5|false|42",
+				RunString(@"
+					local parts, i = { 'return 5', '' }, 0
+					local r1 = load(function() i = i + 1 return parts[i] end)()
+					local f2, e2 = load(function() error('rd', 0) end)
+					local f3, e3 = load('return 1', '=e', 'b')
+					local f4, e4 = load(string.dump(function() return 1 end), '=e', 't')
+					local r5 = load('return _ENV', '=e', 't', 5)()
+					local ok6 = pcall(load('return x', '=e', 't', nil))
+					local r7 = load(function() local n = 0 return function() n = n + 1 if n == 1 then return 42 end end end)
+					return table.concat({ r1, tostring(f2) .. ' ' .. e2, tostring(f3) .. ' ' .. e3, tostring(f4) .. ' ' .. e4,
+						r5, tostring(ok6), tostring(load('return ' .. 42)()) }, '|')"));
+		}
+
+		// Entry 20: package.loaded had no _G and no package entry; cpath, loadlib and searchpath were missing.
+		[Test]
+		public void Package_LoadedAndCLibraryFields()
+		{
+			DynValue r = Run(@"
+				local f, e, w = package.loadlib('x', 'y')
+				local p, tried = package.searchpath('no.such.mod', './?.lua;./?/init.lua')
+				return package.loaded._G == _G, package.loaded.package == package, package.cpath, f, e, w, p, tried");
+
+			Assert.IsTrue(r.Tuple[0].Boolean);
+			Assert.IsTrue(r.Tuple[1].Boolean);
+			Assert.AreEqual("", r.Tuple[2].String);
+			Assert.IsTrue(r.Tuple[3].IsNil());
+			Assert.AreEqual("dynamic libraries not enabled; check your Lua installation", r.Tuple[4].String);
+			Assert.AreEqual("absent", r.Tuple[5].String);
+			Assert.IsTrue(r.Tuple[6].IsNil());
+			StringAssert.Contains("no file './no" + System.IO.Path.DirectorySeparatorChar + "such" + System.IO.Path.DirectorySeparatorChar + "mod.lua'", r.Tuple[7].String);
 		}
 	}
 }

@@ -45,6 +45,54 @@ namespace MoonSharp.Interpreter.CoreLib
 			package.Table.Set("searchers", searchers);
 			// The Lua 5.1 name, which Lua 5.2 keeps for compatibility.
 			package.Table.Set("loaders", searchers);
+
+			// No C libraries: an empty cpath, and loadlib answers as a Lua 5.2 built without them does.
+			package.Table.Set("cpath", DynValue.NewString(""));
+			package.Table.Set("loadlib", DynValue.NewCallback((context, args) => DynValue.NewTuple(DynValue.Nil,
+				DynValue.NewString("dynamic libraries not enabled; check your Lua installation"), DynValue.NewString("absent")), "loadlib"));
+			package.Table.Set("searchpath", DynValue.NewCallback(SearchPath, "searchpath"));
+
+			// As in Lua 5.2, package.loaded holds _G and package too (the libraries add themselves as they register).
+			DynValue loaded = pkg.RawGet("loaded");
+
+			if (loaded == null || loaded.Type != DataType.Table)
+				pkg.Set("loaded", loaded = DynValue.NewTable(script));
+
+			loaded.Table.Set("_G", DynValue.NewTable(globalTable));
+			loaded.Table.Set("package", package);
+		}
+
+		// package.searchpath (name, path [, sep [, rep]]): the first file of path, with each '?' replaced by name (its
+		// sep, '.' by default, replaced by rep, the directory separator), that the script loader finds, as require
+		// would load it; otherwise nil and the files tried.
+		static DynValue SearchPath(ScriptExecutionContext executionContext, CallbackArguments args)
+		{
+			string name = args.AsType(0, "searchpath", DataType.String, false).String;
+			string path = args.AsType(1, "searchpath", DataType.String, false).String;
+			DynValue sep = args.AsType(2, "searchpath", DataType.String, true);
+			DynValue rep = args.AsType(3, "searchpath", DataType.String, true);
+
+			string s = sep.IsNil() ? "." : sep.String;
+			if (s.Length > 0)
+				name = name.Replace(s, rep.IsNil() ? System.IO.Path.DirectorySeparatorChar.ToString() : rep.String);
+
+			ScriptLoaderBase loader = executionContext.GetScript().Options.ScriptLoader as ScriptLoaderBase;
+			var tried = new StringBuilder();
+
+			foreach (string template in path.Split(';'))
+			{
+				if (template.Length == 0)
+					continue;
+
+				string file = template.Replace("?", name);
+
+				if (loader != null && loader.ScriptFileExists(file))
+					return DynValue.NewString(file);
+
+				tried.Append("\n\tno file '").Append(file).Append('\'');
+			}
+
+			return DynValue.NewTuple(DynValue.Nil, DynValue.NewString(tried.ToString()));
 		}
 
 		// package.searchers[1]: the loader stored in package.preload[modname].
@@ -116,36 +164,71 @@ namespace MoonSharp.Interpreter.CoreLib
 			{
 				Script S = executionContext.GetScript();
 				DynValue ld = args[0];
-				string script = "";
+				string script;
 
-				if (ld.Type == DataType.Function)
+				if (ld.Type == DataType.Function || ld.Type == DataType.ClrFunction)
 				{
+					var pieces = new StringBuilder();
+
+					// Lua 5.2's generic_reader: nil, nothing or "" ends the chunk; a number is its text; an error
+					// raised by the reader is load's error result.
 					while (true)
 					{
-						DynValue ret = executionContext.GetScript().Call(ld);
-						if (ret.Type == DataType.String && ret.String.Length > 0)
-							script += ret.String;
-						else if (ret.IsNil())
+						DynValue ret;
+
+						try
+						{
+							ret = S.Call(ld).ToScalar();
+						}
+						catch (ScriptRuntimeException ex)
+						{
+							return DynValue.NewTuple(DynValue.Nil, DynValue.NewString(ex.DecoratedMessage ?? ex.Message));
+						}
+
+						if (ret.IsNil())
 							break;
-						else
+
+						if (ret.Type != DataType.String && ret.Type != DataType.Number)
 							return DynValue.NewTuple(DynValue.Nil, DynValue.NewString("reader function must return a string"));
+
+						string piece = ret.CastToString();
+
+						if (piece.Length == 0)
+							break;
+
+						pieces.Append(piece);
 					}
+
+					script = pieces.ToString();
 				}
-				else if (ld.Type == DataType.String)
+				else if (ld.Type == DataType.String || ld.Type == DataType.Number)
 				{
-					script = ld.String;
+					script = ld.CastToString();
 				}
 				else
 				{
 					args.AsType(0, "load", DataType.Function, false);
+					return DynValue.Nil;
 				}
 
 				DynValue source = args.AsType(1, "load", DataType.String, true);
-				DynValue env = args.AsType(3, "load", DataType.Table, true);
+				DynValue mode = args.AsType(2, "load", DataType.String, true);
+
+				// Lua 5.2's checkmode: "b" binary only, "t" text only, "bt" (the default) both.
+				string kind = script.StartsWith(StringModule.BASE64_DUMP_HEADER) ? "binary" : "text";
+				if (!mode.IsNil() && mode.String.IndexOf(kind[0]) < 0)
+					return DynValue.NewTuple(DynValue.Nil, DynValue.NewString(string.Format("attempt to load a {0} chunk (mode is '{1}')", kind, mode.String)));
+
+				// env can be any value, nil included when it is given: it becomes the chunk's _ENV.
+				bool hasEnv = args.Count > 3;
+				DynValue env = args[3];
 
 				DynValue fn = S.LoadString(script,
-					!env.IsNil() ? env.Table : defaultEnv,
+					hasEnv && env.Type == DataType.Table ? env.Table : defaultEnv,
 					!source.IsNil() ? source.String : "=(load)");
+
+				if (hasEnv && env.Type != DataType.Table)
+					fn.Function.SetUpvalue(0, env);
 
 				return fn;
 			}

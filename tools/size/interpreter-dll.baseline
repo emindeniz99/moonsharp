@@ -5,4 +5,4 @@
 # A change that grows the DLL on purpose puts the new size, as size.sh prints it, here in the
 # same commit and says why in the commit body. A change that shrinks it lowers the number, so
 # later growth is measured from there.
-444416
+445440

@@ -333,6 +333,24 @@ for, `_MOONSHARP.is_aot` is true and the platform name ends in `.aot`.
 Affected: hosts published with NativeAOT that checked these values or
 counted adapter compilations.
 
+## The browser package runs without dynamic code
+
+`src/Hosting/browser` now sets `DynamicCodeSupport=false`, so the browser
+counts as an AOT platform: `_MOONSHARP.is_aot` is true, the platform name
+changes from `core.dotnet.clr4.netcore` to `core.dotnet.clr4.netcore.aot`, and
+CLR interop descriptors use `InteropAccessMode.Reflection` instead of compiled
+expression trees (which the browser interpreted anyway). With the interpreter's
+new `ILLink.Substitutions.xml`, the trimmer then drops `System.Linq.Expressions`
+from the download (docs/hosting.md, "Browser budget"). The same substitutions
+apply to any trimmed app that turns dynamic code off, NativeAOT included; such
+apps already ran with `IsRunningOnAOT()` true, so only their size changes.
+
+A Release build of the browser package also needs the `wasm-tools` workload
+(`dotnet workload install wasm-tools --version 10.0.402`); without it the
+build stops with NETSDK1147 instead of shipping the 976 KB prebuilt runtime.
+Affected: browser hosts that read `is_aot` or the platform name, and anyone who
+builds the browser package.
+
 ## Generic extension overloads that AOT cannot instantiate are skipped
 
 When a script calls an extension method by name, MoonSharp instantiates each

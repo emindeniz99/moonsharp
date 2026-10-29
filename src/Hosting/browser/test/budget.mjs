@@ -7,8 +7,9 @@
 // - the first paint (the page is usable for typing while the runtime downloads);
 // - one cold load in Chromium under DevTools slow-4G and 4x CPU throttling, files sent as brotli: a check
 //   on the model that needs no assumption about the request chain (reported only, CI machines vary).
-// Exits 1 when the bytes or the start time exceed the build's entry in budget.json's "enforced". With GITHUB_STEP_SUMMARY set,
-// appends a table to the job summary.
+// Reports when the bytes or the start time exceed the build's entry in budget.json's "enforced", as a
+// warning: size and start time are tracked, never a gate (owner decision, docs/ROADMAP.md). Exits 1
+// only when the page fails to load. With GITHUB_STEP_SUMMARY set, appends a table to the job summary.
 // usage: node test/budget.mjs <published wwwroot> <fixturesDir> [interpreter|aot] [runs]
 import fs from "node:fs";
 import path from "node:path";
@@ -114,6 +115,5 @@ console.log(JSON.stringify({ build, files, brotliBytes: brotli, rawBytes: raw, s
 if (process.env.GITHUB_STEP_SUMMARY)
   fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Browser first-load budget, ${build} build\n\n${table}\n\n${failures.length ? "Over budget: " + failures.join("; ") : "Within budget."}\n`);
 
-for (const f of failures) console.log(`OVER BUDGET: ${f}`);
-console.log(failures.length === 0 ? `browser budget (${build}): within budget` : `browser budget (${build}): over budget`);
-process.exit(failures.length === 0 ? 0 : 1);
+for (const f of failures) console.log(process.env.GITHUB_ACTIONS ? `::warning::browser ${build} build over budget: ${f}` : `OVER BUDGET: ${f}`);
+console.log(failures.length === 0 ? `browser budget (${build}): within budget` : `browser budget (${build}): over budget (warning only)`);

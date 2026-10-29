@@ -6,7 +6,7 @@ name: Hosting
 # fails on a new, changed or fixed failure. The browser package has two builds, the default interpreter
 # build and the AOT build (docs/hosting.md, "Two browser builds"); each runs the corpus in all three
 # browsers. The per-host counts go to the job summary, and so does each build's first-load budget
-# (src/Hosting/browser/budget.json), which fails the job when exceeded.
+# (src/Hosting/browser/budget.json), which warns when exceeded and never fails the job.
 on:
   push:
     branches:
@@ -121,8 +121,8 @@ jobs:
           mvn -B test -Dmoonsharp.inprocess.required=true | tee fixtures.log
           grep -E '^java-(worker|coreclr|nativeaot): ' fixtures.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
 
-      # Last, so that a budget overrun does not hide the Java results. Each build writes its table to the
-      # job summary; both are measured even when the first is over budget.
+      # Each build writes its table to the job summary; an overrun is a warning. The step fails only
+      # when a page does not load.
       - name: Browser first-load budget
         working-directory: src/Hosting/browser
         run: |

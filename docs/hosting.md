@@ -671,13 +671,14 @@ the day for now and asked for a native relink before measuring again.
 `test/budget.mjs` measures one published build in headless Chromium with an
 empty cache (`node test/budget.mjs <wwwroot> ../fixtures interpreter|aot`; CI
 runs it last in `hosting.yml` for both builds and writes the tables to the job
-summary). Each build has its own enforced entry in `budget.json`:
+summary). Each build has its own entry in `budget.json`; going over it is a warning
+in the job summary, never a failure:
 
 - **Bytes**: every file the page fetches before the runtime is ready (19 files),
   counted as the `.br` file `dotnet publish` writes next to it, which is what a
-  production server sends. Enforced.
+  production server sends. Checked against the entry.
 - **Desktop start**: navigation to a usable runtime (`window.moonsharp`), median
-  of 5 runs. Enforced.
+  of 5 runs. Checked against the entry.
 - **Desktop first paint**: the page is drawn, and the editor usable, while the
   runtime downloads. Reported.
 - **Phone model**: 6 round trips of 150 ms + bytes at 1.6 Mbit/s + 4 × desktop
@@ -810,8 +811,8 @@ browser builds" above.
 It stays out of reach under slow 4G. The interpreter build's download alone takes 5.2 s at
 1.6 Mbit/s; within 5 s the model leaves 440 KB brotli for everything with a
 0.5 s desktop start, and the relinked `dotnet.native.wasm` is 450 KB by itself.
-CI enforces the measured state with a 4% margin (1,140,000 bytes) and keeps the
-desktop start budget at 1,500 ms until CI runners have a record. The levers
+CI warns above the measured state plus a 4% margin (1,140,000 bytes) and keeps the
+desktop start reference at 1,500 ms until CI runners have a record. The levers
 that remain need the owner: a faster network assumption, a
 cached runtime for repeat visits, or a smaller engine for the web.
 

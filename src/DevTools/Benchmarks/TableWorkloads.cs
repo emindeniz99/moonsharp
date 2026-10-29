@@ -39,6 +39,9 @@ namespace MoonSharp.Benchmarks
 			new Case { Name = "pairs_hash_128", Arg = 2000, PerArg = 128, Source = "local t = {} for i = 1, 128 do t['k' .. i] = i end\nreturn function(n) local s = 0 for r = 1, n do for k, v in pairs(t) do s = s + v end end return s end" },
 			// Object-like tables: build a 4-field record by assignment, read every field (per record).
 			new Case { Name = "record_build_read", Arg = 100000, Source = "return function(n) local s = 0 for i = 1, n do local r = {} r.id = i r.name = 'x' r.level = 3 r.score = i s = s + r.id + r.level + r.score end return s end" },
+			// One field read and one method call site over 16 objects of one class (the field caches across
+			// objects of one layout), with fractional fields updated in place.
+			new Case { Name = "fields_many_objects", Arg = 100000, Source = "local C = {} C.__index = C function C:get() return self.v end\nlocal objs = {} for k = 1, 16 do objs[k] = setmetatable({ v = k + 0.5, w = k * 0.25 }, C) end\nreturn function(n) local s = 0 for i = 1, n do local o = objs[i % 16 + 1] o.w = o.w + 0.5 s = s + o:get() + o.w end return s end" },
 		};
 
 		public static IEnumerable<Case> Cases
@@ -66,6 +69,10 @@ namespace MoonSharp.Benchmarks
 			{ "4 fields assigned after {}", "return function() local t = {} t.a = 1 t.b = 2 t.c = 3 t.d = 4 return t end" },
 			{ "array 4, then 1 string key", "return function() local t = { 1, 2, 3, 4 } t.n = 4 return t end" },
 			{ "string key, then 4 array items", "return function() local t = { n = 4 } t[1] = 1 t[2] = 2 t[3] = 3 t[4] = 4 return t end" },
+			{ "4 fractional fields", "return function() return { a = 0.5, b = 1.5, c = 2.5, d = 3.5 } end" },
+			{ "7 fractional fields (an nbody body)", "return function() return { x = 0.5, y = 1.5, z = 2.5, vx = 0.1, vy = 0.2, vz = 0.3, mass = 9.5 } end" },
+			{ "4 fractional array items", "return function() return { 0.5, 1.5, 2.5, 3.5 } end" },
+			{ "4 string fields", "return function() return { a = 'w', b = 'x', c = 'y', d = 'z' } end" },
 		};
 
 		/// <summary>

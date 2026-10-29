@@ -327,3 +327,29 @@ loop iteration.
 - The fresh 0.5.8 column agrees with the earlier note's within 15%.
 - The MoonSharp column is the earlier note's `8933421`. The fork has changed a lot since then, so read it
   only as context for the 0.5.8 columns.
+
+## After `perf/table-layout` (2026-10-29)
+
+Tables store `LuaValue`s and field caches are keyed by layout (ROADMAP, Done table). The three cases
+the owner named, rerun with the same patch and setup on the same 4-vCPU VM, Lua-CSharp and the fork
+only (`--filter '*InterpreterComparison.LuaCSharp' '*InterpreterComparison.MoonSharpFork'`, a
+`LUACS_CASES` filter on the case list). Three runs per build, the builds interleaved; µs per execution,
+median of the three runs (min-max), and the median of the per-run ratios to Lua-CSharp. Load average
+1-3 (other agents' builds).
+
+| Case | Lua-CSharp | Fork `next` 68d9693 | Fork `perf/table-layout` 500b848 | Ratio before | Ratio after | Bytes before | Bytes after |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| nbody | 367.6-395.3 | 944.6 (937.7-972.5) | 759.8 (736.7-772.6) | 2.57x | 1.93x | 240,950 | 5,630 |
+| table-access | 231.1-256.5 | 272.1 (268.4-279.5) | 250.4 (249.7-251.0) | 1.15x | 1.02x | 391,450 | 431,200 |
+| metamethods | 325.1-340.8 | 521.1 (515.3-559.5) | 525.6 (513.9-532.7) | 1.59x | 1.56x | 1,730 | 1,880 |
+
+- **nbody** no longer allocates per field store. Its remaining gap is instruction dispatch: under a
+  sampling profile, table access went from about 30% of the samples to 10%, and the instruction loop
+  is 83%.
+- **table-access** allocates 10% more: each `{x=i,y=i%7}` gets four 56-byte hash entries, where it had
+  four 24-byte entries and a 40-byte `DynValue` per key (the values were shared small integers).
+- **metamethods** is unchanged in time: its cost is the two Lua calls per iteration, not the lookups,
+  which no longer make a `DynValue` for the metamethod.
+- **Startup** (`StartupComparison`, MoonSharpFork row, three runs each, after the module-table sizing
+  commit): 18.90 to 18.21 µs, 56.04 to 56.64 KB. Before that commit the branch measured 21.0 µs and
+  64.5 KB.

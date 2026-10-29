@@ -1,4 +1,5 @@
 ﻿using MoonSharp.Interpreter.Debugging;
+using System.Collections.Generic;
 using MoonSharp.Interpreter.Execution;
 using MoonSharp.Interpreter.Execution.VM;
 using MoonSharp.Interpreter.Tree.Expressions;
@@ -37,7 +38,7 @@ namespace MoonSharp.Interpreter.Tree.Fast_Interface
 			{
 				Scope = new BuildTimeScope(),
 				Source = source,
-				Lexer = new Lexer(source.SourceID, source.Code, true)
+				Lexer = new Lexer(source.SourceID, source.Code, true, script.CompiledNames ?? (script.CompiledNames = new Dictionary<string, string>()))
 			};
 		}
 

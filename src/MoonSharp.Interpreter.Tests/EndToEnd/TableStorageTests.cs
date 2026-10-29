@@ -725,5 +725,117 @@ namespace MoonSharp.Interpreter.Tests.EndToEnd
 			Assert.AreEqual(32, q.Table.Pairs.Count());
 			Assert.Less(retained, 64 * 1024, "bytes retained by a queue with 32 live entries after 200k push/pop pairs");
 		}
+
+		[Test]
+		public void StoredValuesAreCopies()
+		{
+			// Tables keep values, not the host's DynValue objects: changing a DynValue after storing it does
+			// not change the table, and what the table returns is read-only.
+			var t = new Table(new Script());
+			DynValue v = DynValue.NewNumber(1);
+			t.Set("a", v);
+			t.Set(1, v);
+			v.Assign(DynValue.NewNumber(2));
+
+			Assert.AreEqual(1, t.Get("a").Number);
+			Assert.AreEqual(1, t.Get(1).Number);
+			Assert.IsTrue(t.Get("a").ReadOnly);
+			Assert.Throws<ScriptRuntimeException>(() => t.Get("a").Assign(DynValue.NewNumber(3)));
+		}
+
+		[Test]
+		public void StoringNumbersFromScriptsDoesNotAllocate()
+		{
+			// Fractional numbers into new and existing keys of the array and hash parts, and the reads back.
+			var script = new Script();
+			DynValue fill = script.DoString(@"local t = { x = 0.5 } for i = 1, 64 do t[i] = 0.5 end
+				return function() for i = 1, 64 do t[i] = t[i] * 1.5 t.x = t.x + i / 3 t[i + 0.5] = i / 7 end return t end");
+
+			long bytes = AllocatedBytes(() => script.Call(fill));
+
+			Assert.Less(bytes, 64 * 24, "bytes allocated by 192 number stores and 128 reads: " + bytes);
+		}
+
+		[Test]
+		public void KeysKeepTheirSignAndDeadArrayKeysReadAsAbsent()
+		{
+			// -0 as a hash key prints as the script wrote it; a dead array key is absent for the host.
+			var script = new Script();
+			DynValue r = script.DoString(@"
+				local t = {}
+				local z = -0.0
+				t[z] = 'zero'
+				local k = next(t)
+				local a = { 1, 2, 3 }
+				a[2] = nil
+				return tostring(k), t[0], a");
+
+			Assert.AreEqual("-0", r.Tuple[0].String);
+			Assert.AreEqual("zero", r.Tuple[1].String);
+			Table a = r.Tuple[2].Table;
+			Assert.IsNull(a.RawGet(2));
+			Assert.IsTrue(a.Get(2).IsNil());
+			Assert.AreEqual(new double[] { 1, 3 }, a.Values.Select(v => v.Number).ToArray());
+		}
+
+		[Test]
+		public void UnpackFollowsLua52ForEmptyAndHugeRanges()
+		{
+			// i > j + 1 ended the process with OverflowException (new DynValue[j - i + 1]); Lua 5.2 returns no
+			// values, reads 2^40 as luaL_optint does (low 32 bits: 0) and refuses more results than its stack
+			// holds.
+			DynValue r = Script.RunString(@"
+				local ok, err = pcall(table.unpack, {}, 1, 1e7)
+				return select('#', table.unpack({}, 2)), select('#', table.unpack({1}, 5, 1)),
+					select('#', table.unpack({}, 1, 2^40)), ok, err");
+
+			Assert.AreEqual(0, r.Tuple[0].Number);
+			Assert.AreEqual(0, r.Tuple[1].Number);
+			Assert.AreEqual(0, r.Tuple[2].Number);
+			Assert.IsFalse(r.Tuple[3].Boolean);
+			StringAssert.Contains("too many results to unpack", r.Tuple[4].String);
+		}
+
+		[Test]
+		public void TableRemoveAcceptsPositionsUpToLengthPlusOne()
+		{
+			// Lua 5.2 allows 1 <= pos <= #t + 1 and ignores extra arguments; the fork raised "position out
+			// of bounds" for #t + 1 (the empty-queue idiom table.remove(q, 1)) and "wrong number of
+			// arguments" for a third argument.
+			DynValue r = Script.RunString(@"
+				local q = {}
+				local a = table.remove(q, 1)
+				local t = { 1, 2, 3 }
+				local b = table.remove(t, 4)
+				local c = table.remove(t, 1, 'ignored')
+				local ok = pcall(table.remove, t, 5)
+				return a, b, c, #t, t[1], t[2], ok");
+
+			Assert.IsTrue(r.Tuple[0].IsNil());
+			Assert.IsTrue(r.Tuple[1].IsNil());
+			Assert.AreEqual(1, r.Tuple[2].Number);
+			Assert.AreEqual(2, r.Tuple[3].Number);
+			Assert.AreEqual(2, r.Tuple[4].Number);
+			Assert.AreEqual(3, r.Tuple[5].Number);
+			Assert.IsFalse(r.Tuple[6].Boolean);
+		}
+
+		[Test]
+		public void TableInsertPicksItsFormByArgumentCount()
+		{
+			// table.insert(t, 1, nil) inserts nil at 1 in Lua 5.2; the fork took the nil for the two-argument
+			// form and appended 1. One argument is an error.
+			DynValue r = Script.RunString(@"
+				local t = { 1, 2 }
+				table.insert(t, 1, nil)
+				local ok, err = pcall(table.insert, t)
+				return t[1], t[2], t[3], ok, err");
+
+			Assert.IsTrue(r.Tuple[0].IsNil());
+			Assert.AreEqual(1, r.Tuple[1].Number);
+			Assert.AreEqual(2, r.Tuple[2].Number);
+			Assert.IsFalse(r.Tuple[3].Boolean);
+			StringAssert.Contains("wrong number of arguments to 'insert'", r.Tuple[4].String);
+		}
 	}
 }

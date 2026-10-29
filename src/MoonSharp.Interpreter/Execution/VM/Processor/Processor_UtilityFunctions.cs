@@ -46,23 +46,30 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private int Internal_InvokeUnaryMetaMethod(LuaValue op1, string eventName, int bit, int instructionPtr)
 		{
-			DynValue m = null;
+			LuaValue m = default(LuaValue);
+			bool found = false;
 
 			if (op1.Type == DataType.UserData)
 			{
 				UserData ud = (UserData)op1.Object;
-				m = ud.Descriptor.MetaIndex(m_Script, ud.Object, eventName);
+				DynValue d = ud.Descriptor.MetaIndex(m_Script, ud.Object, eventName);
+
+				if (d != null)
+				{
+					m = d.ToLuaValue();
+					found = true;
+				}
 			}
 
-			if (m == null)
+			if (!found)
 			{
 				var op1_MetaTable = GetMetatable(op1);
 
 				if (op1_MetaTable != null)
-					m = RawGetMetamethod(op1_MetaTable, eventName, bit);
+					found = RawGetMetamethod(op1_MetaTable, eventName, bit, out m);
 			}
 
-			if (m != null)
+			if (found)
 			{
 				m_ValueStack.Push(m);
 				m_ValueStack.Push(op1);
@@ -76,9 +83,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private int Internal_InvokeBinaryMetaMethod(LuaValue l, LuaValue r, string eventName, int bit, int instructionPtr)
 		{
-			var m = GetBinaryMetamethod(l, r, eventName, bit);
+			LuaValue m;
 
-			if (m != null)
+			if (GetBinaryMetamethod(l, r, eventName, bit, out m))
 			{
 				m_ValueStack.Push(m);
 				m_ValueStack.Push(l);
@@ -93,9 +100,9 @@ namespace MoonSharp.Interpreter.Execution.VM
 
 		private int Internal_InvokeBinaryMetaMethod(LuaValue l, LuaValue r, string eventName, int bit, int instructionPtr, LuaValue extraPush)
 		{
-			var m = GetBinaryMetamethod(l, r, eventName, bit);
+			LuaValue m;
 
-			if (m != null)
+			if (GetBinaryMetamethod(l, r, eventName, bit, out m))
 			{
 				m_ValueStack.Push(extraPush);
 				m_ValueStack.Push(m);

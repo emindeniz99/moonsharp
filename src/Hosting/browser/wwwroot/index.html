@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MoonSharp Playground</title>
   <link rel="stylesheet" href="playground.css">
+  <!-- The whole module graph and the runtime loader start with the page, not one after another:
+       two round trips fewer before the runtime downloads (docs/hosting.md, "Browser budget"). -->
+  <link rel="modulepreload" href="js/moonsharp.js">
+  <link rel="modulepreload" href="js/fixtures.js">
+  <link rel="modulepreload" href="js/worker-client.js">
+  <link rel="modulepreload" href="_framework/dotnet.js">
 </head>
 <body>
   <header>
@@ -25,11 +31,11 @@
       <label for="args">Arguments (JSON array)</label>
       <textarea id="args" class="short" spellcheck="false"></textarea>
       <div class="row">
-        <button id="validate">Validate</button>
-        <button id="load">Load module</button>
-        <button id="invoke" class="primary">Invoke</button>
-        <button id="bench">Invoke ×1000</button>
-        <button id="fixtures">Run shared fixtures</button>
+        <button disabled id="validate">Validate</button>
+        <button disabled id="load">Load module</button>
+        <button disabled id="invoke" class="primary">Invoke</button>
+        <button disabled id="bench">Invoke ×1000</button>
+        <button disabled id="fixtures">Run shared fixtures</button>
       </div>
     </section>
 

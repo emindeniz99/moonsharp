@@ -5,7 +5,8 @@ Two measurements:
 - [Unity IL2CPP on a phone (2026-10-29)](#unity-il2cpp-on-a-phone-2026-10-29):
   this fork against xLua-NG in release Android players, pure Lua and the C#
   bridge, allocations, APK size, and the pure Lua set again on a Mac under
-  .NET and Mono.
+  .NET and Mono; with xLua-NG's table reads and strings after its changes of
+  2026-10-30.
 - [Desktop interpreter speed, upstream MoonSharp (2026-10-28)](#desktop-interpreter-speed-upstream-moonsharp-2026-10-28):
   the first, narrow comparison of upstream MoonSharp with native Lua on Linux.
 
@@ -99,6 +100,27 @@ Selected cases, with bytes per operation:
 | the same, a class instance | 716.1 | 11,509 | 16.07x | 0 / 0 | 341 |
 | C# reads `tbl.x` | 1,294.2 | 92.8 | 0.07x | 0 / 0 | 0 |
 
+### xLua-NG's table reads and strings since 2026-10-30
+
+xLua-NG then made C# table access and strings cheaper (five changes, its
+commits `1ec6e19c` to `32554010`; the steps and every case in its
+[`docs/research/benchmark-vs-moonsharp-ng.md`](https://github.com/emindeniz99/xlua-ng/blob/main/docs/research/benchmark-vs-moonsharp-ng.md),
+"C# table access and strings (2026-10-30)"). The same phone and harness,
+xLua-NG (legacy, plain wrappers) before and after in one session, 8
+launches each; its "before" is within 2% of the tables above. MoonSharp-ng
+was not run again, so its column is from 2026-10-29:
+
+| Case or group | xLua-NG before (ns) | xLua-NG after (ns) | MoonSharp-ng (ns) | MoonSharp-ng / xLua-NG after |
+|---|---:|---:|---:|---:|
+| C# reads `tbl.x` | 1,303.6 | 254.1 | 92.8 | 0.37x |
+| `o:MethodRet_String3(s, s, s)` | 1,185.1 | 775.7 | 1,717.7 | 2.21x |
+| C# → `function(a, b, c) return a end`, strings | 981.9 | 548.4 | 2,146.0 | 3.91x |
+| group: Lua → C#, strings | 734 | 554 | 1,123.8 | 2.03x |
+
+The other groups did not move beyond the scatter of a build, and no case
+allocates differently: xLua-NG still makes one C# string (45 bytes here) for
+every Lua string that reaches C#, where MoonSharp-ng passes its .NET string.
+
 ### APK size over an empty project
 
 The same project settings, every player with the same bench code.
@@ -162,7 +184,8 @@ the same script: native uses `table.move`, MoonSharp-ng the copy loop.
   property read on this phone. C# → Lua is 2 to 16 times slower, and
   allocates 340 to 430 bytes per call with three class, Vector3 or struct
   arguments. Reading a Lua table from C# is 14 times faster than xLua-NG,
-  which pays several P/Invoke calls for it.
+  which pays several P/Invoke calls for it; 2.7 times since xLua-NG's
+  changes of 2026-10-30, which also made its string calls 17 to 45% faster.
 - **Size:** 1.37 MB of APK, all of it IL2CPP output and metadata; between
   xLua-NG strict minimal (0.58 MB) and legacy (1.62 MB).
 - **Not measured here:** reflection mode, the register VM prototype
